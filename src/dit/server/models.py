@@ -48,3 +48,16 @@ class Token(Base):
 
     def __repr__(self) -> str:
         return f"Token(id={self.id}, label={self.label!r}, permissions={self.permissions!r})"
+
+
+class Webhook(Base):
+    __tablename__ = "webhooks"
+    __table_args__ = {"schema": "datahub"}
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    repo_id: Mapped[int] = mapped_column(ForeignKey("datahub.repos.id"), nullable=False)
+    url: Mapped[str] = mapped_column(String(512), nullable=False)
+    secret: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    events: Mapped[str] = mapped_column(String(256), nullable=False)
+    active: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
