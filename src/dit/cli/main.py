@@ -1,3 +1,4 @@
+import json
 import os
 import time
 from datetime import datetime, timezone
@@ -490,6 +491,192 @@ def switch(
 
     refs.head_file.write_text(f"ref:{target}\n")
     typer.echo(f"Switched to branch '{target}'.")
+
+
+@app.command()
+def merge(
+    source: str = typer.Argument("", help="Branch to merge into current branch"),
+    continue_merge: bool = typer.Option(False, "--continue", help="Continue after resolving conflicts"),
+    abort: bool = typer.Option(False, "--abort", help="Abort current merge"),
+    message: str = typer.Option("", "-m", help="Merge commit message"),
+):
+    """Merge a branch into the current branch."""
+    repo_root = find_repo_root()
+    dot = get_dot(repo_root)
+    store = ObjectStore(dot / "objects")
+    refs = RefStore(dot)
+    index = StagingIndex(dot / "index")
+
+    merge_head_file = dot / "MERGE_HEAD"
+    merge_msg_file = dot / "MERGE_MSG"
+    conflicts_file = dot / "conflicts.json"
+
+    if abort:
+        if not merge_head_file.exists():
+            typer.echo("error: no merge in progress", err=True)
+            raise typer.Exit(1)
+        conflicts_data = json.loads(conflicts_file.read_text()) if conflicts_file.exists() else {}
+        ours_hash = conflicts_data.get("ours_commit") or refs.resolve_head()
+        if ours_hash:
+            ours_commit = deserialize_commit(store.read("commits", ours_hash))
+            _materialize_tree(repo_root, store, ours_commit.tree_hash)
+        merge_head_file.unlink(missing_ok=True)
+        merge_msg_file.unlink(missing_ok=True)
+        conflicts_file.unlink(missing_ok=True)
+        index.clear()
+        typer.echo("Merge aborted.")
+        return
+
+    if continue_merge:
+        if not merge_head_file.exists():
+            typer.echo("error: no merge in progress", err=True)
+            raise typer.Exit(1)
+        staged = index.entries()
+        if not staged:
+            typer.echo("error: nothing staged — resolve conflicts and dit add first", err=True)
+            raise typer.Exit(1)
+        theirs_hash = merge_head_file.read_text().strip()
+        ours_hash = refs.resolve_head()
+        merge_msg = message or (merge_msg_file.read_text().strip() if merge_msg_file.exists() else "merge commit")
+        head_commit_hash = refs.resolve_head()
+        existing_tree_entries: dict[str, TreeEntry] = {}
+        if head_commit_hash:
+            commit_data = store.read("commits", head_commit_hash)
+            old_commit = deserialize_commit(commit_data)
+            tree_data = store.read("trees", old_commit.tree_hash)
+            old_tree = deserialize_tree(tree_data)
+            for e in old_tree.entries:
+                existing_tree_entries[e.name] = e
+        for rel_path, manifest_hash in staged.items():
+            existing_tree_entries[rel_path] = TreeEntry(
+                name=rel_path, obj_type="manifest", obj_hash=manifest_hash
+            )
+        tree = Tree(entries=list(existing_tree_entries.values()))
+        tree_bytes = serialize_tree(tree)
+        tree_hash = store.write("trees", tree_bytes)
+        c = Commit(
+            tree_hash=tree_hash,
+            parent_hashes=[ours_hash, theirs_hash],
+            author=_get_author(),
+            message=merge_msg,
+            timestamp=int(time.time()),
+        )
+        commit_bytes = serialize_commit(c)
+        commit_hash = store.write("commits", commit_bytes)
+        branch_name = refs.current_branch()
+        refs.set_branch(branch_name, commit_hash)
+        index.clear()
+        merge_head_file.unlink(missing_ok=True)
+        merge_msg_file.unlink(missing_ok=True)
+        conflicts_file.unlink(missing_ok=True)
+        typer.echo(f"[{branch_name} {commit_hash[:8]}] {merge_msg}")
+        return
+
+    # Normal merge
+    if not source:
+        typer.echo("error: specify a branch to merge", err=True)
+        raise typer.Exit(1)
+
+    current_branch = refs.current_branch()
+    if source == current_branch:
+        typer.echo("error: cannot merge a branch into itself", err=True)
+        raise typer.Exit(1)
+
+    theirs_hash = refs.get_branch(source)
+    if theirs_hash is None:
+        typer.echo(f"error: branch '{source}' not found", err=True)
+        raise typer.Exit(1)
+
+    if merge_head_file.exists():
+        typer.echo("error: merge already in progress (use --continue or --abort)", err=True)
+        raise typer.Exit(1)
+
+    staged = index.entries()
+    if staged:
+        typer.echo("error: staging area is not empty — please commit first", err=True)
+        raise typer.Exit(1)
+
+    ours_hash = refs.resolve_head()
+    if ours_hash is None:
+        typer.echo("fatal: no commits on current branch", err=True)
+        raise typer.Exit(1)
+
+    from dit.core.merge_base import find_merge_base
+    base_hash = find_merge_base(store, ours_hash, theirs_hash)
+
+    # Already up to date (same tip)
+    if ours_hash == theirs_hash:
+        typer.echo("Already up to date.")
+        return
+
+    # Fast-forward
+    if base_hash == ours_hash:
+        theirs_commit = deserialize_commit(store.read("commits", theirs_hash))
+        ours_commit = deserialize_commit(store.read("commits", ours_hash))
+        _materialize_tree(repo_root, store, theirs_commit.tree_hash, ours_commit.tree_hash)
+        refs.set_branch(current_branch, theirs_hash)
+        typer.echo(f"Fast-forward to {theirs_hash[:8]}.")
+        return
+
+    # Already up to date
+    if base_hash == theirs_hash:
+        typer.echo("Already up to date.")
+        return
+
+    # Three-way merge
+    from dit.core.merge import three_way_merge
+    merge_result = three_way_merge(store, base_hash, ours_hash, theirs_hash)
+
+    if merge_result.conflicts:
+        ours_commit = deserialize_commit(store.read("commits", ours_hash))
+        for path, mhash in merge_result.merged_tree_entries.items():
+            m_data = store.read("manifests", mhash)
+            manifest = deserialize_manifest(m_data)
+            from dit.core.workspace import materialize_file
+            materialize_file(repo_root, path, manifest, store)
+        merge_head_file.write_text(theirs_hash + "\n")
+        merge_msg = message or f"Merge branch '{source}' into {current_branch}"
+        merge_msg_file.write_text(merge_msg + "\n")
+        conflict_data = {
+            "base_commit": base_hash,
+            "ours_commit": ours_hash,
+            "theirs_commit": theirs_hash,
+            "conflicts": [
+                {"file_path": c.file_path, "conflict_type": c.conflict_type}
+                for c in merge_result.conflicts
+            ],
+        }
+        conflicts_file.write_text(json.dumps(conflict_data, indent=2))
+        typer.echo(f"CONFLICT: {len(merge_result.conflicts)} file(s) have conflicts.")
+        for c in merge_result.conflicts:
+            typer.echo(f"  {c.file_path} ({c.conflict_type})")
+        typer.echo("\nResolve conflicts, then: dit add <files> && dit merge --continue")
+        raise typer.Exit(1)
+
+    # No conflicts — create merge commit
+    merged_tree_entries = [
+        TreeEntry(name=name, obj_type="manifest", obj_hash=mhash)
+        for name, mhash in merge_result.merged_tree_entries.items()
+    ]
+    tree = Tree(entries=merged_tree_entries)
+    tree_bytes = serialize_tree(tree)
+    tree_hash = store.write("trees", tree_bytes)
+
+    merge_msg = message or f"Merge branch '{source}' into {current_branch}"
+    c = Commit(
+        tree_hash=tree_hash,
+        parent_hashes=[ours_hash, theirs_hash],
+        author=_get_author(),
+        message=merge_msg,
+        timestamp=int(time.time()),
+    )
+    commit_bytes = serialize_commit(c)
+    commit_hash = store.write("commits", commit_bytes)
+
+    ours_commit = deserialize_commit(store.read("commits", ours_hash))
+    _materialize_tree(repo_root, store, tree_hash, ours_commit.tree_hash)
+    refs.set_branch(current_branch, commit_hash)
+    typer.echo(f"Merge made: [{current_branch} {commit_hash[:8]}] {merge_msg}")
 
 
 @app.command()
