@@ -585,5 +585,139 @@ def clone(
     typer.echo(f"Clone complete. {len(commits_to_fetch)} commit(s).")
 
 
+def _fetch_objects_since(
+    rc: "RemoteClient",
+    store: ObjectStore,
+    remote_hash: str,
+    stop_at: str | None,
+) -> tuple[int, set[str]]:
+    from dit.core.objects import deserialize_commit, deserialize_tree, deserialize_manifest
+
+    downloaded = 0
+    manifest_hashes: set[str] = set()
+    queue = [remote_hash]
+    visited: set[str] = set()
+
+    while queue:
+        chash = queue.pop()
+        if chash in visited:
+            continue
+        if chash == stop_at:
+            continue
+        visited.add(chash)
+
+        if store.exists("commits", chash):
+            continue
+
+        data = rc.download_object("commits", chash)
+        if data is None:
+            continue
+        store.write("commits", data)
+        downloaded += 1
+        commit = deserialize_commit(data)
+
+        if not store.exists("trees", commit.tree_hash):
+            tree_data = rc.download_object("trees", commit.tree_hash)
+            if tree_data:
+                store.write("trees", tree_data)
+                downloaded += 1
+                tree = deserialize_tree(tree_data)
+                for entry in tree.entries:
+                    if entry.obj_type == "manifest" and not store.exists("manifests", entry.obj_hash):
+                        m_data = rc.download_object("manifests", entry.obj_hash)
+                        if m_data:
+                            store.write("manifests", m_data)
+                            downloaded += 1
+                            manifest_hashes.add(entry.obj_hash)
+                            m = deserialize_manifest(m_data)
+                            for me in m.entries:
+                                if not store.exists("rows", me.row_hash):
+                                    row_data = rc.download_object("rows", me.row_hash)
+                                    if row_data:
+                                        store.write("rows", row_data)
+                                        downloaded += 1
+
+        queue.extend(commit.parent_hashes)
+
+    return downloaded, manifest_hashes
+
+
+@app.command()
+def fetch(
+    remote: str = typer.Option("origin", help="Remote name"),
+    branch: str = typer.Option("main", help="Branch to fetch"),
+):
+    """Download new objects from the remote (does not update local branch)."""
+    repo_root = find_repo_root()
+    dot = get_dot(repo_root)
+    store = ObjectStore(dot / "objects")
+    refs = RefStore(dot)
+
+    rc = _build_remote_client(dot, remote)
+    remote_hash = rc.get_ref("heads", branch)
+    if remote_hash is None:
+        typer.echo(f"  remote branch '{branch}' not found")
+        return
+
+    local_hash = refs.get_branch(branch)
+    if local_hash == remote_hash:
+        typer.echo("Already up to date.")
+        return
+
+    count, _ = _fetch_objects_since(rc, store, remote_hash, stop_at=local_hash)
+    typer.echo(f"Fetched {count} new objects from {remote}/{branch}")
+
+
+@app.command()
+def pull(
+    remote: str = typer.Option("origin", help="Remote name"),
+    branch: str = typer.Option("main", help="Branch to pull"),
+):
+    """Fetch from remote + fast-forward local branch + materialize changed files."""
+    from dit.core.objects import deserialize_commit, deserialize_tree, deserialize_manifest
+    from dit.core.walker import is_ancestor
+    from dit.core.workspace import materialize_file
+
+    repo_root = find_repo_root()
+    dot = get_dot(repo_root)
+    store = ObjectStore(dot / "objects")
+    refs = RefStore(dot)
+
+    rc = _build_remote_client(dot, remote)
+    remote_hash = rc.get_ref("heads", branch)
+    if remote_hash is None:
+        typer.echo(f"  remote branch '{branch}' not found")
+        return
+
+    local_hash = refs.get_branch(branch)
+    if local_hash == remote_hash:
+        typer.echo("Already up to date.")
+        return
+
+    count, _ = _fetch_objects_since(rc, store, remote_hash, stop_at=local_hash)
+
+    if local_hash is not None and not is_ancestor(store, local_hash, remote_hash):
+        typer.echo(
+            "error: pull would not be a fast-forward.\n"
+            "  Local and remote have diverged. Resolve manually.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    refs.set_branch(branch, remote_hash)
+
+    head_commit_data = store.read("commits", remote_hash)
+    head_commit = deserialize_commit(head_commit_data)
+    tree_data = store.read("trees", head_commit.tree_hash)
+    tree = deserialize_tree(tree_data)
+    for entry in tree.entries:
+        if entry.obj_type == "manifest":
+            m_data = store.read("manifests", entry.obj_hash)
+            manifest = deserialize_manifest(m_data)
+            materialize_file(repo_root, entry.name, manifest, store)
+
+    typer.echo(f"Pulled {count} new objects. Now at {remote_hash[:8]}.")
+
+
 def _get_author() -> str:
     return os.environ.get("DIT_AUTHOR", os.environ.get("USER", "unknown"))
