@@ -39,6 +39,9 @@ def create_app(settings: ServerSettings | None = None) -> FastAPI:
     from dit.server.routes.repos import router as repos_router
     application.include_router(repos_router)
 
+    from dit.server.routes.refs import router as refs_router
+    application.include_router(refs_router)
+
     return application
 
 
