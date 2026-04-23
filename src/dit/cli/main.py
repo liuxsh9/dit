@@ -394,5 +394,94 @@ def auth_set_token(
     typer.echo(f"Token stored for remote '{remote}'.")
 
 
+def _build_remote_client(dot: Path, remote_name: str = "origin") -> "RemoteClient":
+    from dit.core.config import get_remote
+    from dit.core.remote import RemoteClient
+
+    cfg = get_remote(dot, remote_name)
+    if cfg is None:
+        typer.echo(f"fatal: remote '{remote_name}' not configured", err=True)
+        raise typer.Exit(1)
+    url: str = cfg["url"]
+    token: str = cfg.get("token", "")
+    repo_name = url.rstrip("/").rsplit("/", 1)[-1]
+    base_url = url.rstrip("/").rsplit("/", 1)[0]
+    return RemoteClient(base_url=base_url, token=token, repo=repo_name)
+
+
+@app.command()
+def push(
+    remote: str = typer.Option("origin", help="Remote name"),
+    branch: str = typer.Option("main", help="Branch name to push"),
+):
+    """Push local commits to the remote server."""
+    from dit.core.walker import walk_commit_objects, is_ancestor
+
+    repo_root = find_repo_root()
+    dot = get_dot(repo_root)
+    store = ObjectStore(dot / "objects")
+    refs = RefStore(dot)
+
+    local_hash = refs.get_branch(branch)
+    if local_hash is None:
+        typer.echo(f"fatal: branch '{branch}' does not exist locally", err=True)
+        raise typer.Exit(1)
+
+    rc = _build_remote_client(dot, remote)
+
+    remote_hash = rc.get_ref("heads", branch)
+
+    if remote_hash is not None:
+        if not is_ancestor(store, remote_hash, local_hash):
+            typer.echo(
+                "error: push rejected — local branch is not a descendant of remote.\n"
+                "  Pull first: dit pull",
+                err=True,
+            )
+            raise typer.Exit(1)
+
+    local_objects = walk_commit_objects(store, local_hash)
+
+    if remote_hash is not None:
+        remote_objects = walk_commit_objects(store, remote_hash)
+        new_objects: dict[str, set[str]] = {
+            obj_type: local_objects[obj_type] - remote_objects[obj_type]
+            for obj_type in local_objects
+        }
+    else:
+        new_objects = local_objects
+
+    upload_order = ["rows", "manifests", "trees", "commits"]
+    to_upload: dict[str, list[str]] = {}
+    for obj_type in upload_order:
+        hashes = list(new_objects.get(obj_type, set()))
+        if not hashes:
+            to_upload[obj_type] = []
+            continue
+        exists = rc.batch_exists(obj_type, hashes)
+        to_upload[obj_type] = [h for h in hashes if not exists.get(h, False)]
+
+    total = sum(len(v) for v in to_upload.values())
+    uploaded = 0
+    for obj_type in upload_order:
+        for hash_hex in to_upload[obj_type]:
+            data = store.read(obj_type, hash_hex)
+            if data is None:
+                typer.echo(f"warning: local object {obj_type}/{hash_hex} missing in store", err=True)
+                continue
+            rc.upload_object(obj_type, hash_hex, data)
+            uploaded += 1
+
+    ok = rc.cas_ref("heads", branch, old=remote_hash, new=local_hash)
+    if not ok:
+        typer.echo(
+            "error: remote ref was updated by another push — pull and retry",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    typer.echo(f"Pushed {uploaded} new objects to {remote}/{branch} ({local_hash[:8]})")
+
+
 def _get_author() -> str:
     return os.environ.get("DIT_AUTHOR", os.environ.get("USER", "unknown"))
