@@ -36,6 +36,9 @@ def create_app(settings: ServerSettings | None = None) -> FastAPI:
     async def health():
         return {"status": "ok"}
 
+    from dit.server.routes.repos import router as repos_router
+    application.include_router(repos_router)
+
     return application
 
 

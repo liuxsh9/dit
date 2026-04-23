@@ -1,9 +1,15 @@
+import hashlib
+
 import pytest
 import pytest_asyncio
+from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
+from dit.server.app import create_app
+from dit.server.auth import get_session
+from dit.server.config import ServerSettings
 from dit.server.database import create_db_engine, create_session_factory
-from dit.server.models import Base
+from dit.server.models import Base, Token
 
 
 @pytest_asyncio.fixture
@@ -25,3 +31,37 @@ async def session(engine: AsyncEngine):
     factory = create_session_factory(engine)
     async with factory() as s:
         yield s
+
+
+ADMIN_TOKEN_RAW = "test-admin-token"
+
+
+@pytest_asyncio.fixture
+async def client(engine, tmp_path):
+    settings = ServerSettings(
+        database_url="sqlite+aiosqlite:///:memory:",
+        data_dir=str(tmp_path / "data"),
+    )
+    app = create_app(settings=settings)
+    factory = create_session_factory(engine)
+
+    async def override_get_session():
+        async with factory() as s:
+            yield s
+
+    app.dependency_overrides[get_session] = override_get_session
+
+    # Create admin token
+    async with factory() as s:
+        token_hash = hashlib.sha256(ADMIN_TOKEN_RAW.encode()).hexdigest()
+        t = Token(token_hash=token_hash, label="test-admin", permissions="admin")
+        s.add(t)
+        await s.commit()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers={"Authorization": f"Bearer {ADMIN_TOKEN_RAW}"},
+    ) as c:
+        yield c
