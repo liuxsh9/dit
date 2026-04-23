@@ -679,6 +679,165 @@ def merge(
     typer.echo(f"Merge made: [{current_branch} {commit_hash[:8]}] {merge_msg}")
 
 
+@app.command("cherry-pick")
+def cherry_pick(
+    commit_hash: str = typer.Argument("", help="Commit hash to cherry-pick"),
+    continue_pick: bool = typer.Option(False, "--continue", help="Continue after resolving conflicts"),
+    abort: bool = typer.Option(False, "--abort", help="Abort current cherry-pick"),
+    message: str = typer.Option("", "-m", help="Override commit message"),
+):
+    """Apply a single commit to the current branch."""
+    repo_root = find_repo_root()
+    dot = get_dot(repo_root)
+    store = ObjectStore(dot / "objects")
+    refs = RefStore(dot)
+    index = StagingIndex(dot / "index")
+
+    cherry_pick_head_file = dot / "CHERRY_PICK_HEAD"
+    merge_head_file = dot / "MERGE_HEAD"
+    merge_msg_file = dot / "MERGE_MSG"
+    conflicts_file = dot / "conflicts.json"
+
+    if abort:
+        if not cherry_pick_head_file.exists():
+            typer.echo("error: no cherry-pick in progress", err=True)
+            raise typer.Exit(1)
+        conflicts_data = json.loads(conflicts_file.read_text()) if conflicts_file.exists() else {}
+        ours_hash = conflicts_data.get("ours_commit") or refs.resolve_head()
+        if ours_hash:
+            ours_commit = deserialize_commit(store.read("commits", ours_hash))
+            _materialize_tree(repo_root, store, ours_commit.tree_hash)
+        cherry_pick_head_file.unlink(missing_ok=True)
+        merge_msg_file.unlink(missing_ok=True)
+        conflicts_file.unlink(missing_ok=True)
+        index.clear()
+        typer.echo("Cherry-pick aborted.")
+        return
+
+    if continue_pick:
+        if not cherry_pick_head_file.exists():
+            typer.echo("error: no cherry-pick in progress", err=True)
+            raise typer.Exit(1)
+        staged = index.entries()
+        if not staged:
+            typer.echo("error: nothing staged — resolve conflicts and dit add first", err=True)
+            raise typer.Exit(1)
+        pick_msg = message or (merge_msg_file.read_text().strip() if merge_msg_file.exists() else "cherry-pick commit")
+        head_commit_hash = refs.resolve_head()
+        existing_tree_entries: dict[str, TreeEntry] = {}
+        if head_commit_hash:
+            commit_data = store.read("commits", head_commit_hash)
+            old_commit = deserialize_commit(commit_data)
+            tree_data = store.read("trees", old_commit.tree_hash)
+            old_tree = deserialize_tree(tree_data)
+            for e in old_tree.entries:
+                existing_tree_entries[e.name] = e
+        for rel_path, manifest_hash in staged.items():
+            existing_tree_entries[rel_path] = TreeEntry(
+                name=rel_path, obj_type="manifest", obj_hash=manifest_hash
+            )
+        tree = Tree(entries=list(existing_tree_entries.values()))
+        tree_bytes = serialize_tree(tree)
+        tree_hash = store.write("trees", tree_bytes)
+        c = Commit(
+            tree_hash=tree_hash,
+            parent_hashes=[head_commit_hash],
+            author=_get_author(),
+            message=pick_msg,
+            timestamp=int(time.time()),
+        )
+        commit_bytes = serialize_commit(c)
+        new_hash = store.write("commits", commit_bytes)
+        branch_name = refs.current_branch()
+        refs.set_branch(branch_name, new_hash)
+        index.clear()
+        cherry_pick_head_file.unlink(missing_ok=True)
+        merge_msg_file.unlink(missing_ok=True)
+        conflicts_file.unlink(missing_ok=True)
+        typer.echo(f"[{branch_name} {new_hash[:8]}] {pick_msg}")
+        return
+
+    # Normal cherry-pick
+    if not commit_hash:
+        typer.echo("error: specify a commit hash to cherry-pick", err=True)
+        raise typer.Exit(1)
+
+    if merge_head_file.exists():
+        typer.echo("error: merge in progress — finish or abort it first", err=True)
+        raise typer.Exit(1)
+
+    if cherry_pick_head_file.exists():
+        typer.echo("error: cherry-pick already in progress (use --continue or --abort)", err=True)
+        raise typer.Exit(1)
+
+    target_data = store.read("commits", commit_hash)
+    if target_data is None:
+        typer.echo(f"error: commit '{commit_hash[:8]}' not found", err=True)
+        raise typer.Exit(1)
+
+    target_commit = deserialize_commit(target_data)
+    if not target_commit.parent_hashes:
+        typer.echo("error: cannot cherry-pick a root commit", err=True)
+        raise typer.Exit(1)
+
+    base_hash = target_commit.parent_hashes[0]
+    ours_hash = refs.resolve_head()
+
+    from dit.core.merge import three_way_merge
+    merge_result = three_way_merge(store, base_hash, ours_hash, commit_hash)
+
+    if merge_result.conflicts:
+        for path, mhash in merge_result.merged_tree_entries.items():
+            m_data = store.read("manifests", mhash)
+            manifest = deserialize_manifest(m_data)
+            from dit.core.workspace import materialize_file
+            materialize_file(repo_root, path, manifest, store)
+        cherry_pick_head_file.write_text(commit_hash + "\n")
+        pick_msg = message or f"cherry-pick: {target_commit.message}"
+        merge_msg_file.write_text(pick_msg + "\n")
+        conflict_data = {
+            "base_commit": base_hash,
+            "ours_commit": ours_hash,
+            "theirs_commit": commit_hash,
+            "conflicts": [
+                {"file_path": c.file_path, "conflict_type": c.conflict_type}
+                for c in merge_result.conflicts
+            ],
+        }
+        conflicts_file.write_text(json.dumps(conflict_data, indent=2))
+        typer.echo(f"CONFLICT: {len(merge_result.conflicts)} file(s) have conflicts.")
+        for c in merge_result.conflicts:
+            typer.echo(f"  {c.file_path} ({c.conflict_type})")
+        typer.echo("\nResolve conflicts, then: dit add <files> && dit cherry-pick --continue")
+        raise typer.Exit(1)
+
+    # No conflicts
+    merged_tree_entries = [
+        TreeEntry(name=name, obj_type="manifest", obj_hash=mhash)
+        for name, mhash in merge_result.merged_tree_entries.items()
+    ]
+    tree = Tree(entries=merged_tree_entries)
+    tree_bytes = serialize_tree(tree)
+    tree_hash = store.write("trees", tree_bytes)
+
+    pick_msg = message or f"cherry-pick: {target_commit.message}"
+    c = Commit(
+        tree_hash=tree_hash,
+        parent_hashes=[ours_hash],
+        author=_get_author(),
+        message=pick_msg,
+        timestamp=int(time.time()),
+    )
+    commit_bytes = serialize_commit(c)
+    new_hash = store.write("commits", commit_bytes)
+
+    branch_name = refs.current_branch()
+    ours_commit = deserialize_commit(store.read("commits", ours_hash))
+    _materialize_tree(repo_root, store, tree_hash, ours_commit.tree_hash)
+    refs.set_branch(branch_name, new_hash)
+    typer.echo(f"[{branch_name} {new_hash[:8]}] {pick_msg}")
+
+
 @app.command()
 def serve(
     host: str = typer.Option("0.0.0.0", help="Host to bind"),
