@@ -300,5 +300,27 @@ def status():
             typer.echo(f"  deleted:  {rel}")
 
 
+@app.command()
+def serve(
+    host: str = typer.Option("0.0.0.0", help="Host to bind"),
+    port: int = typer.Option(8000, help="Port to listen on"),
+):
+    """Start the DataHub HTTP API server."""
+    try:
+        import uvicorn  # noqa: F401
+    except ImportError:
+        typer.echo(
+            "Server dependencies not installed. Run: uv sync --extra server",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    from dit.server.app import app as fastapi_app
+
+    import uvicorn as _uvicorn
+
+    _uvicorn.run(fastapi_app, host=host, port=port)
+
+
 def _get_author() -> str:
     return os.environ.get("DIT_AUTHOR", os.environ.get("USER", "unknown"))
