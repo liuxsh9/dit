@@ -2,6 +2,7 @@ import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 import typer
 
@@ -298,6 +299,197 @@ def status():
             typer.echo(f"  new file: {rel}")
         for rel in deleted:
             typer.echo(f"  deleted:  {rel}")
+
+
+@app.command()
+def branch(
+    name: Optional[str] = typer.Argument(None, help="Branch name to create"),
+    delete: str = typer.Option("", "-d", help="Branch name to delete"),
+):
+    """List, create, or delete branches."""
+    repo_root = find_repo_root()
+    dot = get_dot(repo_root)
+    refs = RefStore(dot)
+
+    if delete:
+        current = refs.current_branch()
+        if delete == current:
+            typer.echo(f"error: cannot delete current branch '{delete}'", err=True)
+            raise typer.Exit(1)
+        if not refs.delete_branch(delete):
+            typer.echo(f"error: branch '{delete}' not found", err=True)
+            raise typer.Exit(1)
+        typer.echo(f"Deleted branch '{delete}'.")
+        return
+
+    if name is not None:
+        if refs.get_branch(name) is not None:
+            typer.echo(f"fatal: branch '{name}' already exists", err=True)
+            raise typer.Exit(1)
+        head_hash = refs.resolve_head()
+        if head_hash is None:
+            typer.echo("fatal: no commits yet", err=True)
+            raise typer.Exit(1)
+        refs.set_branch(name, head_hash)
+        typer.echo(f"Created branch '{name}' at {head_hash[:8]}.")
+        return
+
+    # List branches
+    current = refs.current_branch()
+    branches = refs.list_branches()
+    for bname in sorted(branches.keys()):
+        prefix = "* " if bname == current else "  "
+        typer.echo(f"{prefix}{bname} {branches[bname][:8]}")
+
+
+def _has_uncommitted_changes(repo_root: Path, dot: Path, store: ObjectStore, refs: RefStore) -> bool:
+    head_hash = refs.resolve_head()
+    if head_hash is None:
+        return len(find_jsonl_files(repo_root)) > 0
+
+    head_manifests: dict[str, str] = {}
+    commit_data = store.read("commits", head_hash)
+    head_commit = deserialize_commit(commit_data)
+    tree_data = store.read("trees", head_commit.tree_hash)
+    tree = deserialize_tree(tree_data)
+    for entry in tree.entries:
+        if entry.obj_type == "manifest":
+            head_manifests[entry.name] = entry.obj_hash
+
+    current_files = find_jsonl_files(repo_root)
+    current_rels = {str(f.relative_to(repo_root)) for f in current_files}
+    head_rels = set(head_manifests.keys())
+
+    if current_rels != head_rels:
+        return True
+
+    for fp in current_files:
+        rel = str(fp.relative_to(repo_root))
+        if rel in head_manifests:
+            manifest, _ = build_manifest_for_file(fp)
+            current_hash = object_hash(serialize_manifest(manifest))
+            if current_hash != head_manifests[rel]:
+                return True
+
+    return False
+
+
+def _materialize_tree(repo_root: Path, store: ObjectStore, tree_hash: str, old_tree_hash: str | None = None):
+    """Materialize working directory from tree, optimizing by skipping unchanged files."""
+    from dit.core.workspace import materialize_file
+
+    tree_data = store.read("trees", tree_hash)
+    tree = deserialize_tree(tree_data)
+    new_files = {e.name: e.obj_hash for e in tree.entries if e.obj_type == "manifest"}
+
+    old_files: dict[str, str] = {}
+    if old_tree_hash:
+        old_tree_data = store.read("trees", old_tree_hash)
+        old_tree = deserialize_tree(old_tree_data)
+        old_files = {e.name: e.obj_hash for e in old_tree.entries if e.obj_type == "manifest"}
+
+    # Materialize changed or new files
+    for name, mhash in new_files.items():
+        if old_files.get(name) != mhash:
+            m_data = store.read("manifests", mhash)
+            manifest = deserialize_manifest(m_data)
+            materialize_file(repo_root, name, manifest, store)
+
+    # Remove files that exist in old but not in new
+    for name in old_files:
+        if name not in new_files:
+            file_path = repo_root / name
+            if file_path.exists():
+                file_path.unlink()
+                # Clean up empty parent directories
+                parent = file_path.parent
+                while parent != repo_root and not any(parent.iterdir()):
+                    parent.rmdir()
+                    parent = parent.parent
+
+
+@app.command()
+def checkout(
+    target: str = typer.Argument(..., help="Branch name to checkout"),
+    create: bool = typer.Option(False, "-b", help="Create a new branch and switch to it"),
+):
+    """Switch branches or create a new branch."""
+    repo_root = find_repo_root()
+    dot = get_dot(repo_root)
+    store = ObjectStore(dot / "objects")
+    refs = RefStore(dot)
+    index = StagingIndex(dot / "index")
+
+    if create:
+        if refs.get_branch(target) is not None:
+            typer.echo(f"fatal: branch '{target}' already exists", err=True)
+            raise typer.Exit(1)
+        head_hash = refs.resolve_head()
+        if head_hash is None:
+            typer.echo("fatal: no commits yet", err=True)
+            raise typer.Exit(1)
+        refs.set_branch(target, head_hash)
+        refs.head_file.write_text(f"ref:{target}\n")
+        typer.echo(f"Switched to new branch '{target}'.")
+        return
+
+    target_hash = refs.get_branch(target)
+    if target_hash is None:
+        typer.echo(f"error: branch '{target}' not found", err=True)
+        raise typer.Exit(1)
+
+    if _has_uncommitted_changes(repo_root, dot, store, refs):
+        typer.echo("error: working directory has uncommitted changes", err=True)
+        raise typer.Exit(1)
+
+    if index.entries():
+        typer.echo("error: staging area is not empty — please commit or reset first", err=True)
+        raise typer.Exit(1)
+
+    current_hash = refs.resolve_head()
+    current_commit = deserialize_commit(store.read("commits", current_hash)) if current_hash else None
+    target_commit = deserialize_commit(store.read("commits", target_hash))
+
+    old_tree_hash = current_commit.tree_hash if current_commit else None
+    _materialize_tree(repo_root, store, target_commit.tree_hash, old_tree_hash)
+
+    refs.head_file.write_text(f"ref:{target}\n")
+    typer.echo(f"Switched to branch '{target}'.")
+
+
+@app.command()
+def switch(
+    target: str = typer.Argument(..., help="Branch name to switch to"),
+):
+    """Switch to an existing branch."""
+    repo_root = find_repo_root()
+    dot = get_dot(repo_root)
+    store = ObjectStore(dot / "objects")
+    refs = RefStore(dot)
+    index = StagingIndex(dot / "index")
+
+    target_hash = refs.get_branch(target)
+    if target_hash is None:
+        typer.echo(f"error: branch '{target}' not found", err=True)
+        raise typer.Exit(1)
+
+    if _has_uncommitted_changes(repo_root, dot, store, refs):
+        typer.echo("error: working directory has uncommitted changes", err=True)
+        raise typer.Exit(1)
+
+    if index.entries():
+        typer.echo("error: staging area is not empty — please commit or reset first", err=True)
+        raise typer.Exit(1)
+
+    current_hash = refs.resolve_head()
+    current_commit = deserialize_commit(store.read("commits", current_hash)) if current_hash else None
+    target_commit = deserialize_commit(store.read("commits", target_hash))
+
+    old_tree_hash = current_commit.tree_hash if current_commit else None
+    _materialize_tree(repo_root, store, target_commit.tree_hash, old_tree_hash)
+
+    refs.head_file.write_text(f"ref:{target}\n")
+    typer.echo(f"Switched to branch '{target}'.")
 
 
 @app.command()
