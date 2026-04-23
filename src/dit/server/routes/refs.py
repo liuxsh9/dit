@@ -110,3 +110,24 @@ async def cas_update_ref(
             payload={"repo": repo, "ref": ref_name, "old_hash": body.old, "new_hash": body.new},
         ))
         return {"name": ref_name, "target_hash": body.new}
+
+
+@router.delete("/refs/{ref_type}/{name}")
+async def delete_ref(
+    repo: str,
+    ref_type: str,
+    name: str,
+    session: AsyncSession = Depends(get_session),
+    _token=Depends(require_permission("admin")),
+):
+    r = await _get_repo(repo, session)
+    ref_name = f"{ref_type}/{name}"
+    result = await session.execute(
+        select(Ref).where(Ref.repo_id == r.id, Ref.name == ref_name)
+    )
+    ref = result.scalar_one_or_none()
+    if ref is None:
+        raise HTTPException(status_code=404, detail=f"Ref '{ref_name}' not found")
+    await session.delete(ref)
+    await session.commit()
+    return {"status": "deleted"}

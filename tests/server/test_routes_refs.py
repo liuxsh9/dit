@@ -75,3 +75,44 @@ class TestRefsRoutes:
     async def test_repo_not_found(self, client):
         resp = await client.get("/api/v1/repos/no-repo/refs")
         assert resp.status_code == 404
+
+
+class TestTagRoutes:
+    async def _create_repo(self, client, name="test-repo"):
+        resp = await client.post("/api/v1/repos", json={"name": name})
+        assert resp.status_code == 201
+
+    async def test_create_tag(self, client):
+        await self._create_repo(client)
+        resp = await client.post(
+            "/api/v1/repos/test-repo/refs/tags/v1.0",
+            json={"old": None, "new": "a" * 64},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["target_hash"] == "a" * 64
+
+    async def test_get_tag(self, client):
+        await self._create_repo(client)
+        await client.post(
+            "/api/v1/repos/test-repo/refs/tags/v1.0",
+            json={"old": None, "new": "a" * 64},
+        )
+        resp = await client.get("/api/v1/repos/test-repo/refs/tags/v1.0")
+        assert resp.status_code == 200
+        assert resp.json()["target_hash"] == "a" * 64
+
+    async def test_delete_tag(self, client):
+        await self._create_repo(client)
+        await client.post(
+            "/api/v1/repos/test-repo/refs/tags/v1.0",
+            json={"old": None, "new": "a" * 64},
+        )
+        resp = await client.delete("/api/v1/repos/test-repo/refs/tags/v1.0")
+        assert resp.status_code == 200
+        get_resp = await client.get("/api/v1/repos/test-repo/refs/tags/v1.0")
+        assert get_resp.status_code == 404
+
+    async def test_delete_nonexistent_tag(self, client):
+        await self._create_repo(client)
+        resp = await client.delete("/api/v1/repos/test-repo/refs/tags/nope")
+        assert resp.status_code == 404
