@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select, update
@@ -5,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from dit.server.auth import get_session, require_permission
 from dit.server.models import Ref, Repo
+from dit.server.webhooks import load_webhooks, fire_webhook_payloads, WebhookEvent
 
 router = APIRouter(prefix="/api/v1/repos/{repo}", tags=["refs"])
 
@@ -75,6 +78,12 @@ async def cas_update_ref(
         ref = Ref(repo_id=r.id, name=ref_name, target_hash=body.new)
         session.add(ref)
         await session.commit()
+        _hooks = await load_webhooks(session, r.id, WebhookEvent.REF_UPDATE)
+        asyncio.ensure_future(fire_webhook_payloads(
+            hooks=_hooks,
+            event=WebhookEvent.REF_UPDATE,
+            payload={"repo": repo, "ref": ref_name, "old_hash": None, "new_hash": body.new},
+        ))
         return {"name": ref_name, "target_hash": body.new}
     else:
         # CAS UPDATE
@@ -94,4 +103,10 @@ async def cas_update_ref(
             )
         ref.target_hash = body.new
         await session.commit()
+        _hooks = await load_webhooks(session, r.id, WebhookEvent.REF_UPDATE)
+        asyncio.ensure_future(fire_webhook_payloads(
+            hooks=_hooks,
+            event=WebhookEvent.REF_UPDATE,
+            payload={"repo": repo, "ref": ref_name, "old_hash": body.old, "new_hash": body.new},
+        ))
         return {"name": ref_name, "target_hash": body.new}
