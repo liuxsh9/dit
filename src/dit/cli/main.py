@@ -343,6 +343,44 @@ def branch(
         typer.echo(f"{prefix}{bname} {branches[bname][:8]}")
 
 
+@app.command()
+def tag(
+    name: Optional[str] = typer.Argument(None, help="Tag name to create"),
+    delete: str = typer.Option("", "-d", help="Tag name to delete"),
+):
+    """List, create, or delete tags."""
+    repo_root = find_repo_root()
+    dot = get_dot(repo_root)
+    refs = RefStore(dot)
+
+    if delete:
+        if not refs.delete_tag(delete):
+            typer.echo(f"error: tag '{delete}' not found", err=True)
+            raise typer.Exit(1)
+        typer.echo(f"Deleted tag '{delete}'.")
+        return
+
+    if name is not None:
+        if refs.get_tag(name) is not None:
+            typer.echo(f"fatal: tag '{name}' already exists", err=True)
+            raise typer.Exit(1)
+        head_hash = refs.resolve_head()
+        if head_hash is None:
+            typer.echo("fatal: no commits yet", err=True)
+            raise typer.Exit(1)
+        refs.set_tag(name, head_hash)
+        typer.echo(f"Created tag '{name}' at {head_hash[:8]}.")
+        return
+
+    # List tags
+    tags = refs.list_tags()
+    if not tags:
+        typer.echo("No tags.")
+        return
+    for tname in sorted(tags.keys()):
+        typer.echo(f"  {tname} {tags[tname][:8]}")
+
+
 def _has_uncommitted_changes(repo_root: Path, dot: Path, store: ObjectStore, refs: RefStore) -> bool:
     head_hash = refs.resolve_head()
     if head_hash is None:
