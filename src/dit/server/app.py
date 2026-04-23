@@ -49,6 +49,9 @@ def create_app(settings: ServerSettings | None = None) -> FastAPI:
     from dit.server.routes.tokens import router as tokens_router
     application.include_router(tokens_router)
 
+    from dit.server.routes.webhooks import router as webhooks_router
+    application.include_router(webhooks_router)
+
     return application
 
 
