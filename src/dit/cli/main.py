@@ -483,5 +483,107 @@ def push(
     typer.echo(f"Pushed {uploaded} new objects to {remote}/{branch} ({local_hash[:8]})")
 
 
+@app.command()
+def clone(
+    url: str = typer.Argument(..., help="Remote URL (http://host:port/repo-name)"),
+    dest: str = typer.Argument("", help="Destination directory (default: repo name)"),
+    token: str = typer.Option("", help="Auth token"),
+    branch: str = typer.Option("main", help="Branch to clone"),
+):
+    """Clone a remote repository into a new directory."""
+    from dit.core.config import set_remote
+    from dit.core.remote import RemoteClient
+    from dit.core.workspace import materialize_file
+    from dit.core.objects import deserialize_commit, deserialize_tree, deserialize_manifest
+
+    clean_url = url.rstrip("/")
+    repo_name = clean_url.rsplit("/", 1)[-1]
+    base_url = clean_url.rsplit("/", 1)[0]
+
+    dest_dir = Path(dest) if dest else Path.cwd() / repo_name
+    if dest_dir.exists() and any(dest_dir.iterdir()):
+        typer.echo(f"fatal: destination '{dest_dir}' already exists and is not empty", err=True)
+        raise typer.Exit(1)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    dot = dest_dir / ".datahub"
+    dot.mkdir()
+    (dot / "objects").mkdir()
+    refs = RefStore(dot)
+    refs.init()
+    store = ObjectStore(dot / "objects")
+
+    rc = RemoteClient(base_url=base_url, token=token, repo=repo_name)
+
+    remote_hash = rc.get_ref("heads", branch)
+    if remote_hash is None:
+        typer.echo(f"fatal: remote branch '{branch}' not found", err=True)
+        raise typer.Exit(1)
+
+    typer.echo(f"Cloning {url} -> {dest_dir}")
+
+    commits_to_fetch: list[str] = []
+    queue = [remote_hash]
+    visited: set[str] = set()
+
+    while queue:
+        chash = queue.pop()
+        if chash in visited:
+            continue
+        visited.add(chash)
+        data = rc.download_object("commits", chash)
+        if data is None:
+            typer.echo(f"warning: commit {chash} not found on remote", err=True)
+            continue
+        store.write("commits", data)
+        commits_to_fetch.append(chash)
+        commit = deserialize_commit(data)
+        queue.extend(commit.parent_hashes)
+
+    manifest_hashes: set[str] = set()
+    for chash in commits_to_fetch:
+        commit_data = store.read("commits", chash)
+        commit = deserialize_commit(commit_data)
+
+        tree_data = rc.download_object("trees", commit.tree_hash)
+        if tree_data:
+            store.write("trees", tree_data)
+            tree = deserialize_tree(tree_data)
+            for entry in tree.entries:
+                if entry.obj_type == "manifest":
+                    m_data = rc.download_object("manifests", entry.obj_hash)
+                    if m_data:
+                        store.write("manifests", m_data)
+                        manifest_hashes.add(entry.obj_hash)
+
+    for mhash in manifest_hashes:
+        m_data = store.read("manifests", mhash)
+        if m_data is None:
+            continue
+        manifest = deserialize_manifest(m_data)
+        for entry in manifest.entries:
+            if not store.exists("rows", entry.row_hash):
+                row_data = rc.download_object("rows", entry.row_hash)
+                if row_data:
+                    store.write("rows", row_data)
+
+    refs.set_branch(branch, remote_hash)
+    refs.head_file.write_text(f"ref:{branch}\n")
+    set_remote(dot, "origin", url, token)
+
+    head_commit_data = store.read("commits", remote_hash)
+    head_commit = deserialize_commit(head_commit_data)
+    tree_data = store.read("trees", head_commit.tree_hash)
+    tree = deserialize_tree(tree_data)
+    for entry in tree.entries:
+        if entry.obj_type == "manifest":
+            m_data = store.read("manifests", entry.obj_hash)
+            manifest = deserialize_manifest(m_data)
+            materialize_file(dest_dir, entry.name, manifest, store)
+            typer.echo(f"  {entry.name}")
+
+    typer.echo(f"Clone complete. {len(commits_to_fetch)} commit(s).")
+
+
 def _get_author() -> str:
     return os.environ.get("DIT_AUTHOR", os.environ.get("USER", "unknown"))
