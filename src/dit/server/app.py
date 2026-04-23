@@ -52,6 +52,9 @@ def create_app(settings: ServerSettings | None = None) -> FastAPI:
     from dit.server.routes.webhooks import router as webhooks_router
     application.include_router(webhooks_router)
 
+    from dit.server.routes.merge import router as merge_router
+    application.include_router(merge_router)
+
     return application
 
 
