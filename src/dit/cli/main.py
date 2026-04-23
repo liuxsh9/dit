@@ -6,15 +6,18 @@ from pathlib import Path
 import typer
 
 from dit.core.index import StagingIndex
+from dit.core.diff import diff_manifests
 from dit.core.objects import (
     Tree,
     TreeEntry,
     Commit,
+    Manifest,
     serialize_manifest,
     serialize_tree,
     serialize_commit,
     deserialize_commit,
     deserialize_tree,
+    deserialize_manifest,
 )
 from dit.core.refs import RefStore
 from dit.core.store import ObjectStore
@@ -101,6 +104,61 @@ def add(paths: list[str] = typer.Argument(..., help="Files or directories to sta
 
 if __name__ == "__main__":
     app()
+
+
+@app.command()
+def diff():
+    """Show changes between working directory and HEAD."""
+    repo_root = find_repo_root()
+    dot = get_dot(repo_root)
+    store = ObjectStore(dot / "objects")
+    refs = RefStore(dot)
+
+    current_files: dict[str, Manifest] = {}
+    for fp in find_jsonl_files(repo_root):
+        rel = str(fp.relative_to(repo_root))
+        manifest, _ = build_manifest_for_file(fp)
+        current_files[rel] = manifest
+
+    head_files: dict[str, Manifest] = {}
+    head_hash = refs.resolve_head()
+    if head_hash:
+        commit_data = store.read("commits", head_hash)
+        head_commit = deserialize_commit(commit_data)
+        tree_data = store.read("trees", head_commit.tree_hash)
+        tree = deserialize_tree(tree_data)
+        for entry in tree.entries:
+            if entry.obj_type == "manifest":
+                m_data = store.read("manifests", entry.obj_hash)
+                head_files[entry.name] = deserialize_manifest(m_data)
+
+    all_files = sorted(set(list(current_files.keys()) + list(head_files.keys())))
+    any_changes = False
+
+    for rel in all_files:
+        old_m = head_files.get(rel, Manifest(entries=[]))
+        new_m = current_files.get(rel, Manifest(entries=[]))
+        result = diff_manifests(old_m, new_m)
+
+        if not result.added and not result.removed and not result.refreshed:
+            continue
+
+        any_changes = True
+        old_count = len(old_m.entries)
+        new_count = len(new_m.entries)
+
+        if rel not in head_files:
+            typer.echo(f"{rel}: new file ({new_count} rows)")
+        elif rel not in current_files:
+            typer.echo(f"{rel}: deleted ({old_count} rows)")
+        else:
+            typer.echo(f"{rel}: {old_count} → {new_count} rows ({result.summary()})")
+
+        if result.refreshed:
+            typer.echo(f"  Likely refreshed: {len(result.refreshed)} rows")
+
+    if not any_changes:
+        typer.echo("No changes.")
 
 
 @app.command()

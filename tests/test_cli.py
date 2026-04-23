@@ -133,3 +133,56 @@ class TestLog:
         result = runner.invoke(app, ["log"])
         assert result.exit_code == 0
         assert "no commits" in result.stdout.lower()
+
+
+class TestDiff:
+    def test_diff_shows_changes(self, tmp_path: Path):
+        os.chdir(tmp_path)
+        runner.invoke(app, ["init"])
+        (tmp_path / "data.jsonl").write_text('{"messages":[{"role":"user","content":"hello"}]}\n')
+        runner.invoke(app, ["add", "."])
+        runner.invoke(app, ["commit", "-m", "initial"])
+
+        (tmp_path / "data.jsonl").write_text('{"messages":[{"role":"user","content":"world"}]}\n')
+        result = runner.invoke(app, ["diff"])
+        assert result.exit_code == 0
+        assert "+1" in result.stdout
+        assert "-1" in result.stdout
+
+    def test_diff_no_changes(self, tmp_path: Path):
+        os.chdir(tmp_path)
+        runner.invoke(app, ["init"])
+        (tmp_path / "data.jsonl").write_text('{"x":1}\n')
+        runner.invoke(app, ["add", "."])
+        runner.invoke(app, ["commit", "-m", "initial"])
+        result = runner.invoke(app, ["diff"])
+        assert result.exit_code == 0
+        assert "no changes" in result.stdout.lower()
+
+    def test_diff_new_file(self, tmp_path: Path):
+        os.chdir(tmp_path)
+        runner.invoke(app, ["init"])
+        (tmp_path / "old.jsonl").write_text('{"x":1}\n')
+        runner.invoke(app, ["add", "."])
+        runner.invoke(app, ["commit", "-m", "initial"])
+        (tmp_path / "new.jsonl").write_text('{"y":2}\n')
+        result = runner.invoke(app, ["diff"])
+        assert result.exit_code == 0
+        assert "new.jsonl" in result.stdout
+
+    def test_diff_detects_refresh(self, tmp_path: Path):
+        os.chdir(tmp_path)
+        runner.invoke(app, ["init"])
+        row = {"messages": [
+            {"role": "user", "content": "implement LRU"},
+            {"role": "assistant", "content": "old response"},
+        ]}
+        (tmp_path / "data.jsonl").write_text(json.dumps(row) + "\n")
+        runner.invoke(app, ["add", "."])
+        runner.invoke(app, ["commit", "-m", "initial"])
+
+        row["messages"][1]["content"] = "new response"
+        (tmp_path / "data.jsonl").write_text(json.dumps(row) + "\n")
+        result = runner.invoke(app, ["diff"])
+        assert result.exit_code == 0
+        assert "refresh" in result.stdout.lower()
