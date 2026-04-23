@@ -25,7 +25,7 @@ class ObjectStore:
         tmp_path = tmp_dir / str(uuid.uuid4())
         try:
             tmp_path.write_bytes(compressed)
-            os.rename(tmp_path, dest)
+            os.replace(tmp_path, dest)
         except Exception:
             tmp_path.unlink(missing_ok=True)
             raise

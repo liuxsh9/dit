@@ -27,10 +27,10 @@ def diff_manifests(old: Manifest, new: Manifest) -> DiffResult:
     raw_removed = [e for e in old.entries if e.row_hash not in new_hashes]
     raw_added = [e for e in new.entries if e.row_hash not in old_hashes]
 
-    old_by_qfp: dict[str, ManifestEntry] = {}
+    old_by_qfp: dict[str, list[ManifestEntry]] = {}
     for e in raw_removed:
         if e.query_fingerprint:
-            old_by_qfp[e.query_fingerprint] = e
+            old_by_qfp.setdefault(e.query_fingerprint, []).append(e)
 
     refreshed: list[tuple[str, str, str]] = []
     refreshed_old_hashes: set[str] = set()
@@ -38,7 +38,9 @@ def diff_manifests(old: Manifest, new: Manifest) -> DiffResult:
 
     for e in raw_added:
         if e.query_fingerprint and e.query_fingerprint in old_by_qfp:
-            old_entry = old_by_qfp[e.query_fingerprint]
+            old_entry = old_by_qfp[e.query_fingerprint].pop(0)
+            if not old_by_qfp[e.query_fingerprint]:
+                del old_by_qfp[e.query_fingerprint]
             refreshed.append((old_entry.row_hash, e.row_hash, e.query_fingerprint))
             refreshed_old_hashes.add(old_entry.row_hash)
             refreshed_new_hashes.add(e.row_hash)

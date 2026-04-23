@@ -64,6 +64,22 @@ class TestDiffManifests:
         assert len(result.removed) == 1
         assert result.removed[0].row_hash == "remove_me".ljust(64, "0")
 
+    def test_diff_duplicate_query_fingerprint(self):
+        """Multiple removed rows sharing same query_fingerprint should each match separately."""
+        qfp = "same_query_fp"
+        old = Manifest(entries=[
+            ManifestEntry(row_hash="old_a", query_fingerprint=qfp),
+            ManifestEntry(row_hash="old_b", query_fingerprint=qfp),
+        ])
+        new = Manifest(entries=[
+            ManifestEntry(row_hash="new_a", query_fingerprint=qfp),
+            ManifestEntry(row_hash="new_b", query_fingerprint=qfp),
+        ])
+        result = diff_manifests(old, new)
+        assert len(result.refreshed) == 2
+        assert len(result.added) == 0
+        assert len(result.removed) == 0
+
     def test_summary(self):
         old = Manifest(entries=[_entry("aa"), _entry("bb")])
         new = Manifest(entries=[_entry("aa"), _entry("cc"), _entry("dd")])
