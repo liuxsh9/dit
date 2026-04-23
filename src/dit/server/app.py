@@ -31,6 +31,7 @@ def create_app(settings: ServerSettings | None = None) -> FastAPI:
 
     application = FastAPI(title="DataHub", version="0.1.0", lifespan=lifespan)
     application.state.settings = settings
+    application.state.data_dir = Path(settings.data_dir)
 
     @application.get("/health")
     async def health():
@@ -41,6 +42,9 @@ def create_app(settings: ServerSettings | None = None) -> FastAPI:
 
     from dit.server.routes.refs import router as refs_router
     application.include_router(refs_router)
+
+    from dit.server.routes.objects import router as objects_router
+    application.include_router(objects_router)
 
     return application
 
