@@ -60,3 +60,51 @@ class TestAdd:
         runner.invoke(app, ["init"])
         result = runner.invoke(app, ["add", "nope.jsonl"])
         assert result.exit_code != 0
+
+
+class TestCommit:
+    def _setup_staged(self, tmp_path: Path):
+        os.chdir(tmp_path)
+        runner.invoke(app, ["init"])
+        fp = tmp_path / "data.jsonl"
+        fp.write_text('{"messages":[{"role":"user","content":"test"}]}\n')
+        runner.invoke(app, ["add", "data.jsonl"])
+
+    def test_commit_creates_commit(self, tmp_path: Path):
+        self._setup_staged(tmp_path)
+        result = runner.invoke(app, ["commit", "-m", "initial"])
+        assert result.exit_code == 0
+        assert "initial" in result.stdout
+
+        head_ref = (tmp_path / ".datahub" / "refs" / "heads" / "main").read_text().strip()
+        assert len(head_ref) == 64
+
+    def test_commit_clears_index(self, tmp_path: Path):
+        self._setup_staged(tmp_path)
+        runner.invoke(app, ["commit", "-m", "first"])
+        idx = json.loads((tmp_path / ".datahub" / "index").read_text())
+        assert idx == {}
+
+    def test_commit_nothing_staged(self, tmp_path: Path):
+        os.chdir(tmp_path)
+        runner.invoke(app, ["init"])
+        result = runner.invoke(app, ["commit", "-m", "empty"])
+        assert result.exit_code != 0
+
+    def test_second_commit_has_parent(self, tmp_path: Path):
+        self._setup_staged(tmp_path)
+        runner.invoke(app, ["commit", "-m", "first"])
+        first_hash = (tmp_path / ".datahub" / "refs" / "heads" / "main").read_text().strip()
+
+        (tmp_path / "data.jsonl").write_text('{"messages":[{"role":"user","content":"updated"}]}\n')
+        runner.invoke(app, ["add", "data.jsonl"])
+        runner.invoke(app, ["commit", "-m", "second"])
+        second_hash = (tmp_path / ".datahub" / "refs" / "heads" / "main").read_text().strip()
+
+        assert first_hash != second_hash
+        from dit.core.store import ObjectStore
+        from dit.core.objects import deserialize_commit
+        store = ObjectStore(tmp_path / ".datahub" / "objects")
+        commit_data = store.read("commits", second_hash)
+        commit_obj = deserialize_commit(commit_data)
+        assert commit_obj.parent_hashes == [first_hash]

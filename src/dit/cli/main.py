@@ -1,9 +1,20 @@
+import os
+import time
 from pathlib import Path
 
 import typer
 
 from dit.core.index import StagingIndex
-from dit.core.objects import serialize_manifest
+from dit.core.objects import (
+    Tree,
+    TreeEntry,
+    Commit,
+    serialize_manifest,
+    serialize_tree,
+    serialize_commit,
+    deserialize_commit,
+    deserialize_tree,
+)
 from dit.core.refs import RefStore
 from dit.core.store import ObjectStore
 from dit.core.workspace import build_manifest_for_file, find_jsonl_files
@@ -89,3 +100,59 @@ def add(paths: list[str] = typer.Argument(..., help="Files or directories to sta
 
 if __name__ == "__main__":
     app()
+
+
+@app.command()
+def commit(message: str = typer.Option(..., "-m", help="Commit message")):
+    """Create a commit from staged files."""
+    repo_root = find_repo_root()
+    dot = get_dot(repo_root)
+    store = ObjectStore(dot / "objects")
+    index = StagingIndex(dot / "index")
+    refs = RefStore(dot)
+
+    staged = index.entries()
+    if not staged:
+        typer.echo("nothing to commit (staging area is empty)", err=True)
+        raise typer.Exit(1)
+
+    # Build tree from staged manifests + any existing tree entries from HEAD
+    head_commit_hash = refs.resolve_head()
+    existing_tree_entries: dict[str, TreeEntry] = {}
+    if head_commit_hash:
+        commit_data = store.read("commits", head_commit_hash)
+        old_commit = deserialize_commit(commit_data)
+        tree_data = store.read("trees", old_commit.tree_hash)
+        old_tree = deserialize_tree(tree_data)
+        for e in old_tree.entries:
+            existing_tree_entries[e.name] = e
+
+    # Merge staged files into tree
+    for rel_path, manifest_hash in staged.items():
+        existing_tree_entries[rel_path] = TreeEntry(
+            name=rel_path, obj_type="manifest", obj_hash=manifest_hash
+        )
+
+    tree = Tree(entries=list(existing_tree_entries.values()))
+    tree_bytes = serialize_tree(tree)
+    tree_hash = store.write("trees", tree_bytes)
+
+    parent_hashes = [head_commit_hash] if head_commit_hash else []
+    c = Commit(
+        tree_hash=tree_hash,
+        parent_hashes=parent_hashes,
+        author=_get_author(),
+        message=message,
+        timestamp=int(time.time()),
+    )
+    commit_bytes = serialize_commit(c)
+    commit_hash = store.write("commits", commit_bytes)
+
+    branch = refs.current_branch()
+    refs.set_branch(branch, commit_hash)
+    index.clear()
+    typer.echo(f"[{branch} {commit_hash[:8]}] {message}")
+
+
+def _get_author() -> str:
+    return os.environ.get("DIT_AUTHOR", os.environ.get("USER", "unknown"))
