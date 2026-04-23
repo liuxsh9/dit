@@ -70,3 +70,42 @@ def test_remote_add_with_token(repo: Path, tmp_path: Path, monkeypatch: pytest.M
     assert cfg is not None
     assert cfg["token"] == "dit_abc123"
     assert cfg["url"] == "http://server:8000"
+
+
+def test_auth_set_token(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    runner.invoke(app, ["remote", "add", "origin", "http://server:8000"])
+    result = runner.invoke(app, ["auth", "set-token", "dit_newsecret123"])
+    assert result.exit_code == 0
+    assert "Token stored" in result.output
+    from dit.core.config import get_remote
+
+    dot = tmp_path / ".datahub"
+    cfg = get_remote(dot, "origin")
+    assert cfg is not None
+    assert cfg["token"] == "dit_newsecret123"
+    assert cfg["url"] == "http://server:8000"
+
+
+def test_auth_set_token_no_remote_exits_nonzero(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ["auth", "set-token", "dit_abc", "--remote", "no-such-remote"])
+    assert result.exit_code != 0
+
+
+def test_auth_set_token_custom_remote(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    runner.invoke(app, ["remote", "add", "upstream", "http://upstream:9000"])
+    result = runner.invoke(
+        app, ["auth", "set-token", "dit_upstreamtok", "--remote", "upstream"]
+    )
+    assert result.exit_code == 0
+    from dit.core.config import get_remote
+
+    dot = tmp_path / ".datahub"
+    cfg = get_remote(dot, "upstream")
+    assert cfg["token"] == "dit_upstreamtok"

@@ -372,5 +372,27 @@ def remote_list():
         typer.echo(f"{rname}\t{rcfg.get('url', '')}")
 
 
+auth_app = typer.Typer(name="auth", help="Manage authentication credentials.")
+app.add_typer(auth_app)
+
+
+@auth_app.command("set-token")
+def auth_set_token(
+    token: str = typer.Argument(..., help="Raw API token to store"),
+    remote: str = typer.Option("origin", help="Remote name to associate the token with"),
+):
+    """Store an API token for a remote in .datahub/config."""
+    from dit.core.config import get_remote, set_remote
+
+    repo_root = find_repo_root()
+    dot = get_dot(repo_root)
+    existing = get_remote(dot, remote)
+    if existing is None:
+        typer.echo(f"fatal: Remote '{remote}' not found. Add it first with: dit remote add", err=True)
+        raise typer.Exit(1)
+    set_remote(dot, remote, existing["url"], token)
+    typer.echo(f"Token stored for remote '{remote}'.")
+
+
 def _get_author() -> str:
     return os.environ.get("DIT_AUTHOR", os.environ.get("USER", "unknown"))
