@@ -1,5 +1,6 @@
 import os
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import typer
@@ -152,6 +153,30 @@ def commit(message: str = typer.Option(..., "-m", help="Commit message")):
     refs.set_branch(branch, commit_hash)
     index.clear()
     typer.echo(f"[{branch} {commit_hash[:8]}] {message}")
+
+
+@app.command()
+def log():
+    """Show commit history."""
+    repo_root = find_repo_root()
+    dot = get_dot(repo_root)
+    store = ObjectStore(dot / "objects")
+    refs = RefStore(dot)
+
+    commit_hash = refs.resolve_head()
+    if not commit_hash:
+        typer.echo("No commits yet.")
+        return
+
+    while commit_hash:
+        data = store.read("commits", commit_hash)
+        c = deserialize_commit(data)
+        ts = datetime.fromtimestamp(c.timestamp, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        typer.echo(f"commit {commit_hash}")
+        typer.echo(f"Author: {c.author}")
+        typer.echo(f"Date:   {ts}")
+        typer.echo(f"\n    {c.message}\n")
+        commit_hash = c.parent_hashes[0] if c.parent_hashes else None
 
 
 def _get_author() -> str:
