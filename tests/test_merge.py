@@ -217,3 +217,164 @@ class TestFileLevelMerge:
         assert len(result.conflicts) == 1
         assert result.conflicts[0].file_path == "new.jsonl"
         assert result.conflicts[0].conflict_type == "both_added"
+
+
+class TestMergeManifests:
+    """Row-level three-way merge tests."""
+
+    def _e(self, rh: str, qfp: str | None = None) -> ManifestEntry:
+        return ManifestEntry(row_hash=rh, query_fingerprint=qfp)
+
+    def test_all_same(self):
+        """Base/ours/theirs identical — no changes."""
+        base = Manifest(entries=[self._e("a1", "q1"), self._e("a2", "q2")])
+        ours = Manifest(entries=[self._e("a1", "q1"), self._e("a2", "q2")])
+        theirs = Manifest(entries=[self._e("a1", "q1"), self._e("a2", "q2")])
+        merged, conflicts = merge_manifests(base, ours, theirs, "f.jsonl")
+        assert conflicts == []
+        assert [e.row_hash for e in merged] == ["a1", "a2"]
+
+    def test_ours_adds_row(self):
+        """Ours adds a new row — included in merged."""
+        base = Manifest(entries=[self._e("a1", "q1")])
+        ours = Manifest(entries=[self._e("a1", "q1"), self._e("a2", "q2")])
+        theirs = Manifest(entries=[self._e("a1", "q1")])
+        merged, conflicts = merge_manifests(base, ours, theirs, "f.jsonl")
+        assert conflicts == []
+        assert len(merged) == 2
+        hashes = [e.row_hash for e in merged]
+        assert "a1" in hashes and "a2" in hashes
+
+    def test_theirs_adds_row(self):
+        """Theirs adds a new row — appended to end."""
+        base = Manifest(entries=[self._e("a1", "q1")])
+        ours = Manifest(entries=[self._e("a1", "q1")])
+        theirs = Manifest(entries=[self._e("a1", "q1"), self._e("b1", "q2")])
+        merged, conflicts = merge_manifests(base, ours, theirs, "f.jsonl")
+        assert conflicts == []
+        assert len(merged) == 2
+        assert merged[0].row_hash == "a1"
+        assert merged[1].row_hash == "b1"
+
+    def test_ours_deletes_row(self):
+        """Ours deletes a row — removed from merged."""
+        base = Manifest(entries=[self._e("a1", "q1"), self._e("a2", "q2")])
+        ours = Manifest(entries=[self._e("a1", "q1")])
+        theirs = Manifest(entries=[self._e("a1", "q1"), self._e("a2", "q2")])
+        merged, conflicts = merge_manifests(base, ours, theirs, "f.jsonl")
+        assert conflicts == []
+        assert [e.row_hash for e in merged] == ["a1"]
+
+    def test_theirs_deletes_row(self):
+        """Theirs deletes a row — removed from merged."""
+        base = Manifest(entries=[self._e("a1", "q1"), self._e("a2", "q2")])
+        ours = Manifest(entries=[self._e("a1", "q1"), self._e("a2", "q2")])
+        theirs = Manifest(entries=[self._e("a1", "q1")])
+        merged, conflicts = merge_manifests(base, ours, theirs, "f.jsonl")
+        assert conflicts == []
+        assert [e.row_hash for e in merged] == ["a1"]
+
+    def test_ours_refreshes_row(self):
+        """Ours refreshes a row (same qfp, different row_hash) — take ours."""
+        base = Manifest(entries=[self._e("old_rh", "q1")])
+        ours = Manifest(entries=[self._e("new_rh_ours", "q1")])
+        theirs = Manifest(entries=[self._e("old_rh", "q1")])
+        merged, conflicts = merge_manifests(base, ours, theirs, "f.jsonl")
+        assert conflicts == []
+        assert merged[0].row_hash == "new_rh_ours"
+
+    def test_theirs_refreshes_row(self):
+        """Theirs refreshes a row — take theirs."""
+        base = Manifest(entries=[self._e("old_rh", "q1")])
+        ours = Manifest(entries=[self._e("old_rh", "q1")])
+        theirs = Manifest(entries=[self._e("new_rh_theirs", "q1")])
+        merged, conflicts = merge_manifests(base, ours, theirs, "f.jsonl")
+        assert conflicts == []
+        assert merged[0].row_hash == "new_rh_theirs"
+
+    def test_both_refresh_same_result(self):
+        """Both refresh same row to same result — no conflict."""
+        base = Manifest(entries=[self._e("old_rh", "q1")])
+        ours = Manifest(entries=[self._e("new_rh", "q1")])
+        theirs = Manifest(entries=[self._e("new_rh", "q1")])
+        merged, conflicts = merge_manifests(base, ours, theirs, "f.jsonl")
+        assert conflicts == []
+        assert merged[0].row_hash == "new_rh"
+
+    def test_both_refresh_different_result_conflict(self):
+        """Both refresh same row to different results — conflict."""
+        base = Manifest(entries=[self._e("old_rh", "q1")])
+        ours = Manifest(entries=[self._e("ours_rh", "q1")])
+        theirs = Manifest(entries=[self._e("theirs_rh", "q1")])
+        merged, conflicts = merge_manifests(base, ours, theirs, "f.jsonl")
+        assert len(conflicts) == 1
+        assert conflicts[0].conflict_type == "both_modified"
+        assert conflicts[0].file_path == "f.jsonl"
+
+    def test_both_add_same_new_row(self):
+        """Both add the same new row — keep one copy."""
+        base = Manifest(entries=[])
+        ours = Manifest(entries=[self._e("new_rh", "q1")])
+        theirs = Manifest(entries=[self._e("new_rh", "q1")])
+        merged, conflicts = merge_manifests(base, ours, theirs, "f.jsonl")
+        assert conflicts == []
+        assert len(merged) == 1
+        assert merged[0].row_hash == "new_rh"
+
+    def test_row_ordering_ours_skeleton(self):
+        """Ours order is used as skeleton, theirs additions appended."""
+        base = Manifest(entries=[self._e("a1", "q1"), self._e("a2", "q2")])
+        ours = Manifest(entries=[self._e("a2", "q2"), self._e("a1", "q1"), self._e("a3", "q3")])
+        theirs = Manifest(entries=[self._e("a1", "q1"), self._e("a2", "q2"), self._e("b1", "q4")])
+        merged, conflicts = merge_manifests(base, ours, theirs, "f.jsonl")
+        assert conflicts == []
+        hashes = [e.row_hash for e in merged]
+        assert hashes == ["a2", "a1", "a3", "b1"]
+
+    def test_complex_mixed_operations(self):
+        """Mix of add, delete, refresh across both sides."""
+        base = Manifest(entries=[
+            self._e("r1", "q1"),
+            self._e("r2", "q2"),
+            self._e("r3", "q3"),
+        ])
+        ours = Manifest(entries=[
+            self._e("r1", "q1"),       # keep
+            self._e("r2_new", "q2"),    # refresh r2
+            # r3 deleted
+            self._e("r4", "q4"),        # new
+        ])
+        theirs = Manifest(entries=[
+            self._e("r1", "q1"),        # keep
+            self._e("r2", "q2"),        # unchanged
+            self._e("r3", "q3"),        # unchanged
+            self._e("r5", "q5"),        # new
+        ])
+        merged, conflicts = merge_manifests(base, ours, theirs, "f.jsonl")
+        assert conflicts == []
+        hashes = [e.row_hash for e in merged]
+        assert "r1" in hashes
+        assert "r2_new" in hashes  # ours refresh wins
+        assert "r3" not in hashes  # ours deleted
+        assert "r4" in hashes      # ours new
+        assert "r5" in hashes      # theirs new
+
+    def test_row_without_query_fingerprint(self):
+        """Rows with qfp=None: treated as independent, no refresh detection."""
+        base = Manifest(entries=[self._e("r1", None)])
+        ours = Manifest(entries=[self._e("r1", None)])
+        theirs = Manifest(entries=[self._e("r2", None)])
+        merged, conflicts = merge_manifests(base, ours, theirs, "f.jsonl")
+        assert conflicts == []
+        # r1 deleted by theirs (not in theirs), r2 added by theirs
+        assert len(merged) == 1
+        assert merged[0].row_hash == "r2"
+
+    def test_pure_reorder_no_conflict(self):
+        """Ours reorders rows, theirs unchanged — ours order preserved."""
+        base = Manifest(entries=[self._e("a1", "q1"), self._e("a2", "q2"), self._e("a3", "q3")])
+        ours = Manifest(entries=[self._e("a3", "q3"), self._e("a1", "q1"), self._e("a2", "q2")])
+        theirs = Manifest(entries=[self._e("a1", "q1"), self._e("a2", "q2"), self._e("a3", "q3")])
+        merged, conflicts = merge_manifests(base, ours, theirs, "f.jsonl")
+        assert conflicts == []
+        assert [e.row_hash for e in merged] == ["a3", "a1", "a2"]
