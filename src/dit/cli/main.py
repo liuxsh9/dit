@@ -12,6 +12,7 @@ from dit.core.objects import (
     TreeEntry,
     Commit,
     Manifest,
+    object_hash,
     serialize_manifest,
     serialize_tree,
     serialize_commit,
@@ -235,6 +236,68 @@ def log():
         typer.echo(f"Date:   {ts}")
         typer.echo(f"\n    {c.message}\n")
         commit_hash = c.parent_hashes[0] if c.parent_hashes else None
+
+
+@app.command()
+def status():
+    """Show working directory status."""
+    repo_root = find_repo_root()
+    dot = get_dot(repo_root)
+    store = ObjectStore(dot / "objects")
+    index = StagingIndex(dot / "index")
+    refs = RefStore(dot)
+
+    branch = refs.current_branch() or "HEAD"
+    typer.echo(f"On branch {branch}")
+
+    staged = index.entries()
+    if staged:
+        typer.echo("\nStaged files:")
+        for rel in sorted(staged.keys()):
+            typer.echo(f"  {rel}")
+
+    head_manifests: dict[str, str] = {}
+    head_hash = refs.resolve_head()
+    if head_hash:
+        commit_data = store.read("commits", head_hash)
+        head_commit = deserialize_commit(commit_data)
+        tree_data = store.read("trees", head_commit.tree_hash)
+        tree = deserialize_tree(tree_data)
+        for entry in tree.entries:
+            if entry.obj_type == "manifest":
+                head_manifests[entry.name] = entry.obj_hash
+
+    current_files = find_jsonl_files(repo_root)
+    current_rels = {str(f.relative_to(repo_root)) for f in current_files}
+    head_rels = set(head_manifests.keys())
+
+    modified = []
+    new_files = []
+    deleted = sorted(head_rels - current_rels)
+
+    for fp in current_files:
+        rel = str(fp.relative_to(repo_root))
+        if rel not in head_manifests:
+            new_files.append(rel)
+        else:
+            manifest, _ = build_manifest_for_file(fp)
+            current_hash = object_hash(serialize_manifest(manifest))
+            if current_hash != head_manifests[rel]:
+                modified.append(rel)
+
+    has_changes = modified or new_files or deleted
+    if not staged and not has_changes:
+        typer.echo("\nNothing to commit, working directory clean.")
+        return
+
+    if modified or new_files or deleted:
+        typer.echo("\nUnstaged changes:")
+        for rel in sorted(modified):
+            typer.echo(f"  modified: {rel}")
+        for rel in sorted(new_files):
+            typer.echo(f"  new file: {rel}")
+        for rel in deleted:
+            typer.echo(f"  deleted:  {rel}")
 
 
 def _get_author() -> str:

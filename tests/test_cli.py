@@ -186,3 +186,36 @@ class TestDiff:
         result = runner.invoke(app, ["diff"])
         assert result.exit_code == 0
         assert "refresh" in result.stdout.lower()
+
+
+class TestStatus:
+    def test_status_clean(self, tmp_path: Path):
+        os.chdir(tmp_path)
+        runner.invoke(app, ["init"])
+        (tmp_path / "a.jsonl").write_text('{"x":1}\n')
+        runner.invoke(app, ["add", "."])
+        runner.invoke(app, ["commit", "-m", "init"])
+        result = runner.invoke(app, ["status"])
+        assert result.exit_code == 0
+        assert "clean" in result.stdout.lower() or "nothing" in result.stdout.lower()
+
+    def test_status_staged_files(self, tmp_path: Path):
+        os.chdir(tmp_path)
+        runner.invoke(app, ["init"])
+        (tmp_path / "a.jsonl").write_text('{"x":1}\n')
+        runner.invoke(app, ["add", "."])
+        result = runner.invoke(app, ["status"])
+        assert result.exit_code == 0
+        assert "staged" in result.stdout.lower()
+        assert "a.jsonl" in result.stdout
+
+    def test_status_modified_file(self, tmp_path: Path):
+        os.chdir(tmp_path)
+        runner.invoke(app, ["init"])
+        (tmp_path / "a.jsonl").write_text('{"x":1}\n')
+        runner.invoke(app, ["add", "."])
+        runner.invoke(app, ["commit", "-m", "init"])
+        (tmp_path / "a.jsonl").write_text('{"x":1}\n{"y":2}\n')
+        result = runner.invoke(app, ["status"])
+        assert result.exit_code == 0
+        assert "modified" in result.stdout.lower()
