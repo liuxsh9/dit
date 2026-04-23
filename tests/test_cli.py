@@ -219,3 +219,63 @@ class TestStatus:
         result = runner.invoke(app, ["status"])
         assert result.exit_code == 0
         assert "modified" in result.stdout.lower()
+
+
+class TestEndToEnd:
+    def test_full_workflow(self, tmp_path: Path):
+        """init → add → commit → modify → diff → add → commit → log"""
+        os.chdir(tmp_path)
+
+        result = runner.invoke(app, ["init"])
+        assert result.exit_code == 0
+
+        rows = [
+            {"messages": [{"role": "user", "content": f"question {i}"}, {"role": "assistant", "content": f"answer {i}"}]}
+            for i in range(5)
+        ]
+        (tmp_path / "data.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+
+        result = runner.invoke(app, ["add", "."])
+        assert result.exit_code == 0
+        result = runner.invoke(app, ["commit", "-m", "add 5 conversations"])
+        assert result.exit_code == 0
+
+        result = runner.invoke(app, ["status"])
+        assert "clean" in result.stdout.lower() or "nothing" in result.stdout.lower()
+
+        modified_rows = [
+            rows[0],
+            rows[1],
+            {"messages": [{"role": "user", "content": rows[4]["messages"][0]["content"]}, {"role": "assistant", "content": "refreshed answer 4"}]},
+            {"messages": [{"role": "user", "content": "brand new question"}, {"role": "assistant", "content": "new answer"}]},
+        ]
+        (tmp_path / "data.jsonl").write_text("".join(json.dumps(r) + "\n" for r in modified_rows))
+
+        result = runner.invoke(app, ["diff"])
+        assert result.exit_code == 0
+        assert "data.jsonl" in result.stdout
+
+        runner.invoke(app, ["add", "."])
+        result = runner.invoke(app, ["commit", "-m", "remove 2, add 1, refresh 1"])
+        assert result.exit_code == 0
+
+        result = runner.invoke(app, ["log"])
+        assert "add 5 conversations" in result.stdout
+        assert "remove 2, add 1, refresh 1" in result.stdout
+
+    def test_multi_file_workflow(self, tmp_path: Path):
+        """Test multiple JSONL files in subdirectories."""
+        os.chdir(tmp_path)
+        runner.invoke(app, ["init"])
+
+        (tmp_path / "feature-impl").mkdir()
+        (tmp_path / "feature-impl" / "coding.jsonl").write_text('{"messages":[{"role":"user","content":"code q"}]}\n')
+        (tmp_path / "bug-fix").mkdir()
+        (tmp_path / "bug-fix" / "fixes.jsonl").write_text('{"messages":[{"role":"user","content":"fix q"}]}\n')
+
+        runner.invoke(app, ["add", "."])
+        result = runner.invoke(app, ["commit", "-m", "multi-dir data"])
+        assert result.exit_code == 0
+
+        result = runner.invoke(app, ["status"])
+        assert "clean" in result.stdout.lower() or "nothing" in result.stdout.lower()
