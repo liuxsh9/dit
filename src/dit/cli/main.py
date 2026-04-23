@@ -322,5 +322,55 @@ def serve(
     _uvicorn.run(fastapi_app, host=host, port=port)
 
 
+remote_app = typer.Typer(name="remote", help="Manage remote repositories.")
+app.add_typer(remote_app)
+
+
+@remote_app.command("add")
+def remote_add(
+    name: str = typer.Argument(..., help="Remote name (e.g. origin)"),
+    url: str = typer.Argument(..., help="Remote URL"),
+    token: str = typer.Option("", help="Auth token for this remote"),
+):
+    """Add a remote."""
+    from dit.core.config import set_remote
+
+    repo_root = find_repo_root()
+    dot = get_dot(repo_root)
+    set_remote(dot, name, url, token)
+    typer.echo(f"Remote '{name}' added: {url}")
+
+
+@remote_app.command("remove")
+def remote_remove(
+    name: str = typer.Argument(..., help="Remote name to remove"),
+):
+    """Remove a remote."""
+    from dit.core.config import remove_remote
+
+    repo_root = find_repo_root()
+    dot = get_dot(repo_root)
+    if not remove_remote(dot, name):
+        typer.echo(f"fatal: No remote '{name}' found", err=True)
+        raise typer.Exit(1)
+    typer.echo(f"Remote '{name}' removed.")
+
+
+@remote_app.command("list")
+def remote_list():
+    """List configured remotes."""
+    from dit.core.config import load_config
+
+    repo_root = find_repo_root()
+    dot = get_dot(repo_root)
+    config = load_config(dot)
+    remotes = config.get("remote", {})
+    if not remotes:
+        typer.echo("No remotes configured.")
+        return
+    for rname, rcfg in remotes.items():
+        typer.echo(f"{rname}\t{rcfg.get('url', '')}")
+
+
 def _get_author() -> str:
     return os.environ.get("DIT_AUTHOR", os.environ.get("USER", "unknown"))
