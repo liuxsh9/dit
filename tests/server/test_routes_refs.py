@@ -76,6 +76,27 @@ class TestRefsRoutes:
         resp = await client.get("/api/v1/repos/no-repo/refs")
         assert resp.status_code == 404
 
+    async def test_cas_atomic_concurrent(self, client):
+        import asyncio
+        await self._create_repo(client)
+        await client.post(
+            "/api/v1/repos/test-repo/refs/heads/main",
+            json={"old": None, "new": "a" * 64},
+        )
+        results = await asyncio.gather(
+            client.post(
+                "/api/v1/repos/test-repo/refs/heads/main",
+                json={"old": "a" * 64, "new": "b" * 64},
+            ),
+            client.post(
+                "/api/v1/repos/test-repo/refs/heads/main",
+                json={"old": "a" * 64, "new": "c" * 64},
+            ),
+            return_exceptions=False,
+        )
+        statuses = sorted([r.status_code for r in results])
+        assert statuses == [200, 409], f"Expected one 200 and one 409, got {statuses}"
+
 
 class TestTagRoutes:
     async def _create_repo(self, client, name="test-repo"):

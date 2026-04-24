@@ -155,15 +155,21 @@ async def merge(
 
     # CAS update target branch: SELECT then UPDATE pattern for SQLite compatibility
     target_ref_name = f"heads/{body.target_branch}"
-    result = await session.execute(
-        select(Ref).where(Ref.repo_id == r.id, Ref.name == target_ref_name)
+    from sqlalchemy import update as sa_update
+
+    stmt = (
+        sa_update(Ref)
+        .where(
+            Ref.repo_id == r.id,
+            Ref.name == target_ref_name,
+            Ref.target_hash == target_hash,
+        )
+        .values(target_hash=commit_hash)
+        .execution_options(synchronize_session=False)
     )
-    ref = result.scalar_one_or_none()
-    if ref is None:
-        raise HTTPException(status_code=404, detail="Target branch ref not found")
-    if ref.target_hash != target_hash:
+    result = await session.execute(stmt)
+    if result.rowcount == 0:
         raise HTTPException(status_code=409, detail="Target branch was updated concurrently")
-    ref.target_hash = commit_hash
     await session.commit()
 
     return {"commit_hash": commit_hash, "fast_forward": False}

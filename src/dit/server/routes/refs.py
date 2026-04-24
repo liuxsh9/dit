@@ -86,22 +86,30 @@ async def cas_update_ref(
         ))
         return {"name": ref_name, "target_hash": body.new}
     else:
-        # CAS UPDATE
-        result = await session.execute(
-            select(Ref).where(
+        # Atomic CAS: single UPDATE with WHERE clause on current hash
+        from sqlalchemy import update as sa_update
+        stmt = (
+            sa_update(Ref)
+            .where(
                 Ref.repo_id == r.id,
                 Ref.name == ref_name,
+                Ref.target_hash == body.old,
             )
+            .values(target_hash=body.new)
+            .execution_options(synchronize_session=False)
         )
-        ref = result.scalar_one_or_none()
-        if ref is None:
-            raise HTTPException(status_code=404, detail=f"Ref '{ref_name}' not found")
-        if ref.target_hash != body.old:
+        result = await session.execute(stmt)
+        if result.rowcount == 0:
+            # Either ref doesn't exist, or target_hash didn't match
+            check = await session.execute(
+                select(Ref).where(Ref.repo_id == r.id, Ref.name == ref_name)
+            )
+            if check.scalar_one_or_none() is None:
+                raise HTTPException(status_code=404, detail=f"Ref '{ref_name}' not found")
             raise HTTPException(
                 status_code=409,
-                detail=f"CAS conflict: expected {body.old[:8]}..., got {ref.target_hash[:8]}...",
+                detail=f"CAS conflict: expected {body.old[:8]}...",
             )
-        ref.target_hash = body.new
         await session.commit()
         _hooks = await load_webhooks(session, r.id, WebhookEvent.REF_UPDATE)
         asyncio.ensure_future(fire_webhook_payloads(
