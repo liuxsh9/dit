@@ -54,7 +54,7 @@ async def client(engine, tmp_path):
     # Create admin token
     async with factory() as s:
         token_hash = hashlib.sha256(ADMIN_TOKEN_RAW.encode()).hexdigest()
-        t = Token(token_hash=token_hash, label="test-admin", permissions="admin")
+        t = Token(token_hash=token_hash, label="test-admin", permissions="admin", role="owner")
         s.add(t)
         await s.commit()
 
