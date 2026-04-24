@@ -130,3 +130,122 @@ class TestMerge:
             },
         )
         assert resp.status_code == 404
+
+
+async def _setup_diverged_repo_named(client, tmp_path, repo_name: str):
+    """Create a named repo with two diverged branches on the server."""
+    resp = await client.post("/api/v1/repos", json={"name": repo_name})
+    assert resp.status_code == 201
+
+    data_dir = tmp_path / "data"
+    store = ObjectStore(data_dir / "repos" / repo_name / "objects")
+
+    BASE_ROW_HASH = "a" * 64
+    MAIN_ROW_HASH = "b" * 64
+    FEAT_ROW_HASH = "c" * 64
+
+    base_row = ManifestEntry(row_hash=BASE_ROW_HASH, query_fingerprint="q1")
+    base_m = Manifest(entries=[base_row])
+    base_m_hash = store.write("manifests", serialize_manifest(base_m))
+
+    base_tree = Tree(entries=[TreeEntry(name="data.jsonl", obj_type="manifest", obj_hash=base_m_hash)])
+    base_tree_hash = store.write("trees", serialize_tree(base_tree))
+    base_commit = Commit(tree_hash=base_tree_hash, parent_hashes=[], author="test", message="base", timestamp=int(time.time()))
+    base_hash = store.write("commits", serialize_commit(base_commit))
+
+    main_row = ManifestEntry(row_hash=MAIN_ROW_HASH, query_fingerprint="q2")
+    main_m = Manifest(entries=[base_row, main_row])
+    main_m_hash = store.write("manifests", serialize_manifest(main_m))
+
+    main_tree = Tree(entries=[TreeEntry(name="data.jsonl", obj_type="manifest", obj_hash=main_m_hash)])
+    main_tree_hash = store.write("trees", serialize_tree(main_tree))
+    main_commit = Commit(tree_hash=main_tree_hash, parent_hashes=[base_hash], author="test", message="main change", timestamp=int(time.time()))
+    main_hash = store.write("commits", serialize_commit(main_commit))
+
+    feat_row = ManifestEntry(row_hash=FEAT_ROW_HASH, query_fingerprint="q3")
+    feat_m = Manifest(entries=[base_row, feat_row])
+    feat_m_hash = store.write("manifests", serialize_manifest(feat_m))
+
+    feat_tree = Tree(entries=[TreeEntry(name="data.jsonl", obj_type="manifest", obj_hash=feat_m_hash)])
+    feat_tree_hash = store.write("trees", serialize_tree(feat_tree))
+    feat_commit = Commit(tree_hash=feat_tree_hash, parent_hashes=[base_hash], author="test", message="feature change", timestamp=int(time.time()))
+    feat_hash = store.write("commits", serialize_commit(feat_commit))
+
+    await client.post(f"/api/v1/repos/{repo_name}/refs/heads/main", json={"old": None, "new": main_hash})
+    await client.post(f"/api/v1/repos/{repo_name}/refs/heads/feature", json={"old": None, "new": feat_hash})
+
+    return store, base_hash, main_hash, feat_hash
+
+
+class TestMergeApprovalEnforcement:
+    async def test_merge_blocked_when_approvals_insufficient(self, client, tmp_path):
+        repo_name = "merge-approval-blocked"
+        await _setup_diverged_repo_named(client, tmp_path, repo_name)
+
+        # Add branch protection requiring 1 approval on main
+        resp = await client.post(
+            f"/api/v1/repos/{repo_name}/branch-protection",
+            json={"branch_pattern": "main", "required_approvals": 1},
+        )
+        assert resp.status_code == 201
+
+        # Attempt merge with pull_request_id=999 but no approvals submitted
+        resp = await client.post(
+            f"/api/v1/repos/{repo_name}/merge",
+            json={
+                "source_branch": "feature",
+                "target_branch": "main",
+                "message": "Merge feature",
+                "author": "tester",
+                "pull_request_id": 999,
+            },
+        )
+        assert resp.status_code == 403
+        assert "approval" in resp.json()["detail"].lower()
+
+    async def test_merge_allowed_when_approvals_met(self, client, tmp_path):
+        repo_name = "merge-approval-pass"
+        await _setup_diverged_repo_named(client, tmp_path, repo_name)
+
+        # Add branch protection requiring 1 approval on main
+        resp = await client.post(
+            f"/api/v1/repos/{repo_name}/branch-protection",
+            json={"branch_pattern": "main", "required_approvals": 1},
+        )
+        assert resp.status_code == 201
+
+        # Submit 1 approval for PR 100
+        resp = await client.post(
+            f"/api/v1/repos/{repo_name}/pulls/100/reviews",
+            json={"status": "approved"},
+        )
+        assert resp.status_code == 201
+
+        # Merge should succeed
+        resp = await client.post(
+            f"/api/v1/repos/{repo_name}/merge",
+            json={
+                "source_branch": "feature",
+                "target_branch": "main",
+                "message": "Merge feature",
+                "author": "tester",
+                "pull_request_id": 100,
+            },
+        )
+        assert resp.status_code == 200
+
+    async def test_merge_to_unprotected_branch_no_approvals_needed(self, client, tmp_path):
+        repo_name = "merge-approval-noprotect"
+        await _setup_diverged_repo_named(client, tmp_path, repo_name)
+
+        # No branch protection rules — merge without pull_request_id should succeed
+        resp = await client.post(
+            f"/api/v1/repos/{repo_name}/merge",
+            json={
+                "source_branch": "feature",
+                "target_branch": "main",
+                "message": "Merge feature",
+                "author": "tester",
+            },
+        )
+        assert resp.status_code == 200

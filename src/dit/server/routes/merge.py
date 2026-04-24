@@ -1,15 +1,16 @@
 from __future__ import annotations
 
+import fnmatch
 import time
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func as sa_func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dit.server.auth import get_session, require_permission
-from dit.server.models import Ref, Repo
+from dit.server.models import BranchProtection, PrApproval, Ref, Repo
 
 router = APIRouter(prefix="/api/v1/repos/{repo}", tags=["merge"])
 
@@ -24,6 +25,7 @@ class MergeRequest(BaseModel):
     target_branch: str
     message: str
     author: str
+    pull_request_id: int | None = None
 
 
 async def _get_repo(repo: str, session: AsyncSession) -> Repo:
@@ -49,6 +51,42 @@ async def _resolve_branch(session: AsyncSession, repo_id: int, branch: str) -> s
     if ref is None:
         raise HTTPException(status_code=404, detail=f"Branch '{branch}' not found")
     return ref.target_hash
+
+
+async def _check_merge_approvals(
+    session: AsyncSession, repo_id: int, target_branch: str, pull_request_id: int | None
+) -> None:
+    result = await session.execute(
+        select(BranchProtection).where(BranchProtection.repo_id == repo_id)
+    )
+    rules = result.scalars().all()
+    matched_rule = None
+    for rule in rules:
+        if fnmatch.fnmatch(target_branch, rule.branch_pattern):
+            matched_rule = rule
+            break
+
+    if matched_rule is None or matched_rule.required_approvals == 0:
+        return
+
+    if pull_request_id is None:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Branch '{target_branch}' requires {matched_rule.required_approvals} approval(s). Provide pull_request_id.",
+        )
+
+    count_result = await session.execute(
+        select(sa_func.count()).select_from(PrApproval).where(
+            PrApproval.pull_request_id == pull_request_id,
+            PrApproval.status == "approved",
+        )
+    )
+    approval_count = count_result.scalar_one()
+    if approval_count < matched_rule.required_approvals:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Branch '{target_branch}' requires {matched_rule.required_approvals} approval(s), but only {approval_count} found for PR {pull_request_id}.",
+        )
 
 
 @router.post("/merge-preview")
@@ -104,6 +142,8 @@ async def merge(
 
     source_hash = await _resolve_branch(session, r.id, body.source_branch)
     target_hash = await _resolve_branch(session, r.id, body.target_branch)
+
+    await _check_merge_approvals(session, r.id, body.target_branch, body.pull_request_id)
 
     base_hash = find_merge_base(store, target_hash, source_hash)
 
