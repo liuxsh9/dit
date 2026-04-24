@@ -55,6 +55,9 @@ def create_app(settings: ServerSettings | None = None) -> FastAPI:
     from dit.server.routes.merge import router as merge_router
     application.include_router(merge_router)
 
+    from dit.server.routes.tree import router as tree_router
+    application.include_router(tree_router)
+
     return application
 
 
