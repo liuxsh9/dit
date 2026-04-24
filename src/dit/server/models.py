@@ -159,3 +159,18 @@ class PrApproval(Base):
 
     def __repr__(self) -> str:
         return f"PrApproval(id={self.id}, pr={self.pull_request_id}, status={self.status!r})"
+
+
+class ReviewerRule(Base):
+    __tablename__ = "data_reviewer_rule"
+    __table_args__ = {"schema": "datahub"}
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    repo_id: Mapped[int] = mapped_column(nullable=False)
+    pattern: Mapped[str] = mapped_column(String(256), nullable=False)
+    reviewer_token_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("datahub.tokens.id"), nullable=True
+    )
+
+    def __repr__(self) -> str:
+        return f"ReviewerRule(id={self.id}, repo_id={self.repo_id}, pattern={self.pattern!r})"

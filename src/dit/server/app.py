@@ -79,6 +79,9 @@ def create_app(settings: ServerSettings | None = None) -> FastAPI:
     from dit.server.routes.reviews import router as reviews_router
     application.include_router(reviews_router)
 
+    from dit.server.routes.reviewer_rules import router as reviewer_rules_router
+    application.include_router(reviewer_rules_router)
+
     return application
 
 
