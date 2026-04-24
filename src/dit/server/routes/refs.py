@@ -1,6 +1,6 @@
 import asyncio
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,6 +10,69 @@ from dit.server.models import Ref, Repo
 from dit.server.webhooks import load_webhooks, fire_webhook_payloads, WebhookEvent
 
 router = APIRouter(prefix="/api/v1/repos/{repo}", tags=["refs"])
+
+
+async def _update_prs_for_ref_change(
+    session: AsyncSession,
+    request: Request,
+    repo_name: str,
+    repo_id: int,
+    ref_name: str,
+    new_hash: str,
+):
+    """After a ref update, refresh any open PRs that reference this branch."""
+    from dit.server.models import PullRequestMeta
+    from dit.server.routes.pulls import _compute_diff_stats, _compute_mergeability, _store_for_repo
+
+    store = _store_for_repo(request, repo_name)
+
+    result = await session.execute(
+        select(PullRequestMeta).where(
+            PullRequestMeta.repo_id == repo_id,
+            PullRequestMeta.status == "open",
+            (
+                (PullRequestMeta.source_ref == ref_name)
+                | (PullRequestMeta.target_ref == ref_name)
+            ),
+        )
+    )
+    prs = result.scalars().all()
+
+    for pr in prs:
+        src_result = await session.execute(
+            select(Ref).where(Ref.repo_id == repo_id, Ref.name == pr.source_ref)
+        )
+        src_ref = src_result.scalar_one_or_none()
+        tgt_result = await session.execute(
+            select(Ref).where(Ref.repo_id == repo_id, Ref.name == pr.target_ref)
+        )
+        tgt_ref = tgt_result.scalar_one_or_none()
+
+        if src_ref is None or tgt_ref is None:
+            continue
+
+        source_commit = src_ref.target_hash
+        target_commit = tgt_ref.target_hash
+
+        pr.source_commit = source_commit
+        pr.target_commit = target_commit
+
+        from dit.core.merge_base import find_merge_base
+        base_hash = find_merge_base(store, target_commit, source_commit)
+        if base_hash is not None:
+            pr.base_commit = base_hash
+
+        diff_stats = _compute_diff_stats(store, source_commit, target_commit)
+        pr.stats_added = diff_stats["stats_added"]
+        pr.stats_removed = diff_stats["stats_removed"]
+        pr.stats_refreshed = diff_stats["stats_refreshed"]
+
+        mergeability = _compute_mergeability(store, target_commit, source_commit)
+        pr.is_mergeable = mergeability["is_mergeable"]
+        pr.conflict_files = mergeability.get("conflict_files")
+
+    if prs:
+        await session.commit()
 
 
 class CASRefRequest(BaseModel):
@@ -62,6 +125,7 @@ async def cas_update_ref(
     ref_type: str,
     name: str,
     body: CASRefRequest,
+    request: Request,
     session: AsyncSession = Depends(get_session),
     _token=Depends(require_permission("push")),
 ):
@@ -84,6 +148,7 @@ async def cas_update_ref(
             event=WebhookEvent.REF_UPDATE,
             payload={"repo": repo, "ref": ref_name, "old_hash": None, "new_hash": body.new},
         ))
+        await _update_prs_for_ref_change(session, request, repo, r.id, ref_name, body.new)
         return {"name": ref_name, "target_hash": body.new}
     else:
         # Atomic CAS: single UPDATE with WHERE clause on current hash
@@ -117,6 +182,7 @@ async def cas_update_ref(
             event=WebhookEvent.REF_UPDATE,
             payload={"repo": repo, "ref": ref_name, "old_hash": body.old, "new_hash": body.new},
         ))
+        await _update_prs_for_ref_change(session, request, repo, r.id, ref_name, body.new)
         return {"name": ref_name, "target_hash": body.new}
 
 
