@@ -76,7 +76,10 @@ def init():
 
 @app.command()
 def add(paths: list[str] = typer.Argument(..., help="Files or directories to stage")):
-    """Stage JSONL files for the next commit."""
+    """Stage JSONL and other files for the next commit."""
+    from dit.core.workspace import find_all_files, build_blob_for_file
+    from dit.core.objects import serialize_blob
+
     repo_root = find_repo_root()
     dot = get_dot(repo_root)
     store = ObjectStore(dot / "objects")
@@ -85,24 +88,34 @@ def add(paths: list[str] = typer.Argument(..., help="Files or directories to sta
     for path_str in paths:
         target = Path(path_str).resolve()
         if path_str == ".":
-            files = find_jsonl_files(repo_root)
+            jsonl_files, blob_files = find_all_files(repo_root)
         elif target.is_dir():
-            files = find_jsonl_files(target)
+            jsonl_files, blob_files = find_all_files(target)
         elif target.is_file() and target.suffix == ".jsonl":
-            files = [target]
+            jsonl_files, blob_files = [target], []
+        elif target.is_file():
+            jsonl_files, blob_files = [], [target]
         else:
-            typer.echo(f"fatal: pathspec '{path_str}' did not match any jsonl files", err=True)
+            typer.echo(f"fatal: pathspec '{path_str}' did not match any files", err=True)
             raise typer.Exit(1)
 
-        for fp in files:
+        for fp in jsonl_files:
             manifest, row_data = build_manifest_for_file(fp)
             for rh, data in row_data.items():
                 store.write("rows", data)
             manifest_bytes = serialize_manifest(manifest)
             manifest_hash = store.write("manifests", manifest_bytes)
             rel = str(fp.relative_to(repo_root))
-            index.stage(rel, manifest_hash)
+            index.stage(rel, manifest_hash, obj_type="manifest")
             typer.echo(f"  staged {rel} ({len(manifest.entries)} rows)")
+
+        for fp in blob_files:
+            content = build_blob_for_file(fp)
+            blob_bytes = serialize_blob(content)
+            blob_hash = store.write("blobs", blob_bytes)
+            rel = str(fp.relative_to(repo_root))
+            index.stage(rel, blob_hash, obj_type="blob")
+            typer.echo(f"  staged {rel} (blob)")
 
 
 if __name__ == "__main__":
@@ -167,37 +180,30 @@ def diff():
 @app.command()
 def commit(message: str = typer.Option(..., "-m", help="Commit message")):
     """Create a commit from staged files."""
+    from dit.core.tree_builder import build_nested_tree
+
     repo_root = find_repo_root()
     dot = get_dot(repo_root)
     store = ObjectStore(dot / "objects")
     index = StagingIndex(dot / "index")
     refs = RefStore(dot)
 
-    staged = index.entries()
-    if not staged:
+    staged_typed = index.entries_typed()
+    if not staged_typed:
         typer.echo("nothing to commit (staging area is empty)", err=True)
         raise typer.Exit(1)
 
-    # Build tree from staged manifests + any existing tree entries from HEAD
     head_commit_hash = refs.resolve_head()
-    existing_tree_entries: dict[str, TreeEntry] = {}
+    existing_entries: dict[str, tuple[str, str]] = {}
     if head_commit_hash:
+        from dit.core.tree_walker import flatten_tree
         commit_data = store.read("commits", head_commit_hash)
         old_commit = deserialize_commit(commit_data)
-        tree_data = store.read("trees", old_commit.tree_hash)
-        old_tree = deserialize_tree(tree_data)
-        for e in old_tree.entries:
-            existing_tree_entries[e.name] = e
+        existing_entries = flatten_tree(store, old_commit.tree_hash)
 
-    # Merge staged files into tree
-    for rel_path, manifest_hash in staged.items():
-        existing_tree_entries[rel_path] = TreeEntry(
-            name=rel_path, obj_type="manifest", obj_hash=manifest_hash
-        )
+    merged: dict[str, tuple[str, str]] = {**existing_entries, **staged_typed}
 
-    tree = Tree(entries=list(existing_tree_entries.values()))
-    tree_bytes = serialize_tree(tree)
-    tree_hash = store.write("trees", tree_bytes)
+    tree_hash = build_nested_tree(store, merged)
 
     parent_hashes = [head_commit_hash] if head_commit_hash else []
     c = Commit(
@@ -261,13 +267,11 @@ def status():
     head_manifests: dict[str, str] = {}
     head_hash = refs.resolve_head()
     if head_hash:
+        from dit.core.tree_walker import flatten_tree
         commit_data = store.read("commits", head_hash)
         head_commit = deserialize_commit(commit_data)
-        tree_data = store.read("trees", head_commit.tree_hash)
-        tree = deserialize_tree(tree_data)
-        for entry in tree.entries:
-            if entry.obj_type == "manifest":
-                head_manifests[entry.name] = entry.obj_hash
+        flat = flatten_tree(store, head_commit.tree_hash)
+        head_manifests = {k: v for k, (t, v) in flat.items() if t == "manifest"}
 
     current_files = find_jsonl_files(repo_root)
     current_rels = {str(f.relative_to(repo_root)) for f in current_files}

@@ -279,3 +279,82 @@ class TestEndToEnd:
 
         result = runner.invoke(app, ["status"])
         assert "clean" in result.stdout.lower() or "nothing" in result.stdout.lower()
+
+
+from dit.core.store import ObjectStore
+from dit.core.objects import deserialize_commit, deserialize_tree
+from dit.core.refs import RefStore
+
+
+class TestNestedTreeCommit:
+    def test_add_and_commit_nested(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        from typer.testing import CliRunner
+        from dit.cli.main import app
+        runner = CliRunner()
+
+        runner.invoke(app, ["init"])
+
+        (tmp_path / "train").mkdir()
+        (tmp_path / "eval").mkdir()
+        (tmp_path / "train" / "sft.jsonl").write_text(
+            '{"messages": [{"role": "user", "content": "hi"}]}\n'
+        )
+        (tmp_path / "eval" / "bench.jsonl").write_text(
+            '{"messages": [{"role": "user", "content": "test"}]}\n'
+        )
+
+        result = runner.invoke(app, ["add", "."])
+        assert result.exit_code == 0
+
+        result = runner.invoke(app, ["commit", "-m", "nested commit"])
+        assert result.exit_code == 0
+
+        dot = tmp_path / ".datahub"
+        store = ObjectStore(dot / "objects")
+        refs = RefStore(dot)
+        commit_hash = refs.resolve_head()
+        assert commit_hash is not None
+
+        commit_data = store.read("commits", commit_hash)
+        commit = deserialize_commit(commit_data)
+        root_tree = deserialize_tree(store.read("trees", commit.tree_hash))
+
+        entry_names = {e.name for e in root_tree.entries}
+        assert "train" in entry_names, f"Expected 'train' in root tree, got {entry_names}"
+        assert "eval" in entry_names, f"Expected 'eval' in root tree, got {entry_names}"
+        assert "train/sft.jsonl" not in entry_names, "Root tree must not have flat slash paths"
+
+        train_entry = next(e for e in root_tree.entries if e.name == "train")
+        assert train_entry.obj_type == "tree"
+
+    def test_blob_files_staged(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        from typer.testing import CliRunner
+        from dit.cli.main import app
+        runner = CliRunner()
+
+        runner.invoke(app, ["init"])
+        (tmp_path / "README.md").write_text("# My Dataset\n")
+        (tmp_path / "data.jsonl").write_text(
+            '{"messages": [{"role": "user", "content": "q"}]}\n'
+        )
+
+        result = runner.invoke(app, ["add", "."])
+        assert result.exit_code == 0
+
+        result = runner.invoke(app, ["commit", "-m", "with readme"])
+        assert result.exit_code == 0
+
+        dot = tmp_path / ".datahub"
+        store = ObjectStore(dot / "objects")
+        refs = RefStore(dot)
+        commit_hash = refs.resolve_head()
+        commit = deserialize_commit(store.read("commits", commit_hash))
+        root_tree = deserialize_tree(store.read("trees", commit.tree_hash))
+        entry_map = {e.name: e for e in root_tree.entries}
+
+        assert "README.md" in entry_map
+        assert entry_map["README.md"].obj_type == "blob"
+        assert "data.jsonl" in entry_map
+        assert entry_map["data.jsonl"].obj_type == "manifest"
