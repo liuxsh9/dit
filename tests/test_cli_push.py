@@ -94,12 +94,17 @@ def _patch_remote_client(monkeypatch, server_app):
 
     class PatchedRemoteClient(remote_mod.RemoteClient):
         def __init__(self, base_url: str, token: str = "", repo: str = "") -> None:
+            self.base_url = base_url.rstrip("/")
+            self.repo = repo
             self.client = TestClient(
                 server_app,
                 base_url=base_url,
-                headers={"Authorization": f"Bearer {token}"},
+                headers={"Authorization": f"token {token}"},
             )
-            self.repo = repo
+
+        def _datahub_prefix(self) -> str:
+            # DataHub server uses direct paths without /datahub/ infix
+            return f"{self.base_url}/api/v1/repos/{self.repo}"
 
     monkeypatch.setattr(remote_mod, "RemoteClient", PatchedRemoteClient)
 

@@ -21,8 +21,9 @@ def _json_response(data, status_code: int = 200) -> httpx.Response:
 def _make_client(handler) -> RemoteClient:
     transport = httpx.MockTransport(handler)
     rc = RemoteClient.__new__(RemoteClient)
-    rc.client = httpx.Client(transport=transport, base_url="http://test")
+    rc.base_url = "http://test"
     rc.repo = "my-repo"
+    rc.client = httpx.Client(transport=transport, trust_env=False)
     return rc
 
 
@@ -56,7 +57,7 @@ def test_get_ref_found() -> None:
     hash_val = "a" * 64
 
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/api/v1/repos/my-repo/refs/heads/main"
+        assert request.url.path == "/api/v1/repos/my-repo/datahub/refs/heads/main"
         return _json_response({"name": "heads/main", "target_hash": hash_val})
 
     rc = _make_client(handler)
@@ -77,7 +78,7 @@ def test_list_refs() -> None:
     refs = [{"name": "heads/main", "target_hash": "a" * 64}]
 
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/api/v1/repos/my-repo/refs"
+        assert request.url.path == "/api/v1/repos/my-repo/datahub/refs"
         return _json_response(refs)
 
     rc = _make_client(handler)
@@ -87,7 +88,7 @@ def test_list_refs() -> None:
 
 def test_cas_ref_success() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/api/v1/repos/my-repo/refs/heads/main"
+        assert request.url.path == "/api/v1/repos/my-repo/datahub/refs/heads/main"
         body = json.loads(request.content)
         assert body["old"] is None
         assert body["new"] == "b" * 64
@@ -112,7 +113,7 @@ def test_upload_object() -> None:
     hash_hex = hashlib.sha256(payload).hexdigest()
 
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == f"/api/v1/repos/my-repo/objects/rows/{hash_hex}"
+        assert request.url.path == f"/api/v1/repos/my-repo/datahub/objects/rows/{hash_hex}"
         assert request.method == "POST"
         assert request.content == payload
         return httpx.Response(204)
@@ -126,7 +127,7 @@ def test_download_object() -> None:
     hash_hex = hashlib.sha256(payload).hexdigest()
 
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == f"/api/v1/repos/my-repo/objects/rows/{hash_hex}"
+        assert request.url.path == f"/api/v1/repos/my-repo/datahub/objects/rows/{hash_hex}"
         assert request.method == "GET"
         return httpx.Response(200, content=payload)
 

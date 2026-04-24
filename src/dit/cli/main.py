@@ -973,6 +973,36 @@ def auth_set_token(
     typer.echo(f"Token stored for remote '{remote}'.")
 
 
+@auth_app.command("login")
+def auth_login(
+    url: str = typer.Option(..., help="Forgejo base URL, e.g. http://forgejo:3000"),
+    token: str = typer.Option(..., help="Forgejo API token"),
+):
+    """Store Forgejo credentials in .datahub/credentials."""
+    import json as _json
+
+    try:
+        repo_root = find_repo_root()
+        creds_path = get_dot(repo_root) / "credentials"
+    except SystemExit:
+        home_dot = Path.home() / ".datahub"
+        home_dot.mkdir(parents=True, exist_ok=True)
+        creds_path = home_dot / "credentials"
+
+    existing: dict = {}
+    if creds_path.exists():
+        try:
+            existing = _json.loads(creds_path.read_text())
+        except Exception:
+            existing = {}
+
+    existing["url"] = url.rstrip("/")
+    existing["token"] = token
+    creds_path.write_text(_json.dumps(existing, indent=2))
+    typer.echo(f"Credentials saved to {creds_path}")
+    typer.echo(f"Logged in to {url}")
+
+
 def _build_remote_client(dot: Path, remote_name: str = "origin") -> "RemoteClient":
     from dit.core.config import get_remote
     from dit.core.remote import RemoteClient
@@ -981,10 +1011,21 @@ def _build_remote_client(dot: Path, remote_name: str = "origin") -> "RemoteClien
     if cfg is None:
         typer.echo(f"fatal: remote '{remote_name}' not configured", err=True)
         raise typer.Exit(1)
+
     url: str = cfg["url"]
     token: str = cfg.get("token", "")
-    repo_name = url.rstrip("/").rsplit("/", 1)[-1]
-    base_url = url.rstrip("/").rsplit("/", 1)[0]
+
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    path_parts = parsed.path.strip("/").split("/")
+
+    if len(path_parts) >= 2:
+        base_url = f"{parsed.scheme}://{parsed.netloc}"
+        repo_name = "/".join(path_parts)
+    else:
+        base_url = f"{parsed.scheme}://{parsed.netloc}"
+        repo_name = path_parts[0] if path_parts else url
+
     return RemoteClient(base_url=base_url, token=token, repo=repo_name)
 
 
