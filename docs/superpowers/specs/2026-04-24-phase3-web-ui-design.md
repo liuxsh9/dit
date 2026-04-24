@@ -63,6 +63,8 @@
 
 4. **CLI 走 Forgejo 代理**：`dit push/clone/fetch` 改调 Forgejo 代理路由，统一认证入口。datahub-core 不再直接面向用户。
 
+7. **CAS ref 更新原子性**：datahub-core 现有的 CAS ref 更新使用 SELECT → UPDATE 非原子操作，Phase 3 引入并发 merge 后竞态风险增大。3A 子项目中必须修复为 `UPDATE refs SET target_hash = :new WHERE repo_id = :repo AND name = :ref AND target_hash = :old`（单条 UPDATE 原子检查），affected rows = 0 时返回 409 CAS conflict。
+
 5. **PR 评论存 Forgejo 侧**：复用 Forgejo 已有 Comment 模型，扩展字段支持行级定位（`row_hash` + `field_path`），免费获得通知/邮件/webhook 集成。
 
 6. **Forgejo 开发方式**：Fork 源码做侵入式修改，保持 Docker 化部署兼容，沿用 Forgejo 主线的 CI/发布基础设施。
@@ -77,6 +79,13 @@ Forgejo (Go) → datahub-core (Python) 通过 HTTP API 调用。Forgejo 代理�
 4. 透传响应
 
 Service token 为预共享密钥，通过环境变量 `DATAHUB_SERVICE_TOKEN` 配置，Forgejo 和 datahub-core 启动时加载。
+
+Forgejo 代理层附加的请求头：
+- `X-Service-Token: <shared-secret>` — 服务间认证
+- `X-Datahub-User: <username>` — 当前操作的 Forgejo 用户名
+- `X-Datahub-User-Email: <email>` — 用户邮箱
+
+datahub-core 据此填写 commit/merge commit 的 author 字段（`author: "zhangsan <zhangsan@example.com>"`）。当 `X-Service-Token` 存在但 `X-Datahub-User` 缺失时，author 设为 `system <noreply@datahub>`。
 
 ---
 
@@ -150,10 +159,28 @@ Phase 0-2 已有的 API 基本够用，需补充以下端点：
 
 | 新增 API | 说明 |
 |---|---|
-| `GET /v1/repos/{repo}/tree/{commit_hash}/{path}` | 返回 tree 对象的目录列表（名称、类型、hash、行数） |
+| `GET /v1/repos/{repo}/tree/{commit_hash}/{path}` | 返回 tree 对象的目录列表（名称、类型、hash、行数）。支持嵌套 tree 的子路径导航（`path` 可以是 `subdir/nested`），逐级解析 tree hash |
 | `GET /v1/repos/{repo}/manifest/{commit_hash}/{path}` | 返回 manifest 内容，支持分页（`offset`/`limit` 查询参数） |
 | `GET /v1/repos/{repo}/log?ref=&limit=&offset=` | 提交历史，支持分页和按 ref 过滤 |
 | `POST /v1/repos/{repo}/objects/batch-exists` | 接收 hash 列表，返回存在/不存在的 hash 集合 |
+
+#### Blob 类型支持
+
+当前 Tree 中的条目只有 `manifest`（JSONL 文件）和 `tree`（子目录）两种类型。Phase 3 需要新增 `blob` 类型，用于存储非 JSONL 文件（README.md、LICENSE、.datahub/config 等）：
+
+- Tree entry 新增 `type: "blob"`，指向一个 blob 对象（原始文件内容的 SHA-256 hash）
+- blob 对象存储在 `objects/blobs/<hash[0:2]>/<hash>` 路径下
+- blob 不参与行级 diff，仅做文件级 diff（存在/不存在/内容变更）
+- `dit add` 对非 `.jsonl` 文件创建 blob 对象而非 manifest
+
+#### 嵌套 Tree 修复
+
+当前 Phase 0-2 实现中，commit/diff/status 命令把所有文件扁平放在一个 Tree 里。Phase 3 的 Web 文件树浏览器需要正确处理嵌套 Tree（目录包含子目录）。3A 子项目需要：
+
+1. **修复 `dit add` / `dit commit`**：按目录层级构建嵌套 Tree 对象（`subdir/file.jsonl` → 根 Tree 引用子 Tree `subdir`，子 Tree 包含 `file.jsonl` 的 manifest）
+2. **修复 `dit diff` / `dit status`**：递归遍历嵌套 Tree 对比
+3. **tree API 实现**：支持 path 参数逐级解析（`GET /tree/{commit}/subdir` 返回 subdir 下的条目）
+4. **向后兼容**：读取旧的扁平 Tree 仍然正常工作
 
 #### 内部认证中间件
 
@@ -167,7 +194,7 @@ Phase 0-2 已有的 API 基本够用，需补充以下端点：
 - 统计卡片：文件数、总行数、最近提交时间
 - 文件树浏览器：目录 + `.jsonl` 文件列表，显示行数
 - 分支/tag 选择器：复用 Forgejo 组件，数据源改为 datahub refs API
-- 描述区域：文件列表下方渲染 Forgejo repo description（Markdown 格式），不在 data repo tree 中存 README（tree 只支持 JSONL manifest）
+- README 渲染：data repo tree 支持非 JSONL 文件作为 blob 类型的 TreeEntry（见下方 blob 支持说明）。如果 tree 根目录有 README.md，渲染在文件列表下方
 
 #### JSONL 文件查看器
 
@@ -217,7 +244,7 @@ CREATE TABLE data_pull_request_meta (
     target_commit   CHAR(64) NOT NULL,
     merge_commit    CHAR(64),
     is_mergeable    BOOLEAN,
-    conflict_files  TEXT,
+    conflict_files  JSONB,
     stats_added     INT DEFAULT 0,
     stats_removed   INT DEFAULT 0,
     stats_refreshed INT DEFAULT 0,
@@ -231,7 +258,7 @@ CREATE TABLE data_pull_request_meta (
 - `source_commit` / `target_commit`：创建 PR 时的两端 HEAD
 - `merge_commit`：合并后的 commit hash（合并前为 null）
 - `is_mergeable`：缓存的可合并状态（由 merge-preview 更新）
-- `conflict_files`：冲突文件路径的 JSON 数组
+- `conflict_files`：冲突文件路径的 JSONB 数组（如 `["feature-impl/a.jsonl", "bug-fix/b.jsonl"]`）
 - `stats_*`：变更统计摘要
 
 ### 6.2 PR 生命周期
@@ -247,6 +274,16 @@ CREATE TABLE data_pull_request_meta (
 PR 创建入口：
 - Web UI：Forgejo PR 创建表单，`type=data` 时后端走 datahub 流程
 - CLI：`dit pr create <branch> --title "..."` → 调 Forgejo PR API
+
+#### PR 更新触发机制
+
+用户 `dit push` 到 feature 分支时，请求经过 Forgejo 代理路由 `POST .../datahub/refs/heads/{name}`。代理层在成功转发 CAS 更新后，执行 PR 关联检查：
+
+1. 查询 `data_pull_request_meta` 中 `source_ref = 'heads/{name}'` 且 PR 状态为 open 的记录
+2. 对匹配的 PR，更新 `source_commit` 为新的 ref target
+3. 调 `POST /diff` 和 `POST /merge-preview` 重算变更统计和可合并状态
+4. 更新 `data_pull_request_meta` 的 stats 和 is_mergeable 字段
+5. 触发 Forgejo 的 PR 更新通知
 
 ### 6.3 datahub-core Diff API 扩展
 
@@ -585,7 +622,7 @@ web_src/js/components/datahub/
 ├── DiffRow.vue                 # 单行变更渲染
 ├── DiffRowRefreshed.vue        # 刷新行 old/new 并排
 ├── RowComment.vue              # 行级评论线程
-├── BranchSelector.vue          # 分支/tag 选择器（复用 Forgejo 数据源适配）
+├── BranchSelector.vue          # 分支/tag 选择器（调用 /api/v1/repos/{owner}/{repo}/datahub/refs 获取分支列表，UI 复用 Forgejo 下拉组件样式）
 ├── ConflictResolver.vue        # 冲突解决 UI
 └── shared/
     ├── Pagination.vue          # 分页控件
@@ -646,6 +683,7 @@ services:
 - sidecar 元数据查看/编辑（Phase 4）
 - 行级搜索（Phase 4）
 - 统计面板 / token 分布图表（Phase 4）
+- 文件查看页的 token 统计（如 "9700 lines · 4.1M tokens"）（Phase 4，需要 datahub-core 提供 manifest 级统计 API）
 - 导出任务面板（Phase 4）
 - Blame 视图（Phase 5）
 - CI bridge 集成（Phase 4）
