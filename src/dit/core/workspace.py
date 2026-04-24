@@ -16,6 +16,31 @@ def find_jsonl_files(root: Path) -> list[Path]:
     return results
 
 
+def find_all_files(root: Path) -> tuple[list[Path], list[Path]]:
+    """Return (jsonl_files, blob_files) under root, excluding .datahub/.
+
+    jsonl_files: all *.jsonl paths
+    blob_files: all other regular files
+    """
+    jsonl: list[Path] = []
+    blobs: list[Path] = []
+    for p in sorted(root.rglob("*")):
+        if ".datahub" in p.parts:
+            continue
+        if not p.is_file():
+            continue
+        if p.suffix == ".jsonl":
+            jsonl.append(p)
+        else:
+            blobs.append(p)
+    return jsonl, blobs
+
+
+def build_blob_for_file(path: Path) -> bytes:
+    """Read a non-JSONL file and return its raw content for blob storage."""
+    return path.read_bytes()
+
+
 def build_manifest_for_file(path: Path) -> tuple[Manifest, dict[str, bytes]]:
     """Build a Manifest for a JSONL file.
 

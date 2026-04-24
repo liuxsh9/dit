@@ -13,6 +13,8 @@ from dit.core.objects import (
     deserialize_tree,
     serialize_commit,
     deserialize_commit,
+    serialize_blob,
+    deserialize_blob,
     object_hash,
 )
 
@@ -102,3 +104,26 @@ class TestCommit:
         c1 = Commit(tree_hash="aa" * 32, parent_hashes=[], author="a", message="m", timestamp=1)
         c2 = Commit(tree_hash="bb" * 32, parent_hashes=[], author="a", message="m", timestamp=1)
         assert object_hash(serialize_commit(c1)) != object_hash(serialize_commit(c2))
+
+
+class TestBlob:
+    def test_roundtrip_text(self):
+        content = b"# README\n\nThis is a data repository.\n"
+        data = serialize_blob(content)
+        assert deserialize_blob(data) == content
+
+    def test_roundtrip_binary(self):
+        content = bytes(range(256))
+        data = serialize_blob(content)
+        assert deserialize_blob(data) == content
+
+    def test_hash_deterministic(self):
+        content = b"hello world"
+        data1 = serialize_blob(content)
+        data2 = serialize_blob(content)
+        assert object_hash(data1) == object_hash(data2)
+
+    def test_different_content_different_hash(self):
+        data1 = serialize_blob(b"foo")
+        data2 = serialize_blob(b"bar")
+        assert object_hash(data1) != object_hash(data2)

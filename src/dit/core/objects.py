@@ -103,5 +103,26 @@ def deserialize_commit(data: bytes) -> Commit:
     )
 
 
+def serialize_blob(content: bytes) -> bytes:
+    """Wrap raw blob content for storage in the object store.
+
+    Uses a length-prefixed envelope: 8-byte big-endian length + raw bytes.
+    """
+    import struct
+    return struct.pack(">Q", len(content)) + content
+
+
+def deserialize_blob(data: bytes) -> bytes:
+    """Extract raw blob content from store envelope."""
+    import struct
+    if len(data) < 8:
+        raise ValueError("Blob data too short to contain length prefix")
+    (length,) = struct.unpack(">Q", data[:8])
+    payload = data[8:]
+    if len(payload) != length:
+        raise ValueError(f"Blob length mismatch: expected {length}, got {len(payload)}")
+    return payload
+
+
 def object_hash(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
