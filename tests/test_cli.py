@@ -358,3 +358,51 @@ class TestNestedTreeCommit:
         assert entry_map["README.md"].obj_type == "blob"
         assert "data.jsonl" in entry_map
         assert entry_map["data.jsonl"].obj_type == "manifest"
+
+
+class TestNestedTreeDiffStatus:
+    def _init_nested_repo(self, tmp_path, runner, app):
+        runner.invoke(app, ["init"])
+        (tmp_path / "train").mkdir()
+        (tmp_path / "train" / "sft.jsonl").write_text(
+            '{"messages": [{"role": "user", "content": "hello"}]}\n'
+        )
+        runner.invoke(app, ["add", "."])
+        runner.invoke(app, ["commit", "-m", "initial"])
+
+    def test_diff_nested_no_changes(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        from typer.testing import CliRunner
+        from dit.cli.main import app
+        runner = CliRunner()
+        self._init_nested_repo(tmp_path, runner, app)
+        result = runner.invoke(app, ["diff"])
+        assert result.exit_code == 0
+        assert "No changes" in result.output
+
+    def test_diff_nested_shows_change(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        from typer.testing import CliRunner
+        from dit.cli.main import app
+        runner = CliRunner()
+        self._init_nested_repo(tmp_path, runner, app)
+        (tmp_path / "train" / "sft.jsonl").write_text(
+            '{"messages": [{"role": "user", "content": "hello"}]}\n'
+            '{"messages": [{"role": "user", "content": "world"}]}\n'
+        )
+        result = runner.invoke(app, ["diff"])
+        assert result.exit_code == 0
+        assert "train/sft.jsonl" in result.output
+
+    def test_status_nested(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        from typer.testing import CliRunner
+        from dit.cli.main import app
+        runner = CliRunner()
+        self._init_nested_repo(tmp_path, runner, app)
+        (tmp_path / "train" / "sft.jsonl").write_text(
+            '{"messages": [{"role": "user", "content": "modified"}]}\n'
+        )
+        result = runner.invoke(app, ["status"])
+        assert result.exit_code == 0
+        assert "train/sft.jsonl" in result.output

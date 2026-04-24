@@ -139,14 +139,15 @@ def diff():
     head_files: dict[str, Manifest] = {}
     head_hash = refs.resolve_head()
     if head_hash:
+        from dit.core.tree_walker import flatten_tree
         commit_data = store.read("commits", head_hash)
         head_commit = deserialize_commit(commit_data)
-        tree_data = store.read("trees", head_commit.tree_hash)
-        tree = deserialize_tree(tree_data)
-        for entry in tree.entries:
-            if entry.obj_type == "manifest":
-                m_data = store.read("manifests", entry.obj_hash)
-                head_files[entry.name] = deserialize_manifest(m_data)
+        flat = flatten_tree(store, head_commit.tree_hash)
+        for path, (obj_type, obj_hash) in flat.items():
+            if obj_type == "manifest":
+                m_data = store.read("manifests", obj_hash)
+                if m_data:
+                    head_files[path] = deserialize_manifest(m_data)
 
     all_files = sorted(set(list(current_files.keys()) + list(head_files.keys())))
     any_changes = False
@@ -386,18 +387,20 @@ def tag(
 
 
 def _has_uncommitted_changes(repo_root: Path, dot: Path, store: ObjectStore, refs: RefStore) -> bool:
+    from dit.core.tree_walker import flatten_tree
+
     head_hash = refs.resolve_head()
     if head_hash is None:
         return len(find_jsonl_files(repo_root)) > 0
 
-    head_manifests: dict[str, str] = {}
     commit_data = store.read("commits", head_hash)
     head_commit = deserialize_commit(commit_data)
-    tree_data = store.read("trees", head_commit.tree_hash)
-    tree = deserialize_tree(tree_data)
-    for entry in tree.entries:
-        if entry.obj_type == "manifest":
-            head_manifests[entry.name] = entry.obj_hash
+    flat = flatten_tree(store, head_commit.tree_hash)
+    head_manifests = {
+        path: obj_hash
+        for path, (obj_type, obj_hash) in flat.items()
+        if obj_type == "manifest"
+    }
 
     current_files = find_jsonl_files(repo_root)
     current_rels = {str(f.relative_to(repo_root)) for f in current_files}
@@ -420,31 +423,27 @@ def _has_uncommitted_changes(repo_root: Path, dot: Path, store: ObjectStore, ref
 def _materialize_tree(repo_root: Path, store: ObjectStore, tree_hash: str, old_tree_hash: str | None = None):
     """Materialize working directory from tree, optimizing by skipping unchanged files."""
     from dit.core.workspace import materialize_file
+    from dit.core.tree_walker import flatten_tree
 
-    tree_data = store.read("trees", tree_hash)
-    tree = deserialize_tree(tree_data)
-    new_files = {e.name: e.obj_hash for e in tree.entries if e.obj_type == "manifest"}
+    new_flat = flatten_tree(store, tree_hash)
+    new_files = {path: obj_hash for path, (obj_type, obj_hash) in new_flat.items() if obj_type == "manifest"}
 
     old_files: dict[str, str] = {}
     if old_tree_hash:
-        old_tree_data = store.read("trees", old_tree_hash)
-        old_tree = deserialize_tree(old_tree_data)
-        old_files = {e.name: e.obj_hash for e in old_tree.entries if e.obj_type == "manifest"}
+        old_flat = flatten_tree(store, old_tree_hash)
+        old_files = {path: obj_hash for path, (obj_type, obj_hash) in old_flat.items() if obj_type == "manifest"}
 
-    # Materialize changed or new files
     for name, mhash in new_files.items():
         if old_files.get(name) != mhash:
             m_data = store.read("manifests", mhash)
             manifest = deserialize_manifest(m_data)
             materialize_file(repo_root, name, manifest, store)
 
-    # Remove files that exist in old but not in new
     for name in old_files:
         if name not in new_files:
             file_path = repo_root / name
             if file_path.exists():
                 file_path.unlink()
-                # Clean up empty parent directories
                 parent = file_path.parent
                 while parent != repo_root and not any(parent.iterdir()):
                     parent.rmdir()
