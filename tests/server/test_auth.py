@@ -1,10 +1,24 @@
 import hashlib
 from datetime import datetime, timezone, timedelta
+from unittest.mock import MagicMock
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dit.server.models import Token
+
+
+def _mock_request(service_token: str = ""):
+    """Build a minimal mock Request with app.state.settings.service_token."""
+    settings = MagicMock()
+    settings.service_token = service_token
+    state = MagicMock()
+    state.settings = settings
+    app = MagicMock()
+    app.state = state
+    request = MagicMock()
+    request.app = app
+    return request
 
 
 class TestAuth:
@@ -17,9 +31,10 @@ class TestAuth:
 
         from dit.server.auth import verify_token
 
-        # Manually call verify_token with the right args
         result = await verify_token(
+            request=_mock_request(),
             authorization=f"Bearer {raw}",
+            x_service_token=None,
             session=session,
         )
         assert result.label == "test"
@@ -30,7 +45,12 @@ class TestAuth:
         from dit.server.auth import verify_token
 
         with pytest.raises(HTTPException) as exc_info:
-            await verify_token(authorization=None, session=session)
+            await verify_token(
+                request=_mock_request(),
+                authorization=None,
+                x_service_token=None,
+                session=session,
+            )
         assert exc_info.value.status_code == 401
 
     async def test_invalid_token(self, session: AsyncSession):
@@ -38,7 +58,12 @@ class TestAuth:
         from dit.server.auth import verify_token
 
         with pytest.raises(HTTPException) as exc_info:
-            await verify_token(authorization="Bearer bad-token", session=session)
+            await verify_token(
+                request=_mock_request(),
+                authorization="Bearer bad-token",
+                x_service_token=None,
+                session=session,
+            )
         assert exc_info.value.status_code == 401
 
     async def test_expired_token(self, session: AsyncSession):
@@ -57,7 +82,12 @@ class TestAuth:
         from dit.server.auth import verify_token
 
         with pytest.raises(HTTPException) as exc_info:
-            await verify_token(authorization=f"Bearer {raw}", session=session)
+            await verify_token(
+                request=_mock_request(),
+                authorization=f"Bearer {raw}",
+                x_service_token=None,
+                session=session,
+            )
         assert exc_info.value.status_code == 403
 
     async def test_require_permission_sufficient(self, session: AsyncSession):
@@ -69,7 +99,12 @@ class TestAuth:
 
         from dit.server.auth import verify_token, require_permission
 
-        tok = await verify_token(authorization=f"Bearer {raw}", session=session)
+        tok = await verify_token(
+            request=_mock_request(),
+            authorization=f"Bearer {raw}",
+            x_service_token=None,
+            session=session,
+        )
         # admin >= push, should not raise
         checker = require_permission("push")
         result = await checker(token=tok)
@@ -85,7 +120,12 @@ class TestAuth:
         from fastapi import HTTPException
         from dit.server.auth import verify_token, require_permission
 
-        tok = await verify_token(authorization=f"Bearer {raw}", session=session)
+        tok = await verify_token(
+            request=_mock_request(),
+            authorization=f"Bearer {raw}",
+            x_service_token=None,
+            session=session,
+        )
         checker = require_permission("admin")
         with pytest.raises(HTTPException) as exc_info:
             await checker(token=tok)

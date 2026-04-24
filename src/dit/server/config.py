@@ -6,5 +6,6 @@ class ServerSettings(BaseSettings):
     data_dir: str = "/data/datahub"
     host: str = "0.0.0.0"
     port: int = 8000
+    service_token: str = ""
 
     model_config = SettingsConfigDict(env_prefix="DIT_SERVER_")
