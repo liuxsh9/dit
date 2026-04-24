@@ -41,8 +41,16 @@ class MergePRRequest(BaseModel):
     author: str
 
 
+class ConflictResolution(BaseModel):
+    file_path: str
+    row_hash: str
+    choice: str  # "ours" | "theirs"
+
+
 class ConflictResolutionRequest(BaseModel):
-    resolutions: dict[str, str]  # file_path -> manifest_hash
+    resolutions: list[ConflictResolution]
+    message: str
+    author: str
 
 
 # ---------------------------------------------------------------------------
@@ -380,7 +388,9 @@ async def merge_pull_request(
         pr.target_commit = source_commit
         await session.commit()
         await session.refresh(pr)
-        return _serialize_pr(pr)
+        result_dict = _serialize_pr(pr)
+        result_dict["fast_forward"] = True
+        return result_dict
 
     # Three-way merge
     merge_result = three_way_merge(store, base_hash, target_commit, source_commit)
@@ -438,4 +448,159 @@ async def merge_pull_request(
     await session.commit()
     await session.refresh(pr)
 
+    result_dict = _serialize_pr(pr)
+    result_dict["fast_forward"] = False
+    return result_dict
+
+
+@router.post("/pulls/{pr_id}/resolve")
+async def resolve_conflicts(
+    repo: str,
+    pr_id: int,
+    body: ConflictResolutionRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    _token=Depends(require_permission("push")),
+):
+    from dit.core.merge_base import find_merge_base
+    from dit.core.merge import three_way_merge
+    from dit.core.objects import (
+        Commit,
+        Manifest,
+        ManifestEntry,
+        Tree,
+        TreeEntry,
+        deserialize_manifest,
+        serialize_commit,
+        serialize_manifest,
+        serialize_tree,
+    )
+
+    r = await _get_repo(repo, session)
+
+    result = await session.execute(
+        select(PullRequestMeta).where(
+            PullRequestMeta.repo_id == r.id,
+            PullRequestMeta.pull_request_id == pr_id,
+        )
+    )
+    pr = result.scalar_one_or_none()
+    if pr is None:
+        raise HTTPException(status_code=404, detail=f"Pull request #{pr_id} not found")
+
+    if pr.status != "open":
+        raise HTTPException(status_code=400, detail=f"Pull request is not open (status: {pr.status})")
+
+    store = _store_for_repo(request, repo)
+
+    # Re-resolve current branch heads
+    target_ref_result = await session.execute(
+        select(Ref).where(Ref.repo_id == r.id, Ref.name == pr.target_ref)
+    )
+    target_ref = target_ref_result.scalar_one_or_none()
+    if target_ref is None:
+        raise HTTPException(status_code=404, detail=f"Target branch not found")
+
+    source_ref_result = await session.execute(
+        select(Ref).where(Ref.repo_id == r.id, Ref.name == pr.source_ref)
+    )
+    source_ref = source_ref_result.scalar_one_or_none()
+    if source_ref is None:
+        raise HTTPException(status_code=404, detail=f"Source branch not found")
+
+    target_commit = target_ref.target_hash
+    source_commit = source_ref.target_hash
+
+    base_hash = find_merge_base(store, target_commit, source_commit)
+
+    # Run three-way merge to get current conflicts
+    merge_result = three_way_merge(store, base_hash, target_commit, source_commit)
+
+    if not merge_result.conflicts:
+        raise HTTPException(status_code=400, detail="No conflicts to resolve — use /merge instead")
+
+    # Build resolution map: file_path -> chosen row_hash
+    resolution_map: dict[str, str] = {}
+    for res in body.resolutions:
+        resolution_map[res.file_path] = res.row_hash
+
+    # Start with the auto-merged entries
+    merged_tree_entries = dict(merge_result.merged_tree_entries)
+
+    # Resolve each conflict using the provided resolutions
+    for conflict in merge_result.conflicts:
+        fp = conflict.file_path
+        chosen_hash = resolution_map.get(fp)
+        if chosen_hash is None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"No resolution provided for conflict in '{fp}'",
+            )
+
+        # Determine which entries to use based on chosen_hash
+        all_candidates: list[ManifestEntry] = []
+        if conflict.ours_entries:
+            all_candidates.extend(conflict.ours_entries)
+        if conflict.theirs_entries:
+            all_candidates.extend(conflict.theirs_entries)
+
+        # Find the entry matching chosen_hash
+        chosen_entry = next((e for e in all_candidates if e.row_hash == chosen_hash), None)
+        if chosen_entry is None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Row hash '{chosen_hash}' not found in conflict entries for '{fp}'",
+            )
+
+        # Build resolved manifest with just the chosen entry for this conflict
+        # We need to merge: non-conflicted rows from base auto-merge + the chosen row
+        # Strategy: load ours manifest, replace the conflicted rows with chosen
+        resolved_entries: list[ManifestEntry] = [chosen_entry]
+        resolved_manifest = Manifest(entries=resolved_entries)
+        resolved_bytes = serialize_manifest(resolved_manifest)
+        resolved_hash = store.write("manifests", resolved_bytes)
+        merged_tree_entries[fp] = resolved_hash
+
+    # Build merged tree
+    tree_entries = [
+        TreeEntry(name=name, obj_type="manifest", obj_hash=mhash)
+        for name, mhash in merged_tree_entries.items()
+    ]
+    tree = Tree(entries=tree_entries)
+    tree_bytes = serialize_tree(tree)
+    tree_hash = store.write("trees", tree_bytes)
+
+    # Create merge commit
+    commit = Commit(
+        tree_hash=tree_hash,
+        parent_hashes=[target_commit, source_commit],
+        author=body.author,
+        message=body.message,
+        timestamp=int(time.time()),
+    )
+    commit_bytes = serialize_commit(commit)
+    commit_hash = store.write("commits", commit_bytes)
+
+    # Atomic CAS update target branch
+    stmt = (
+        sa_update(Ref)
+        .where(
+            Ref.repo_id == r.id,
+            Ref.name == pr.target_ref,
+            Ref.target_hash == target_commit,
+        )
+        .values(target_hash=commit_hash)
+        .execution_options(synchronize_session=False)
+    )
+    upd_result = await session.execute(stmt)
+    if upd_result.rowcount == 0:
+        raise HTTPException(status_code=409, detail="Target branch was updated concurrently")
+
+    pr.status = "merged"
+    pr.merge_commit = commit_hash
+    pr.target_commit = commit_hash
+    await session.commit()
+    await session.refresh(pr)
+
     return _serialize_pr(pr)
+
