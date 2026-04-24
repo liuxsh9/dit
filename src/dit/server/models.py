@@ -145,3 +145,17 @@ class BranchProtection(Base):
 
     def __repr__(self) -> str:
         return f"BranchProtection(id={self.id}, repo_id={self.repo_id}, pattern={self.branch_pattern!r})"
+
+
+class PrApproval(Base):
+    __tablename__ = "pr_approval"
+    __table_args__ = {"schema": "datahub"}
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    pull_request_id: Mapped[int] = mapped_column(nullable=False)
+    token_id: Mapped[int] = mapped_column(ForeignKey("datahub.tokens.id"), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)  # 'approved' | 'changes_requested'
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self) -> str:
+        return f"PrApproval(id={self.id}, pr={self.pull_request_id}, status={self.status!r})"

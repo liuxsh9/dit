@@ -76,6 +76,9 @@ def create_app(settings: ServerSettings | None = None) -> FastAPI:
     from dit.server.routes.branch_protection import router as branch_protection_router
     application.include_router(branch_protection_router)
 
+    from dit.server.routes.reviews import router as reviews_router
+    application.include_router(reviews_router)
+
     return application
 
 
