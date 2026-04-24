@@ -44,11 +44,12 @@ class Token(Base):
     label: Mapped[str] = mapped_column(String(128), nullable=False)
     repo_scope: Mapped[Optional[int]] = mapped_column(ForeignKey("datahub.repos.id"), nullable=True)
     permissions: Mapped[str] = mapped_column(String(32), nullable=False, default="push")
+    role: Mapped[str] = mapped_column(String(32), nullable=False, default="reader")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     def __repr__(self) -> str:
-        return f"Token(id={self.id}, label={self.label!r}, permissions={self.permissions!r})"
+        return f"Token(id={self.id}, label={self.label!r}, permissions={self.permissions!r}, role={self.role!r})"
 
 
 class Webhook(Base):
