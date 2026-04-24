@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
+import sqlalchemy as sa
 from sqlalchemy import ForeignKey, String, DateTime, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -61,3 +62,41 @@ class Webhook(Base):
     events: Mapped[str] = mapped_column(String(256), nullable=False)
     active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self) -> str:
+        return f"Webhook(id={self.id}, repo_id={self.repo_id}, url={self.url!r})"
+
+
+class PullRequestMeta(Base):
+    __tablename__ = "data_pull_request_meta"
+    __table_args__ = (
+        sa.UniqueConstraint("repo_id", "pull_request_id", name="uq_pr_repo_prid"),
+        {"schema": "datahub"},
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    repo_id: Mapped[int] = mapped_column(ForeignKey("datahub.repos.id"), nullable=False)
+    pull_request_id: Mapped[int] = mapped_column(nullable=False)
+    title: Mapped[str] = mapped_column(String(512), nullable=False)
+    author: Mapped[str] = mapped_column(String(256), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="open")
+    source_ref: Mapped[str] = mapped_column(String(256), nullable=False)
+    target_ref: Mapped[str] = mapped_column(String(256), nullable=False)
+    base_commit: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_commit: Mapped[str] = mapped_column(String(64), nullable=False)
+    target_commit: Mapped[str] = mapped_column(String(64), nullable=False)
+    merge_commit: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    is_mergeable: Mapped[Optional[bool]] = mapped_column(nullable=True)
+    conflict_files: Mapped[Optional[str]] = mapped_column(sa.Text, nullable=True)
+    stats_added: Mapped[int] = mapped_column(default=0)
+    stats_removed: Mapped[int] = mapped_column(default=0)
+    stats_refreshed: Mapped[int] = mapped_column(default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    def __repr__(self) -> str:
+        return f"PullRequestMeta(id={self.id}, repo_id={self.repo_id}, pr_id={self.pull_request_id}, status={self.status!r})"
