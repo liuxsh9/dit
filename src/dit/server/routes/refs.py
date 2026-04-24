@@ -1,4 +1,5 @@
 import asyncio
+import fnmatch
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -6,10 +7,23 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dit.server.auth import get_session, require_permission
-from dit.server.models import Ref, Repo
+from dit.server.models import BranchProtection, Ref, Repo
 from dit.server.webhooks import load_webhooks, fire_webhook_payloads, WebhookEvent
 
 router = APIRouter(prefix="/api/v1/repos/{repo}", tags=["refs"])
+
+
+async def _check_branch_protection(
+    session: AsyncSession, repo_id: int, branch_name: str
+) -> BranchProtection | None:
+    result = await session.execute(
+        select(BranchProtection).where(BranchProtection.repo_id == repo_id)
+    )
+    rules = result.scalars().all()
+    for rule in rules:
+        if fnmatch.fnmatch(branch_name, rule.branch_pattern):
+            return rule
+    return None
 
 
 async def _update_prs_for_ref_change(
@@ -100,7 +114,7 @@ async def list_refs(
     return [{"name": ref.name, "target_hash": ref.target_hash} for ref in refs]
 
 
-@router.get("/refs/{ref_type}/{name}")
+@router.get("/refs/{ref_type}/{name:path}")
 async def get_ref(
     repo: str,
     ref_type: str,
@@ -119,7 +133,7 @@ async def get_ref(
     return {"name": ref.name, "target_hash": ref.target_hash}
 
 
-@router.post("/refs/{ref_type}/{name}")
+@router.post("/refs/{ref_type}/{name:path}")
 async def cas_update_ref(
     repo: str,
     ref_type: str,
@@ -131,6 +145,14 @@ async def cas_update_ref(
 ):
     r = await _get_repo(repo, session)
     ref_name = f"{ref_type}/{name}"
+
+    if body.old is not None and body.old != "" and ref_type == "heads":
+        protection = await _check_branch_protection(session, r.id, name)
+        if protection is not None and protection.require_pr:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Branch '{name}' is protected and requires a pull request. Direct push is not allowed.",
+            )
 
     if body.old is None or body.old == "":
         # INSERT new ref
@@ -186,7 +208,7 @@ async def cas_update_ref(
         return {"name": ref_name, "target_hash": body.new}
 
 
-@router.delete("/refs/{ref_type}/{name}")
+@router.delete("/refs/{ref_type}/{name:path}")
 async def delete_ref(
     repo: str,
     ref_type: str,

@@ -137,3 +137,69 @@ class TestTagRoutes:
         await self._create_repo(client)
         resp = await client.delete("/api/v1/repos/test-repo/refs/tags/nope")
         assert resp.status_code == 404
+
+
+class TestBranchProtectionEnforcement:
+    async def test_push_to_protected_branch_requires_pr(self, client):
+        """Direct push to a branch with require_pr=True returns 403."""
+        await client.post("/api/v1/repos", json={"name": "prot-pr-repo"})
+        await client.post(
+            "/api/v1/repos/prot-pr-repo/branch-protection",
+            json={"branch_pattern": "main", "require_pr": True},
+        )
+        # Create initial ref (allowed)
+        await client.post(
+            "/api/v1/repos/prot-pr-repo/refs/heads/main",
+            json={"old": None, "new": "a" * 64},
+        )
+        # Direct CAS update → 403
+        resp = await client.post(
+            "/api/v1/repos/prot-pr-repo/refs/heads/main",
+            json={"old": "a" * 64, "new": "b" * 64},
+        )
+        assert resp.status_code == 403
+        assert "pull request" in resp.json()["detail"].lower()
+
+    async def test_push_to_unprotected_branch_allowed(self, client):
+        await client.post("/api/v1/repos", json={"name": "prot-unprotected-repo"})
+        await client.post(
+            "/api/v1/repos/prot-unprotected-repo/branch-protection",
+            json={"branch_pattern": "main", "require_pr": True},
+        )
+        await client.post(
+            "/api/v1/repos/prot-unprotected-repo/refs/heads/feature",
+            json={"old": None, "new": "a" * 64},
+        )
+        resp = await client.post(
+            "/api/v1/repos/prot-unprotected-repo/refs/heads/feature",
+            json={"old": "a" * 64, "new": "b" * 64},
+        )
+        assert resp.status_code == 200
+
+    async def test_push_to_wildcard_pattern_blocked(self, client):
+        await client.post("/api/v1/repos", json={"name": "prot-wildcard-repo"})
+        await client.post(
+            "/api/v1/repos/prot-wildcard-repo/branch-protection",
+            json={"branch_pattern": "release/*", "require_pr": True},
+        )
+        await client.post(
+            "/api/v1/repos/prot-wildcard-repo/refs/heads/release/v1",
+            json={"old": None, "new": "a" * 64},
+        )
+        resp = await client.post(
+            "/api/v1/repos/prot-wildcard-repo/refs/heads/release/v1",
+            json={"old": "a" * 64, "new": "b" * 64},
+        )
+        assert resp.status_code == 403
+
+    async def test_initial_branch_creation_not_blocked(self, client):
+        await client.post("/api/v1/repos", json={"name": "prot-create-repo"})
+        await client.post(
+            "/api/v1/repos/prot-create-repo/branch-protection",
+            json={"branch_pattern": "main", "require_pr": True},
+        )
+        resp = await client.post(
+            "/api/v1/repos/prot-create-repo/refs/heads/main",
+            json={"old": None, "new": "a" * 64},
+        )
+        assert resp.status_code == 200
