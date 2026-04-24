@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +8,15 @@ from dit.server.models import Webhook
 from dit.server.routes._helpers import _get_repo
 
 router = APIRouter(prefix="/api/v1/repos/{repo}", tags=["webhooks"])
+
+_DEPRECATION_DATE = "Sat, 01 Jan 2027 00:00:00 GMT"
+_SUNSET_DATE = "Sat, 01 Jul 2027 00:00:00 GMT"
+
+
+def _add_deprecation_headers(response: Response) -> None:
+    response.headers["Deprecation"] = _DEPRECATION_DATE
+    response.headers["Sunset"] = _SUNSET_DATE
+    response.headers["Link"] = '<https://forgejo.datahub.example/docs/webhooks>; rel="successor-version"'
 
 
 class CreateWebhookRequest(BaseModel):
@@ -20,9 +29,11 @@ class CreateWebhookRequest(BaseModel):
 async def create_webhook(
     repo: str,
     body: CreateWebhookRequest,
+    response: Response,
     session: AsyncSession = Depends(get_session),
     _token=Depends(require_permission("admin")),
 ):
+    _add_deprecation_headers(response)
     r = await _get_repo(repo, session)
     wh = Webhook(repo_id=r.id, url=body.url, secret=body.secret, events=body.events)
     session.add(wh)
@@ -34,9 +45,11 @@ async def create_webhook(
 @router.get("/webhooks")
 async def list_webhooks(
     repo: str,
+    response: Response,
     session: AsyncSession = Depends(get_session),
     _token=Depends(require_permission("admin")),
 ):
+    _add_deprecation_headers(response)
     r = await _get_repo(repo, session)
     result = await session.execute(select(Webhook).where(Webhook.repo_id == r.id))
     hooks = result.scalars().all()
@@ -47,9 +60,11 @@ async def list_webhooks(
 async def delete_webhook(
     repo: str,
     webhook_id: int,
+    response: Response,
     session: AsyncSession = Depends(get_session),
     _token=Depends(require_permission("admin")),
 ):
+    _add_deprecation_headers(response)
     r = await _get_repo(repo, session)
     result = await session.execute(
         select(Webhook).where(Webhook.repo_id == r.id, Webhook.id == webhook_id)
