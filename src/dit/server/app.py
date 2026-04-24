@@ -64,6 +64,9 @@ def create_app(settings: ServerSettings | None = None) -> FastAPI:
     from dit.server.routes.log import router as log_router
     application.include_router(log_router)
 
+    from dit.server.routes.diff_api import router as diff_api_router
+    application.include_router(diff_api_router)
+
     return application
 
 
