@@ -100,3 +100,28 @@ class PullRequestMeta(Base):
 
     def __repr__(self) -> str:
         return f"PullRequestMeta(id={self.id}, repo_id={self.repo_id}, pr_id={self.pull_request_id}, status={self.status!r})"
+
+
+class PrComment(Base):
+    __tablename__ = "pr_comment"
+    __table_args__ = {"schema": "datahub"}
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    pull_request_meta_id: Mapped[int] = mapped_column(
+        ForeignKey("datahub.data_pull_request_meta.id"), nullable=False
+    )
+    author: Mapped[str] = mapped_column(String(256), nullable=False)
+    body: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    file_path: Mapped[Optional[str]] = mapped_column(sa.Text, nullable=True)
+    row_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    field_path: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    change_type: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    def __repr__(self) -> str:
+        return f"PrComment(id={self.id}, pr_meta_id={self.pull_request_meta_id}, author={self.author!r})"

@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy import select
 
-from dit.server.models import PullRequestMeta, Repo
+from dit.server.models import PullRequestMeta, Repo, PrComment
 
 
 class TestPullRequestMetaModel:
@@ -141,3 +141,86 @@ class TestPullRequestMetaModel:
         assert pr.is_mergeable is True
         assert pr.merge_commit == "d" * 64
         assert pr.status == "merged"
+
+
+class TestPrCommentModel:
+    async def test_create_general_comment(self, session):
+        repo = Repo(name="comment-repo")
+        session.add(repo)
+        await session.flush()
+        pr = PullRequestMeta(
+            repo_id=repo.id, pull_request_id=1, title="T", author="a",
+            status="open", source_ref="heads/f", target_ref="heads/m",
+            base_commit="a" * 64, source_commit="b" * 64, target_commit="c" * 64,
+        )
+        session.add(pr)
+        await session.flush()
+        comment = PrComment(
+            pull_request_meta_id=pr.id, author="reviewer1", body="Looks good overall!",
+        )
+        session.add(comment)
+        await session.commit()
+        await session.refresh(comment)
+        assert comment.id is not None
+        assert comment.body == "Looks good overall!"
+        assert comment.file_path is None
+        assert comment.row_hash is None
+        assert comment.field_path is None
+        assert comment.change_type is None
+        assert comment.created_at is not None
+
+    async def test_create_row_level_comment(self, session):
+        repo = Repo(name="row-comment-repo")
+        session.add(repo)
+        await session.flush()
+        pr = PullRequestMeta(
+            repo_id=repo.id, pull_request_id=1, title="T", author="a",
+            status="open", source_ref="heads/f", target_ref="heads/m",
+            base_commit="a" * 64, source_commit="b" * 64, target_commit="c" * 64,
+        )
+        session.add(pr)
+        await session.flush()
+        comment = PrComment(
+            pull_request_meta_id=pr.id, author="reviewer2",
+            body="This response has wrong formatting",
+            file_path="train/data.jsonl", row_hash="d" * 64,
+            field_path="messages[1].content", change_type="added",
+        )
+        session.add(comment)
+        await session.commit()
+        await session.refresh(comment)
+        assert comment.file_path == "train/data.jsonl"
+        assert comment.row_hash == "d" * 64
+        assert comment.field_path == "messages[1].content"
+        assert comment.change_type == "added"
+
+    async def test_multiple_comments_on_same_row(self, session):
+        repo = Repo(name="multi-comment-repo")
+        session.add(repo)
+        await session.flush()
+        pr = PullRequestMeta(
+            repo_id=repo.id, pull_request_id=1, title="T", author="a",
+            status="open", source_ref="heads/f", target_ref="heads/m",
+            base_commit="a" * 64, source_commit="b" * 64, target_commit="c" * 64,
+        )
+        session.add(pr)
+        await session.flush()
+        c1 = PrComment(
+            pull_request_meta_id=pr.id, author="r1", body="Comment 1",
+            file_path="data.jsonl", row_hash="e" * 64, change_type="added",
+        )
+        c2 = PrComment(
+            pull_request_meta_id=pr.id, author="r2", body="Comment 2",
+            file_path="data.jsonl", row_hash="e" * 64, change_type="added",
+        )
+        session.add_all([c1, c2])
+        await session.commit()
+        from sqlalchemy import select
+        result = await session.execute(
+            select(PrComment).where(
+                PrComment.pull_request_meta_id == pr.id,
+                PrComment.row_hash == "e" * 64,
+            )
+        )
+        comments = result.scalars().all()
+        assert len(comments) == 2
