@@ -73,6 +73,9 @@ def create_app(settings: ServerSettings | None = None) -> FastAPI:
     from dit.server.routes.pr_comments import router as pr_comments_router
     application.include_router(pr_comments_router)
 
+    from dit.server.routes.branch_protection import router as branch_protection_router
+    application.include_router(branch_protection_router)
+
     return application
 
 

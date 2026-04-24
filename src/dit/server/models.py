@@ -126,3 +126,22 @@ class PrComment(Base):
 
     def __repr__(self) -> str:
         return f"PrComment(id={self.id}, pr_meta_id={self.pull_request_meta_id}, author={self.author!r})"
+
+
+class BranchProtection(Base):
+    __tablename__ = "branch_protection"
+    __table_args__ = (
+        sa.UniqueConstraint("repo_id", "branch_pattern", name="uq_branch_protection_repo_pattern"),
+        {"schema": "datahub"},
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    repo_id: Mapped[int] = mapped_column(ForeignKey("datahub.repos.id"), nullable=False)
+    branch_pattern: Mapped[str] = mapped_column(String(256), nullable=False)
+    require_pr: Mapped[bool] = mapped_column(default=True)
+    required_approvals: Mapped[int] = mapped_column(default=1)
+    block_force_push: Mapped[bool] = mapped_column(default=True)
+    auto_delete_branch: Mapped[bool] = mapped_column(default=False)
+
+    def __repr__(self) -> str:
+        return f"BranchProtection(id={self.id}, repo_id={self.repo_id}, pattern={self.branch_pattern!r})"
