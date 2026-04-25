@@ -86,3 +86,64 @@ class TestBuildNestedTree:
         tree_hash = build_nested_tree(store, {})
         root = deserialize_tree(store.read("trees", tree_hash))
         assert root.entries == []
+
+
+class TestBuildNestedTreeSidecar:
+    def test_3tuple_with_sidecar_hash(self, tmp_path):
+        store = ObjectStore(tmp_path / "objects")
+        sidecar_hash = "sc" * 32
+        staged = {
+            "train.jsonl": ("manifest", "aa" * 32, sidecar_hash),
+        }
+        tree_hash = build_nested_tree(store, staged)
+        data = store.read("trees", tree_hash)
+        tree = deserialize_tree(data)
+        assert len(tree.entries) == 1
+        assert tree.entries[0].name == "train.jsonl"
+        assert tree.entries[0].sidecar_hash == sidecar_hash
+
+    def test_2tuple_sidecar_hash_is_none(self, tmp_path):
+        store = ObjectStore(tmp_path / "objects")
+        staged = {
+            "eval.jsonl": ("manifest", "bb" * 32),
+        }
+        tree_hash = build_nested_tree(store, staged)
+        data = store.read("trees", tree_hash)
+        tree = deserialize_tree(data)
+        assert tree.entries[0].sidecar_hash is None
+
+    def test_3tuple_none_sidecar_hash(self, tmp_path):
+        store = ObjectStore(tmp_path / "objects")
+        staged = {
+            "data.jsonl": ("manifest", "cc" * 32, None),
+        }
+        tree_hash = build_nested_tree(store, staged)
+        data = store.read("trees", tree_hash)
+        tree = deserialize_tree(data)
+        assert tree.entries[0].sidecar_hash is None
+
+    def test_mixed_2tuple_and_3tuple(self, tmp_path):
+        store = ObjectStore(tmp_path / "objects")
+        sidecar_hash = "dd" * 32
+        staged = {
+            "with_sidecar.jsonl": ("manifest", "ee" * 32, sidecar_hash),
+            "without_sidecar.jsonl": ("manifest", "ff" * 32),
+        }
+        tree_hash = build_nested_tree(store, staged)
+        data = store.read("trees", tree_hash)
+        tree = deserialize_tree(data)
+        by_name = {e.name: e for e in tree.entries}
+        assert by_name["with_sidecar.jsonl"].sidecar_hash == sidecar_hash
+        assert by_name["without_sidecar.jsonl"].sidecar_hash is None
+
+    def test_3tuple_in_nested_directory(self, tmp_path):
+        store = ObjectStore(tmp_path / "objects")
+        sidecar_hash = "11" * 32
+        staged = {
+            "subdir/deep.jsonl": ("manifest", "22" * 32, sidecar_hash),
+        }
+        tree_hash = build_nested_tree(store, staged)
+        root = deserialize_tree(store.read("trees", tree_hash))
+        subdir_entry = next(e for e in root.entries if e.name == "subdir")
+        subdir_tree = deserialize_tree(store.read("trees", subdir_entry.obj_hash))
+        assert subdir_tree.entries[0].sidecar_hash == sidecar_hash
