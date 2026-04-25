@@ -27,7 +27,8 @@ class TestPushUploadOrder:
         refs.init()
         store = ObjectStore(dot / "objects")
 
-        manifest = Manifest(entries=[ManifestEntry(row_hash="a" * 64, query_fingerprint=None)])
+        raw_row_hash = store.write("row_text", b'{"messages":[{"role":"user","content":"hello"}]}\n')
+        manifest = Manifest(entries=[ManifestEntry(row_hash="a" * 64, query_fingerprint=None, raw_row_hash=raw_row_hash)])
         m_hash = store.write("manifests", serialize_manifest(manifest))
 
         sidecar_entries = [
@@ -84,7 +85,14 @@ class TestPushUploadOrder:
         assert result.exit_code == 0, result.output
 
         assert "sidecars" in uploaded_types, f"'sidecars' not in upload sequence: {uploaded_types}"
+        assert "row_text" in uploaded_types, f"'row_text' not in upload sequence: {uploaded_types}"
 
+        if "rows" in uploaded_types and "row_text" in uploaded_types:
+            assert uploaded_types.index("rows") < uploaded_types.index("row_text"), \
+                "rows must be uploaded before row_text"
+        if "row_text" in uploaded_types and "manifests" in uploaded_types:
+            assert uploaded_types.index("row_text") < uploaded_types.index("manifests"), \
+                "row_text must be uploaded before manifests"
         if "manifests" in uploaded_types and "sidecars" in uploaded_types:
             assert uploaded_types.index("manifests") < uploaded_types.index("sidecars"), \
                 "manifests must be uploaded before sidecars"
@@ -116,3 +124,5 @@ class TestPushUploadOrder:
 
         assert "sidecars" in batch_exists_calls, \
             f"batch_exists was not called for sidecars. Calls: {batch_exists_calls}"
+        assert "row_text" in batch_exists_calls, \
+            f"batch_exists was not called for row_text. Calls: {batch_exists_calls}"

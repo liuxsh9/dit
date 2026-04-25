@@ -12,6 +12,7 @@ def walk_commit_objects(
         "trees": set(),
         "manifests": set(),
         "rows": set(),
+        "row_text": set(),
         "sidecars": set(),
         "blobs": set(),
     }
@@ -67,6 +68,8 @@ def _walk_manifest(
     manifest = deserialize_manifest(manifest_data)
     for entry in manifest.entries:
         result["rows"].add(entry.row_hash)
+        if entry.raw_row_hash is not None:
+            result["row_text"].add(entry.raw_row_hash)
 
 
 def is_ancestor(

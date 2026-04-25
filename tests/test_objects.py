@@ -26,8 +26,8 @@ from dit.core.objects import (
 class TestManifest:
     def test_roundtrip(self):
         entries = [
-            ManifestEntry(row_hash="aa" * 32, query_fingerprint="bb" * 32),
-            ManifestEntry(row_hash="cc" * 32, query_fingerprint=None),
+            ManifestEntry(row_hash="aa" * 32, query_fingerprint="bb" * 32, raw_row_hash="dd" * 32),
+            ManifestEntry(row_hash="cc" * 32, query_fingerprint=None, raw_row_hash=None),
         ]
         m = Manifest(entries=entries)
         data = serialize_manifest(m)
@@ -35,7 +35,9 @@ class TestManifest:
         assert len(m2.entries) == 2
         assert m2.entries[0].row_hash == "aa" * 32
         assert m2.entries[0].query_fingerprint == "bb" * 32
+        assert m2.entries[0].raw_row_hash == "dd" * 32
         assert m2.entries[1].query_fingerprint is None
+        assert m2.entries[1].raw_row_hash is None
 
     def test_preserves_order(self):
         hashes = [f"{i:064x}" for i in range(50)]
@@ -45,10 +47,16 @@ class TestManifest:
         assert [e.row_hash for e in m2.entries] == hashes
 
     def test_hash_deterministic(self):
-        entries = [ManifestEntry(row_hash="aa" * 32, query_fingerprint=None)]
+        entries = [ManifestEntry(row_hash="aa" * 32, query_fingerprint=None, raw_row_hash="bb" * 32)]
         m = Manifest(entries=entries)
         data = serialize_manifest(m)
         assert object_hash(data) == object_hash(data)
+
+    def test_old_manifest_without_raw_row_hash_still_deserializes(self):
+        data = b'{"entries":[{"query_fingerprint":null,"row_hash":"' + (b"aa" * 32) + b'"}],"type":"manifest"}'
+        manifest = deserialize_manifest(data)
+        assert manifest.entries[0].row_hash == "aa" * 32
+        assert manifest.entries[0].raw_row_hash is None
 
 
 class TestTree:

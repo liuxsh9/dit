@@ -182,3 +182,46 @@ def test_pull_already_up_to_date(server_app, tmp_path: Path, monkeypatch) -> Non
     r = runner.invoke(app, ["pull"], catch_exceptions=False)
     assert r.exit_code == 0
     assert "up to date" in r.output.lower()
+
+
+def test_pull_preserves_original_jsonl_text(server_app, tmp_path: Path, monkeypatch) -> None:
+    _patch_remote_client(monkeypatch, server_app)
+
+    from starlette.testclient import TestClient
+    sync_client = TestClient(server_app, headers={"Authorization": "Bearer dit_admin"})
+    sync_client.post("/api/v1/repos", json={"name": "stable-text"})
+
+    client_a = tmp_path / "client_a"
+    client_a.mkdir()
+    monkeypatch.chdir(client_a)
+    runner.invoke(app, ["init"], catch_exceptions=False)
+
+    initial_text = '{"messages":[{"role":"user","content":"v1"},{"role":"assistant","content":"r1"}]}\n'
+    (client_a / "data.jsonl").write_text(initial_text)
+    runner.invoke(app, ["add", "data.jsonl"], catch_exceptions=False)
+    runner.invoke(app, ["commit", "-m", "v1"], catch_exceptions=False)
+    set_remote(client_a / ".dit", "origin", "http://testserver/stable-text", token="dit_admin")
+    monkeypatch.chdir(client_a)
+    runner.invoke(app, ["push"], catch_exceptions=False)
+
+    client_b = tmp_path / "client_b"
+    runner.invoke(
+        app,
+        ["clone", "http://testserver/stable-text", str(client_b), "--token", "dit_admin"],
+        catch_exceptions=False,
+    )
+
+    updated_text = (
+        '{"messages":[{"role":"user","content":"v1"},{"role":"assistant","content":"r1"}]}\n'
+        '{"messages":[{"role":"user","content":"v2"},{"role":"assistant","content":"r2"}]}\n'
+    )
+    (client_a / "data.jsonl").write_text(updated_text)
+    monkeypatch.chdir(client_a)
+    runner.invoke(app, ["add", "data.jsonl"], catch_exceptions=False)
+    runner.invoke(app, ["commit", "-m", "v2"], catch_exceptions=False)
+    runner.invoke(app, ["push"], catch_exceptions=False)
+
+    monkeypatch.chdir(client_b)
+    result = runner.invoke(app, ["pull"], catch_exceptions=False)
+    assert result.exit_code == 0, result.output
+    assert (client_b / "data.jsonl").read_text() == updated_text

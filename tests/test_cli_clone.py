@@ -159,3 +159,32 @@ def test_clone_sets_up_remote_config(server_app, tmp_path: Path, monkeypatch) ->
     cfg = get_remote(clone_dir / ".dit", "origin")
     assert cfg is not None
     assert "dataset" in cfg["url"]
+
+
+def test_clone_preserves_original_jsonl_text(server_app, tmp_path: Path, monkeypatch) -> None:
+    src = tmp_path / "src"
+    src.mkdir()
+    monkeypatch.chdir(src)
+    runner.invoke(app, ["init"], catch_exceptions=False)
+
+    original_text = (
+        '{"messages":[{"role":"user","content":"q1"},{"role":"assistant","content":"a1"}]}\n'
+        '{"messages":[{"role":"user","content":"q2"},{"role":"assistant","content":"a2"}]}\n'
+    )
+    jsonl = src / "train.jsonl"
+    jsonl.write_text(original_text)
+
+    runner.invoke(app, ["add", "train.jsonl"], catch_exceptions=False)
+    runner.invoke(app, ["commit", "-m", "init"], catch_exceptions=False)
+
+    _patch_remote_client(monkeypatch, server_app)
+    _push_to_server(server_app, src, monkeypatch)
+
+    clone_dir = tmp_path / "clone"
+    result = runner.invoke(
+        app,
+        ["clone", "http://testserver/dataset", str(clone_dir), "--token", "dit_admin"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    assert (clone_dir / "train.jsonl").read_text() == original_text

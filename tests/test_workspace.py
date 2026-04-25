@@ -34,9 +34,10 @@ class TestBuildManifest:
         fp.write_text('{"a":1}\n{"b":2}\n')
         manifest, row_data = build_manifest_for_file(fp)
         assert len(manifest.entries) == 2
-        assert len(row_data) == 2
+        assert len(row_data) == 4
         for entry in manifest.entries:
             assert len(entry.row_hash) == 64
+            assert entry.raw_row_hash is not None
 
     def test_preserves_row_order(self, tmp_repo: Path):
         fp = tmp_repo / "test.jsonl"
@@ -51,6 +52,13 @@ class TestBuildManifest:
         manifest, row_data = build_manifest_for_file(fp)
         for entry in manifest.entries:
             assert entry.row_hash in row_data
+
+    def test_captures_raw_row_text_for_materialization(self, tmp_repo: Path):
+        fp = tmp_repo / "test.jsonl"
+        fp.write_text('{"role":"user","content":"hi"}\n')
+        manifest, row_data = build_manifest_for_file(fp)
+        assert manifest.entries[0].raw_row_hash is not None
+        assert manifest.entries[0].raw_row_hash in row_data
 
 
 def _write_jsonl(path: Path, rows: list[dict]) -> None:
@@ -80,6 +88,44 @@ def test_materialize_roundtrip(tmp_path: Path) -> None:
     assert len(materialized) == len(rows)
     for original, materialized_row in zip(rows, materialized):
         assert materialized_row == original
+
+
+def test_materialize_preserves_original_row_text_when_available(tmp_path: Path) -> None:
+    src = tmp_path / "data.jsonl"
+    original_text = (
+        '{"messages":[{"role":"user","content":"hello"},{"role":"assistant","content":"hi"}]}\n'
+    )
+    src.write_text(original_text)
+
+    store = ObjectStore(tmp_path / ".dit" / "objects")
+    manifest, row_data = build_manifest_for_file(src)
+    for hash_hex, data in row_data.items():
+        obj_type = "row_text" if data.endswith(b"\n") else "rows"
+        store.write(obj_type, data)
+
+    dest_root = tmp_path / "clone"
+    materialize_file(dest_root, "data.jsonl", manifest, store)
+
+    dest = dest_root / "data.jsonl"
+    assert dest.read_text() == original_text
+
+
+def test_materialize_falls_back_to_canonical_json_when_raw_text_missing(tmp_path: Path) -> None:
+    src = tmp_path / "data.jsonl"
+    src.write_text('{"role":"user","content":"hello"}\n')
+
+    store = ObjectStore(tmp_path / ".dit" / "objects")
+    manifest, row_data = build_manifest_for_file(src)
+    for hash_hex, data in row_data.items():
+        if not data.endswith(b"\n"):
+            store.write("rows", data)
+
+    dest_root = tmp_path / "clone"
+    materialize_file(dest_root, "data.jsonl", manifest, store)
+
+    dest = dest_root / "data.jsonl"
+    assert json.loads(dest.read_text().strip()) == {"role": "user", "content": "hello"}
+    assert dest.read_text() != src.read_text()
 
 
 def test_materialize_missing_row_raises(tmp_path: Path) -> None:
