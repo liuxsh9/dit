@@ -92,6 +92,29 @@ class TestMergeThreeWay:
         result = runner.invoke(app, ["merge", "feature"])
         assert result.exit_code != 0
 
+    def test_merge_delete_vs_modify(self, tmp_path):
+        _init_and_commit(tmp_path, filename="contested.jsonl")
+        (tmp_path / "keep.jsonl").write_text('{"messages":[{"role":"user","content":"keep"}]}\n')
+        runner.invoke(app, ["add", "keep.jsonl"], catch_exceptions=False)
+        runner.invoke(app, ["commit", "-m", "add keep"], catch_exceptions=False)
+
+        runner.invoke(app, ["checkout", "-b", "feature"], catch_exceptions=False)
+        (tmp_path / "contested.jsonl").write_text(
+            json.dumps({"messages": [{"role": "user", "content": "hello"}, {"role": "assistant", "content": "feature"}]}) + "\n"
+        )
+        runner.invoke(app, ["add", "contested.jsonl"], catch_exceptions=False)
+        runner.invoke(app, ["commit", "-m", "feature modify"], catch_exceptions=False)
+
+        runner.invoke(app, ["checkout", "main"], catch_exceptions=False)
+        (tmp_path / "contested.jsonl").unlink()
+        runner.invoke(app, ["add", "contested.jsonl"], catch_exceptions=False)
+        runner.invoke(app, ["commit", "-m", "main delete"], catch_exceptions=False)
+
+        result = runner.invoke(app, ["merge", "feature"])
+
+        assert result.exit_code != 0
+        assert "modify_delete" in result.output
+
 
 class TestMergeConflict:
     def test_conflict_creates_state_files(self, tmp_path):

@@ -61,6 +61,21 @@ class TestAdd:
         result = runner.invoke(app, ["add", "nope.jsonl"])
         assert result.exit_code != 0
 
+    def test_add_tracked_deleted_file_stages_removal(self, tmp_path: Path):
+        os.chdir(tmp_path)
+        runner.invoke(app, ["init"])
+        fp = tmp_path / "gone.jsonl"
+        fp.write_text('{"x":1}\n')
+        runner.invoke(app, ["add", "gone.jsonl"])
+        runner.invoke(app, ["commit", "-m", "initial"])
+
+        fp.unlink()
+        result = runner.invoke(app, ["add", "gone.jsonl"])
+
+        assert result.exit_code == 0
+        idx = json.loads((tmp_path / ".dit" / "index").read_text())
+        assert idx["gone.jsonl"]["type"] == "delete"
+
 
 class TestCommit:
     def _setup_staged(self, tmp_path: Path):
@@ -108,6 +123,30 @@ class TestCommit:
         commit_data = store.read("commits", second_hash)
         commit_obj = deserialize_commit(commit_data)
         assert commit_obj.parent_hashes == [first_hash]
+
+    def test_commit_staged_deletion_removes_file_from_tree(self, tmp_path: Path):
+        os.chdir(tmp_path)
+        runner.invoke(app, ["init"])
+        (tmp_path / "gone.jsonl").write_text('{"x":1}\n')
+        runner.invoke(app, ["add", "gone.jsonl"])
+        runner.invoke(app, ["commit", "-m", "initial"])
+
+        (tmp_path / "gone.jsonl").unlink()
+        runner.invoke(app, ["add", "gone.jsonl"])
+        result = runner.invoke(app, ["commit", "-m", "delete gone"])
+
+        assert result.exit_code == 0
+        from dit.core.tree_walker import flatten_tree
+        from dit.core.store import ObjectStore
+        from dit.core.objects import deserialize_commit
+        from dit.core.refs import RefStore
+        dot = tmp_path / ".dit"
+        store = ObjectStore(dot / "objects")
+        refs = RefStore(dot)
+        head_hash = refs.resolve_head()
+        commit = deserialize_commit(store.read("commits", head_hash))
+        flat = flatten_tree(store, commit.tree_hash)
+        assert "gone.jsonl" not in flat
 
 
 class TestLog:
@@ -258,6 +297,22 @@ class TestStatus:
         result = runner.invoke(app, ["status"])
         assert result.exit_code == 0
         assert "modified" in result.stdout.lower()
+
+    def test_status_staged_deletion_not_reported_as_unstaged(self, tmp_path: Path):
+        os.chdir(tmp_path)
+        runner.invoke(app, ["init"])
+        (tmp_path / "a.jsonl").write_text('{"x":1}\n')
+        runner.invoke(app, ["add", "."])
+        runner.invoke(app, ["commit", "-m", "init"])
+        (tmp_path / "a.jsonl").unlink()
+        runner.invoke(app, ["add", "a.jsonl"])
+
+        result = runner.invoke(app, ["status"])
+
+        assert result.exit_code == 0
+        assert "a.jsonl" in result.stdout
+        assert "Staged files:" in result.stdout
+        assert "Unstaged changes:" not in result.stdout
 
 
 class TestEndToEnd:

@@ -27,6 +27,11 @@ class StagingIndex:
         data[rel_path] = {"hash": obj_hash, "type": obj_type}
         self._write(data)
 
+    def stage_delete(self, rel_path: str) -> None:
+        data = self._load()
+        data[rel_path] = {"hash": "", "type": "delete"}
+        self._write(data)
+
     def entries(self) -> dict[str, str]:
         """Return rel_path → obj_hash (backward compat)."""
         return {k: v["hash"] for k, v in self._load().items()}

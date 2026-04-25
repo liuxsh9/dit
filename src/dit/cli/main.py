@@ -132,6 +132,14 @@ def add(paths: list[str] = typer.Argument(..., help="Files or directories to sta
     dot = get_dot(repo_root)
     store = ObjectStore(dot / "objects")
     index = StagingIndex(dot / "index")
+    refs = RefStore(dot)
+
+    tracked_paths: set[str] = set()
+    head_hash = refs.resolve_head()
+    if head_hash:
+        from dit.core.tree_walker import flatten_tree
+        head_commit = deserialize_commit(store.read("commits", head_hash))
+        tracked_paths = set(flatten_tree(store, head_commit.tree_hash).keys())
 
     for path_str in paths:
         target = Path(path_str).resolve()
@@ -144,6 +152,13 @@ def add(paths: list[str] = typer.Argument(..., help="Files or directories to sta
         elif target.is_file():
             jsonl_files, blob_files = [], [target]
         else:
+            rel_path = path_str if not Path(path_str).is_absolute() else None
+            if rel_path is not None:
+                rel_path = str(Path(rel_path))
+            if rel_path and rel_path in tracked_paths:
+                index.stage_delete(rel_path)
+                typer.echo(f"  staged deletion {rel_path}")
+                continue
             typer.echo(f"fatal: pathspec '{path_str}' did not match any files", err=True)
             raise typer.Exit(1)
 
@@ -246,7 +261,12 @@ def commit(message: str = typer.Option(..., "-m", help="Commit message")):
         old_commit = deserialize_commit(commit_data)
         existing_entries = flatten_tree(store, old_commit.tree_hash)
 
-    merged: dict[str, tuple[str, str]] = {**existing_entries, **staged_typed}
+    merged = dict(existing_entries)
+    for rel_path, (obj_type, obj_hash) in staged_typed.items():
+        if obj_type == "delete":
+            merged.pop(rel_path, None)
+        else:
+            merged[rel_path] = (obj_type, obj_hash)
 
     tree_hash = build_nested_tree(store, merged)
 
@@ -310,10 +330,12 @@ def status():
     typer.echo(f"On branch {branch}")
 
     staged = index.entries()
+    staged_typed = index.entries_typed()
     if staged:
         typer.echo("\nStaged files:")
-        for rel in sorted(staged.keys()):
-            typer.echo(f"  {rel}")
+        for rel, (obj_type, _obj_hash) in sorted(staged_typed.items()):
+            prefix = "deleted:  " if obj_type == "delete" else ""
+            typer.echo(f"  {prefix}{rel}")
 
     head_manifests: dict[str, str] = {}
     head_hash = refs.resolve_head()
@@ -330,7 +352,7 @@ def status():
 
     modified = []
     new_files = []
-    deleted = sorted(head_rels - current_rels)
+    deleted = sorted(rel for rel in (head_rels - current_rels) if staged_typed.get(rel, ("", ""))[0] != "delete")
 
     for fp in current_files:
         rel = str(fp.relative_to(repo_root))
