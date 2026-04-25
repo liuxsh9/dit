@@ -236,3 +236,32 @@ class TestSerializeTreeSidecar:
         entries = {e["name"]: e for e in obj["entries"]}
         assert "sidecar_hash" in entries["a.jsonl"]
         assert "sidecar_hash" not in entries["b.jsonl"]
+
+
+class TestDeserializeTreeSidecar:
+    def test_deserialize_with_sidecar_hash(self):
+        raw = json.dumps({
+            "type": "tree",
+            "entries": [
+                {"name": "data.jsonl", "obj_type": "manifest", "obj_hash": "aa" * 32, "sidecar_hash": "bb" * 32},
+            ],
+        }, separators=(",", ":")).encode("utf-8")
+        t = deserialize_tree(raw)
+        assert t.entries[0].sidecar_hash == "bb" * 32
+
+    def test_deserialize_without_sidecar_hash_defaults_none(self):
+        raw = json.dumps({
+            "type": "tree",
+            "entries": [
+                {"name": "data.jsonl", "obj_type": "manifest", "obj_hash": "aa" * 32},
+            ],
+        }, separators=(",", ":")).encode("utf-8")
+        t = deserialize_tree(raw)
+        assert t.entries[0].sidecar_hash is None
+
+    def test_roundtrip_with_sidecar_hash(self):
+        t = Tree(entries=[
+            TreeEntry(name="data.jsonl", obj_type="manifest", obj_hash="aa" * 32, sidecar_hash="bb" * 32),
+        ])
+        t2 = deserialize_tree(serialize_tree(t))
+        assert t2.entries[0].sidecar_hash == "bb" * 32

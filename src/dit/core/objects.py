@@ -126,7 +126,12 @@ def serialize_tree(t: Tree) -> bytes:
 def deserialize_tree(data: bytes) -> Tree:
     obj = json.loads(data)
     entries = [
-        TreeEntry(name=e["name"], obj_type=e["obj_type"], obj_hash=e["obj_hash"])
+        TreeEntry(
+            name=e["name"],
+            obj_type=e["obj_type"],
+            obj_hash=e["obj_hash"],
+            sidecar_hash=e.get("sidecar_hash"),
+        )
         for e in obj["entries"]
     ]
     return Tree(entries=entries)
