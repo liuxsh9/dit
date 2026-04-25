@@ -85,6 +85,9 @@ def create_app(settings: ServerSettings | None = None) -> FastAPI:
     from dit.server.routes.meta_api import router as meta_router
     application.include_router(meta_router)
 
+    from dit.server.routes.export_api import router as export_router
+    application.include_router(export_router)
+
     return application
 
 
