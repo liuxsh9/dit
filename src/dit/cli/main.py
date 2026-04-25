@@ -2220,11 +2220,9 @@ def fsck(
     store = ObjectStore(dot / "objects")
     refs = RefStore(dot)
 
-    ref_hashes = []
-    for _name, h in refs.list_branches().items():
-        ref_hashes.append(h)
-    for _name, h in refs.list_tags().items():
-        ref_hashes.append(h)
+    branches = refs.list_branches()
+    tags = refs.list_tags()
+    ref_hashes = list(branches.values()) + list(tags.values())
 
     result = run_fsck(
         store,
@@ -2258,6 +2256,10 @@ def fsck(
 
     if not no_graph_check:
         typer.echo("Graph verification:")
+        typer.echo(f"  Refs checked: {len(ref_hashes)} ({len(branches)} branch(es), {len(tags)} tag(s))")
+        commits_count = result.checked_objects.get("commits", 0)
+        if commits_count > 0:
+            typer.echo(f"  Commits reachable: {commits_count}")
         graph_errors = [e for e in result.errors if "missing" in e.message.lower() or "dangling" in e.message.lower()]
         if graph_errors:
             typer.echo(f"  {len(graph_errors)} missing or dangling reference(s) found")
