@@ -1353,6 +1353,35 @@ def push(
     typer.echo(f"Pushed {uploaded} new objects to {remote}/{branch} ({local_hash[:8]})")
 
 
+def _clone_tree_objects(
+    rc,
+    store: ObjectStore,
+    tree_hash: str,
+    manifest_hashes: set,
+):
+    """Recursively download all manifest, sidecar, and subtree objects for a tree hash."""
+    from dit.core.objects import deserialize_tree
+
+    tree_data = rc.download_object("trees", tree_hash)
+    if not tree_data:
+        return
+    store.write("trees", tree_data)
+    tree = deserialize_tree(tree_data)
+
+    for entry in tree.entries:
+        if entry.obj_type == "manifest":
+            m_data = rc.download_object("manifests", entry.obj_hash)
+            if m_data:
+                store.write("manifests", m_data)
+                manifest_hashes.add(entry.obj_hash)
+            if entry.sidecar_hash and not store.exists("sidecars", entry.sidecar_hash):
+                sc_data = rc.download_object("sidecars", entry.sidecar_hash)
+                if sc_data:
+                    store.write("sidecars", sc_data)
+        elif entry.obj_type == "tree":
+            _clone_tree_objects(rc, store, entry.obj_hash, manifest_hashes)
+
+
 @app.command()
 def clone(
     url: str = typer.Argument(..., help="Remote URL (http://host:port/repo-name)"),
@@ -1414,17 +1443,7 @@ def clone(
     for chash in commits_to_fetch:
         commit_data = store.read("commits", chash)
         commit = deserialize_commit(commit_data)
-
-        tree_data = rc.download_object("trees", commit.tree_hash)
-        if tree_data:
-            store.write("trees", tree_data)
-            tree = deserialize_tree(tree_data)
-            for entry in tree.entries:
-                if entry.obj_type == "manifest":
-                    m_data = rc.download_object("manifests", entry.obj_hash)
-                    if m_data:
-                        store.write("manifests", m_data)
-                        manifest_hashes.add(entry.obj_hash)
+        _clone_tree_objects(rc, store, commit.tree_hash, manifest_hashes)
 
     for mhash in manifest_hashes:
         m_data = store.read("manifests", mhash)
@@ -1455,13 +1474,62 @@ def clone(
     typer.echo(f"Clone complete. {len(commits_to_fetch)} commit(s).")
 
 
+def _fetch_tree_objects(
+    rc,
+    store: ObjectStore,
+    tree_hash: str,
+    manifest_hashes: set,
+) -> int:
+    """Recursively download manifest, sidecar, row, and subtree objects. Returns count downloaded."""
+    from dit.core.objects import deserialize_tree, deserialize_manifest
+
+    downloaded = 0
+    if store.exists("trees", tree_hash):
+        tree_data = store.read("trees", tree_hash)
+        if tree_data is None:
+            return 0
+        tree = deserialize_tree(tree_data)
+    else:
+        tree_data = rc.download_object("trees", tree_hash)
+        if not tree_data:
+            return 0
+        store.write("trees", tree_data)
+        downloaded += 1
+        tree = deserialize_tree(tree_data)
+
+    for entry in tree.entries:
+        if entry.obj_type == "manifest":
+            if not store.exists("manifests", entry.obj_hash):
+                m_data = rc.download_object("manifests", entry.obj_hash)
+                if m_data:
+                    store.write("manifests", m_data)
+                    downloaded += 1
+                    manifest_hashes.add(entry.obj_hash)
+                    m = deserialize_manifest(m_data)
+                    for me in m.entries:
+                        if not store.exists("rows", me.row_hash):
+                            row_data = rc.download_object("rows", me.row_hash)
+                            if row_data:
+                                store.write("rows", row_data)
+                                downloaded += 1
+            if entry.sidecar_hash and not store.exists("sidecars", entry.sidecar_hash):
+                sc_data = rc.download_object("sidecars", entry.sidecar_hash)
+                if sc_data:
+                    store.write("sidecars", sc_data)
+                    downloaded += 1
+        elif entry.obj_type == "tree":
+            downloaded += _fetch_tree_objects(rc, store, entry.obj_hash, manifest_hashes)
+
+    return downloaded
+
+
 def _fetch_objects_since(
     rc: "RemoteClient",
     store: ObjectStore,
     remote_hash: str,
     stop_at: str | None,
 ) -> tuple[int, set[str]]:
-    from dit.core.objects import deserialize_commit, deserialize_tree, deserialize_manifest
+    from dit.core.objects import deserialize_commit
 
     downloaded = 0
     manifest_hashes: set[str] = set()
@@ -1486,26 +1554,7 @@ def _fetch_objects_since(
         downloaded += 1
         commit = deserialize_commit(data)
 
-        if not store.exists("trees", commit.tree_hash):
-            tree_data = rc.download_object("trees", commit.tree_hash)
-            if tree_data:
-                store.write("trees", tree_data)
-                downloaded += 1
-                tree = deserialize_tree(tree_data)
-                for entry in tree.entries:
-                    if entry.obj_type == "manifest" and not store.exists("manifests", entry.obj_hash):
-                        m_data = rc.download_object("manifests", entry.obj_hash)
-                        if m_data:
-                            store.write("manifests", m_data)
-                            downloaded += 1
-                            manifest_hashes.add(entry.obj_hash)
-                            m = deserialize_manifest(m_data)
-                            for me in m.entries:
-                                if not store.exists("rows", me.row_hash):
-                                    row_data = rc.download_object("rows", me.row_hash)
-                                    if row_data:
-                                        store.write("rows", row_data)
-                                        downloaded += 1
+        downloaded += _fetch_tree_objects(rc, store, commit.tree_hash, manifest_hashes)
 
         queue.extend(commit.parent_hashes)
 
