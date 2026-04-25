@@ -15,7 +15,7 @@ class RemoteClient:
         )
 
     def _dit_prefix(self) -> str:
-        return f"{self.base_url}/api/v1/repos/{self.repo}/dit"
+        return f"{self.base_url}/api/v1/repos/{self.repo}"
 
     def _refs_url(self, ref_type: str, name: str) -> str:
         return f"{self._dit_prefix()}/refs/{ref_type}/{name}"
