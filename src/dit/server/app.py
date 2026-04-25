@@ -94,6 +94,9 @@ def create_app(settings: ServerSettings | None = None) -> FastAPI:
     from dit.server.routes.search_api import router as search_router
     application.include_router(search_router)
 
+    from dit.server.routes.validate_api import router as validate_router
+    application.include_router(validate_router)
+
     return application
 
 
