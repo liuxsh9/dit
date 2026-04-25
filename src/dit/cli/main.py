@@ -1648,5 +1648,63 @@ def pull(
     typer.echo(f"Pulled {count} new objects. Now at {remote_hash[:8]}.")
 
 
+@app.command()
+def export(
+    ref: str = typer.Option("main", "--ref", help="Branch name or commit hash to export from"),
+    file: Optional[str] = typer.Option(None, "--file", help="Export only this file path"),
+    format: str = typer.Option("jsonl", "--format", help="Output format: jsonl or csv"),
+    include_meta: bool = typer.Option(False, "--include-meta", help="Write .meta.json alongside each file"),
+    output: str = typer.Option(".", "--output", help="Local directory to write exported files"),
+):
+    """Export files from a commit to a local directory."""
+    from dit.core.export import export_commit
+
+    repo_root = find_repo_root()
+    dot = get_dot(repo_root)
+    store = ObjectStore(dot / "objects")
+    refs = RefStore(dot)
+
+    commit_hash = refs.get_branch(ref)
+    if commit_hash is None:
+        if len(ref) == 64 and all(c in "0123456789abcdef" for c in ref):
+            commit_hash = ref
+        else:
+            typer.echo(f"fatal: ref '{ref}' not found", err=True)
+            raise typer.Exit(1)
+
+    output_dir = Path(output)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    typer.echo(f"Exporting from {ref} (commit {commit_hash[:8]})")
+
+    try:
+        report = export_commit(
+            store,
+            commit_hash,
+            output_dir,
+            file_filter=file,
+            fmt=format,
+            include_meta=include_meta,
+        )
+    except FileNotFoundError as exc:
+        typer.echo(f"fatal: {exc}", err=True)
+        raise typer.Exit(1)
+    except ValueError as exc:
+        typer.echo(f"fatal: {exc}", err=True)
+        raise typer.Exit(1)
+
+    for entry in report:
+        rows = entry["rows"]
+        row_word = "row" if rows == 1 else "rows"
+        typer.echo(f"  {entry['path']} ({rows} {row_word})... done")
+        if include_meta:
+            meta_path = entry["path"] + ".meta.json"
+            if (output_dir / meta_path).exists():
+                typer.echo(f"  {meta_path}... done")
+
+    file_word = "file" if len(report) == 1 else "files"
+    typer.echo(f"Exported {len(report)} {file_word} to {output_dir}/")
+
+
 def _get_author() -> str:
     return os.environ.get("DIT_AUTHOR", os.environ.get("USER", "unknown"))
