@@ -1706,5 +1706,164 @@ def export(
     typer.echo(f"Exported {len(report)} {file_word} to {output_dir}/")
 
 
+@app.command()
+def stats(
+    path: str = typer.Argument("", help="Optional path filter: file name or directory prefix"),
+    ref: str = typer.Option("main", "--ref", help="Branch name or commit hash to inspect"),
+    compare: tuple[str, str] = typer.Option((None, None), "--compare", help="Compare two refs: --compare REF1 REF2"),
+    format: str = typer.Option("table", "--format", help="Output format: table or json"),
+):
+    """Show repo-level stats aggregated from sidecar metadata."""
+    import json as _json
+    from dit.core.stats import repo_stats, compare_stats
+
+    repo_root = find_repo_root()
+    dot = get_dot(repo_root)
+    store = ObjectStore(dot / "objects")
+    refs = RefStore(dot)
+
+    comparing = compare[0] is not None and compare[1] is not None
+
+    if comparing:
+        commit1, commit2 = compare
+        try:
+            result = compare_stats(store, commit1, commit2, path_prefix=path or None)
+        except FileNotFoundError as exc:
+            typer.echo(f"fatal: {exc}", err=True)
+            raise typer.Exit(1)
+
+        if format == "json":
+            typer.echo(_json.dumps(result, indent=2))
+            return
+
+        typer.echo(f"Stats delta: {commit1[:8]} -> {commit2[:8]}")
+        typer.echo("")
+        if not result["files"]:
+            typer.echo("No files with sidecars on both sides.")
+            return
+
+        col_file = max(len(f["path"]) for f in result["files"])
+        col_file = max(col_file, 4)
+        header = f"{'File':<{col_file}}  {'Rows (delta)':>20}  {'Tokens (delta)':>18}  {'Chars (delta)':>18}"
+        typer.echo(header)
+        typer.echo("-" * len(header))
+
+        for f in result["files"]:
+            delta = f["delta"]
+            row_sign = "+" if delta["row_count"] >= 0 else ""
+            tok_sign = "+" if delta["token_estimate"] >= 0 else ""
+            char_sign = "+" if delta["char_count"] >= 0 else ""
+            rows_str = f"{f['old']['row_count']} -> {f['new']['row_count']} ({row_sign}{delta['row_count']})"
+            old_tok = _fmt_tokens(f["old"]["token_estimate"])
+            new_tok = _fmt_tokens(f["new"]["token_estimate"])
+            delta_tok = _fmt_tokens(abs(delta["token_estimate"]))
+            tok_str = f"{old_tok} -> {new_tok} ({tok_sign}{delta_tok})"
+            char_str = f"{_fmt_chars(f['old']['char_count'])} -> {_fmt_chars(f['new']['char_count'])} ({char_sign}{_fmt_chars(delta['char_count'])})"
+            typer.echo(f"{f['path']:<{col_file}}  {rows_str:>20}  {tok_str:>18}  {char_str:>18}")
+
+        typer.echo("-" * len(header))
+        td = result["totals_delta"]
+        row_sign = "+" if td["row_count"] >= 0 else ""
+        tok_sign = "+" if td["token_estimate"] >= 0 else ""
+        char_sign = "+" if td["char_count"] >= 0 else ""
+        typer.echo(f"{'TOTAL':<{col_file}}  {row_sign}{td['row_count']:>19}  {tok_sign}{_fmt_tokens(abs(td['token_estimate'])):>17}  {char_sign}{_fmt_chars(td['char_count']):>17}")
+        return
+
+    # Single-ref mode
+    commit_hash = refs.get_branch(ref)
+    if commit_hash is None:
+        if len(ref) == 64 and all(c in "0123456789abcdef" for c in ref):
+            commit_hash = ref
+        else:
+            typer.echo(f"fatal: ref '{ref}' not found", err=True)
+            raise typer.Exit(1)
+
+    if commit_hash is None:
+        typer.echo(f"fatal: no commits on branch '{ref}'", err=True)
+        raise typer.Exit(1)
+
+    try:
+        result = repo_stats(store, commit_hash, path_prefix=path or None)
+    except FileNotFoundError as exc:
+        typer.echo(f"fatal: {exc}", err=True)
+        raise typer.Exit(1)
+
+    if format == "json":
+        typer.echo(_json.dumps(result, indent=2))
+        return
+
+    # Table mode
+    path_filter_str = f" \u2014 {path}" if path else ""
+    typer.echo(f"Repo stats at {ref} (commit {commit_hash[:8]}){path_filter_str}")
+    typer.echo("")
+
+    if not result["files"]:
+        typer.echo("No manifest files found.")
+        return
+
+    col_file = max(len(f["path"]) for f in result["files"])
+    col_file = max(col_file, 4)
+    header = f"{'File':<{col_file}}  {'Rows':>8}  {'Tokens':>10}  {'Chars':>10}  {'Avg fields':>10}  Lang"
+    sep = "\u2500" * len(header)
+    typer.echo(header)
+    typer.echo(sep)
+
+    for f in result["files"]:
+        if f["has_sidecar"]:
+            rows_str = f"{f['row_count']:,}"
+            tok_str = _fmt_tokens(f["token_estimate"])
+            char_str = _fmt_chars(f["char_count"])
+            avg_str = f"{f['avg_fields']:.1f}"
+            lang_str = _fmt_lang(f["lang_distribution"])
+        else:
+            rows_str = tok_str = char_str = avg_str = lang_str = "\u2014"
+        typer.echo(f"{f['path']:<{col_file}}  {rows_str:>8}  {tok_str:>10}  {char_str:>10}  {avg_str:>10}  {lang_str}")
+
+    typer.echo(sep)
+    totals = result["totals"]
+    if totals["files_with_sidecar"]:
+        tot_rows = f"{totals['row_count']:,}"
+        tot_tok = _fmt_tokens(totals["token_estimate"])
+        tot_char = _fmt_chars(totals["char_count"])
+        tot_lang = _fmt_lang(totals["lang_distribution"])
+    else:
+        tot_rows = tot_tok = tot_char = tot_lang = "\u2014"
+    typer.echo(f"{'TOTAL':<{col_file}}  {tot_rows:>8}  {tot_tok:>10}  {tot_char:>10}  {'':>10}  {tot_lang}")
+
+    missing = totals["file_count"] - totals["files_with_sidecar"]
+    if missing > 0:
+        typer.echo("")
+        typer.echo(f"{missing} of {totals['file_count']} files have no sidecar metadata. Run 'dit meta compute' to fill gaps.")
+
+
+def _fmt_tokens(n: int | None) -> str:
+    if n is None:
+        return "\u2014"
+    if n >= 1_000_000:
+        return f"~{n / 1_000_000:.2f}M"
+    if n >= 1_000:
+        return f"~{n / 1_000:.0f}K"
+    return str(n)
+
+
+def _fmt_chars(n: int | None) -> str:
+    if n is None:
+        return "\u2014"
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.2f}M"
+    if n >= 1_000:
+        return f"{n / 1_000:.0f}K"
+    return str(n)
+
+
+def _fmt_lang(dist: dict | None) -> str:
+    if not dist:
+        return "\u2014"
+    top_lang, top_count = max(dist.items(), key=lambda kv: kv[1])
+    total = sum(dist.values())
+    pct = round(top_count / total * 100) if total > 0 else 0
+    return f"{top_lang} {pct}%"
+
+
 def _get_author() -> str:
     return os.environ.get("DIT_AUTHOR", os.environ.get("USER", "unknown"))
