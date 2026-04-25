@@ -145,6 +145,9 @@ def create_app(settings: ServerSettings | None = None) -> FastAPI:
     from dit.server.routes.dedup_api import router as dedup_router
     application.include_router(dedup_router)
 
+    from dit.server.routes.fsck_api import router as fsck_router
+    application.include_router(fsck_router)
+
     return application
 
 
