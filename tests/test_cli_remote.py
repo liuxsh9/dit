@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import httpx
 import pytest
 from typer.testing import CliRunner
 
@@ -109,3 +110,57 @@ def test_auth_set_token_custom_remote(
     dot = tmp_path / ".dit"
     cfg = get_remote(dot, "upstream")
     assert cfg["token"] == "dit_upstreamtok"
+
+
+def test_push_reports_unauthorized_without_traceback(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data.jsonl").write_text(
+        '{"messages":[{"role":"user","content":"q"},{"role":"assistant","content":"a"}]}\n'
+    )
+    assert runner.invoke(app, ["add", "data.jsonl"]).exit_code == 0
+    assert runner.invoke(app, ["commit", "-m", "init"]).exit_code == 0
+    assert runner.invoke(app, ["remote", "add", "origin", "http://server:8000/repo"]).exit_code == 0
+
+    request = httpx.Request("GET", "http://server:8000/api/v1/repos/repo/refs/heads/main")
+    response = httpx.Response(401, request=request, json={"detail": "Invalid token"})
+
+    class UnauthorizedRemote:
+        def get_ref(self, ref_type: str, name: str) -> str | None:
+            raise httpx.HTTPStatusError(
+                "Client error '401 Unauthorized' for url 'http://server:8000/api/v1/repos/repo/refs/heads/main'",
+                request=request,
+                response=response,
+            )
+
+    monkeypatch.setattr("dit.cli.main._build_remote_client", lambda dot, remote_name="origin": UnauthorizedRemote())
+    result = runner.invoke(app, ["push"])
+    assert result.exit_code != 0
+    assert "401" in result.output
+    assert "Invalid token" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_push_reports_connection_error_without_traceback(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data.jsonl").write_text(
+        '{"messages":[{"role":"user","content":"q"},{"role":"assistant","content":"a"}]}\n'
+    )
+    assert runner.invoke(app, ["add", "data.jsonl"]).exit_code == 0
+    assert runner.invoke(app, ["commit", "-m", "init"]).exit_code == 0
+    assert runner.invoke(app, ["remote", "add", "origin", "http://server:8000/repo"]).exit_code == 0
+
+    request = httpx.Request("GET", "http://server:8000/api/v1/repos/repo/refs/heads/main")
+
+    class BadHostRemote:
+        def get_ref(self, ref_type: str, name: str) -> str | None:
+            raise httpx.ConnectError("Connection refused", request=request)
+
+    monkeypatch.setattr("dit.cli.main._build_remote_client", lambda dot, remote_name="origin": BadHostRemote())
+    result = runner.invoke(app, ["push"])
+    assert result.exit_code != 0
+    assert "Connection refused" in result.output
+    assert "Traceback" not in result.output

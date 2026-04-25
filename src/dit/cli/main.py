@@ -3,8 +3,10 @@ import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from contextlib import contextmanager
 from typing import Optional
 
+import httpx
 import typer
 
 from dit.core.index import StagingIndex
@@ -27,6 +29,33 @@ from dit.core.store import ObjectStore
 from dit.core.workspace import build_manifest_for_file, find_jsonl_files
 
 app = typer.Typer(name="dit", help="Git-like version control for SFT training data.")
+
+
+@contextmanager
+def remote_error_boundary(action: str):
+    """Translate httpx errors into git-style CLI failures without tracebacks."""
+    try:
+        yield
+    except httpx.HTTPStatusError as exc:
+        detail = ""
+        try:
+            payload = exc.response.json()
+            if isinstance(payload, dict):
+                detail = payload.get("detail", "") or payload.get("message", "")
+        except Exception:
+            detail = exc.response.text.strip()
+
+        status = exc.response.status_code
+        message = f"error: {action} failed ({status})"
+        if detail:
+            message += f": {detail}"
+        else:
+            message += f": {exc.response.reason_phrase}"
+        typer.echo(message, err=True)
+        raise typer.Exit(1)
+    except httpx.RequestError as exc:
+        typer.echo(f"error: {action} failed: {exc}", err=True)
+        raise typer.Exit(1)
 
 
 def find_repo_root() -> Path:
@@ -1300,7 +1329,8 @@ def push(
 
     rc = _build_remote_client(dot, remote)
 
-    remote_hash = rc.get_ref("heads", branch)
+    with remote_error_boundary("push"):
+        remote_hash = rc.get_ref("heads", branch)
 
     if remote_hash is not None:
         if not is_ancestor(store, remote_hash, local_hash):
@@ -1329,7 +1359,8 @@ def push(
         if not hashes:
             to_upload[obj_type] = []
             continue
-        exists = rc.batch_exists(obj_type, hashes)
+        with remote_error_boundary("push"):
+            exists = rc.batch_exists(obj_type, hashes)
         to_upload[obj_type] = [h for h in hashes if not exists.get(h, False)]
 
     total = sum(len(v) for v in to_upload.values())
@@ -1340,10 +1371,12 @@ def push(
             if data is None:
                 typer.echo(f"warning: local object {obj_type}/{hash_hex} missing in store", err=True)
                 continue
-            rc.upload_object(obj_type, hash_hex, data)
+            with remote_error_boundary("push"):
+                rc.upload_object(obj_type, hash_hex, data)
             uploaded += 1
 
-    ok = rc.cas_ref("heads", branch, old=remote_hash, new=local_hash)
+    with remote_error_boundary("push"):
+        ok = rc.cas_ref("heads", branch, old=remote_hash, new=local_hash)
     if not ok:
         typer.echo(
             "error: remote ref was updated by another push — pull and retry",
@@ -1420,7 +1453,8 @@ def clone(
 
     rc = RemoteClient(base_url=base_url, token=token, repo=repo_name)
 
-    remote_hash = rc.get_ref("heads", branch)
+    with remote_error_boundary("clone"):
+        remote_hash = rc.get_ref("heads", branch)
     if remote_hash is None:
         typer.echo(f"fatal: remote branch '{branch}' not found", err=True)
         raise typer.Exit(1)
@@ -1436,7 +1470,8 @@ def clone(
         if chash in visited:
             continue
         visited.add(chash)
-        data = rc.download_object("commits", chash)
+        with remote_error_boundary("clone"):
+            data = rc.download_object("commits", chash)
         if data is None:
             typer.echo(f"warning: commit {chash} not found on remote", err=True)
             continue
@@ -1449,7 +1484,8 @@ def clone(
     for chash in commits_to_fetch:
         commit_data = store.read("commits", chash)
         commit = deserialize_commit(commit_data)
-        _clone_tree_objects(rc, store, commit.tree_hash, manifest_hashes)
+        with remote_error_boundary("clone"):
+            _clone_tree_objects(rc, store, commit.tree_hash, manifest_hashes)
 
     for mhash in manifest_hashes:
         m_data = store.read("manifests", mhash)
@@ -1458,7 +1494,8 @@ def clone(
         manifest = deserialize_manifest(m_data)
         for entry in manifest.entries:
             if not store.exists("rows", entry.row_hash):
-                row_data = rc.download_object("rows", entry.row_hash)
+                with remote_error_boundary("clone"):
+                    row_data = rc.download_object("rows", entry.row_hash)
                 if row_data:
                     store.write("rows", row_data)
 
@@ -1584,7 +1621,8 @@ def fetch(
     refs = RefStore(dot)
 
     rc = _build_remote_client(dot, remote)
-    remote_hash = rc.get_ref("heads", branch)
+    with remote_error_boundary("fetch"):
+        remote_hash = rc.get_ref("heads", branch)
     if remote_hash is None:
         typer.echo(f"  remote branch '{branch}' not found")
         return
@@ -1594,7 +1632,8 @@ def fetch(
         typer.echo("Already up to date.")
         return
 
-    count, _ = _fetch_objects_since(rc, store, remote_hash, stop_at=local_hash)
+    with remote_error_boundary("fetch"):
+        count, _ = _fetch_objects_since(rc, store, remote_hash, stop_at=local_hash)
     typer.echo(f"Fetched {count} new objects from {remote}/{branch}")
 
 
@@ -1614,7 +1653,8 @@ def pull(
     refs = RefStore(dot)
 
     rc = _build_remote_client(dot, remote)
-    remote_hash = rc.get_ref("heads", branch)
+    with remote_error_boundary("pull"):
+        remote_hash = rc.get_ref("heads", branch)
     if remote_hash is None:
         typer.echo(f"  remote branch '{branch}' not found")
         return
@@ -1624,7 +1664,8 @@ def pull(
         typer.echo("Already up to date.")
         return
 
-    count, _ = _fetch_objects_since(rc, store, remote_hash, stop_at=local_hash)
+    with remote_error_boundary("pull"):
+        count, _ = _fetch_objects_since(rc, store, remote_hash, stop_at=local_hash)
 
     if local_hash is not None and not is_ancestor(store, local_hash, remote_hash):
         typer.echo(
