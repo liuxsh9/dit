@@ -140,3 +140,55 @@ def test_is_ancestor_descendant_not_ancestor(tmp_path: Path) -> None:
     ca = _store_commit(store, thash, [])
     cb = _store_commit(store, thash, [ca])
     assert is_ancestor(store, cb, ca) is False
+
+
+class TestWalkSidecars:
+    def test_sidecar_hash_collected(self, tmp_path: Path) -> None:
+        store = _make_store(tmp_path)
+        row_hash = _store_row(store, '{"text":"hello world example"}')
+        manifest_hash = _store_manifest(store, [row_hash])
+        sidecar_hash = "sc" * 32
+        tree_hash = _store_tree(store, [
+            TreeEntry(name="data.jsonl", obj_type="manifest", obj_hash=manifest_hash, sidecar_hash=sidecar_hash)
+        ])
+        commit_hash = _store_commit(store, tree_hash, [])
+
+        result = walk_commit_objects(store, commit_hash)
+        assert "sidecars" in result
+        assert sidecar_hash in result["sidecars"]
+
+    def test_no_sidecar_hash_not_in_result(self, tmp_path: Path) -> None:
+        store = _make_store(tmp_path)
+        row_hash = _store_row(store, '{"a":1}')
+        manifest_hash = _store_manifest(store, [row_hash])
+        tree_hash = _store_tree(store, [
+            TreeEntry(name="data.jsonl", obj_type="manifest", obj_hash=manifest_hash)
+        ])
+        commit_hash = _store_commit(store, tree_hash, [])
+
+        result = walk_commit_objects(store, commit_hash)
+        assert result.get("sidecars", set()) == set()
+
+    def test_multiple_sidecar_hashes_all_collected(self, tmp_path: Path) -> None:
+        store = _make_store(tmp_path)
+        sc1 = "11" * 32
+        sc2 = "22" * 32
+        m1 = _store_manifest(store, [_store_row(store, '{"x":1}')])
+        m2 = _store_manifest(store, [_store_row(store, '{"y":2}')])
+        tree_hash = _store_tree(store, [
+            TreeEntry(name="a.jsonl", obj_type="manifest", obj_hash=m1, sidecar_hash=sc1),
+            TreeEntry(name="b.jsonl", obj_type="manifest", obj_hash=m2, sidecar_hash=sc2),
+        ])
+        commit_hash = _store_commit(store, tree_hash, [])
+
+        result = walk_commit_objects(store, commit_hash)
+        assert sc1 in result["sidecars"]
+        assert sc2 in result["sidecars"]
+
+    def test_sidecars_key_present_in_result_dict(self, tmp_path: Path) -> None:
+        store = _make_store(tmp_path)
+        tree_hash = _store_tree(store, [])
+        commit_hash = _store_commit(store, tree_hash, [])
+
+        result = walk_commit_objects(store, commit_hash)
+        assert "sidecars" in result
