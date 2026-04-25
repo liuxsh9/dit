@@ -28,7 +28,7 @@
 
 ```bash
 cd "$TEST_DIR"
-uv run dit log
+dit log
 ```
 
 预期输出（至少两个 commit 块）：
@@ -62,22 +62,22 @@ export TEST_DIR=$(mktemp -d)
 echo "测试目录：$TEST_DIR"
 cd "$TEST_DIR"
 
-uv run dit init
+dit init
 
 cat > "$TEST_DIR/train.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "什么是 Python 列表推导式？"}, {"role": "assistant", "content": "列表推导式是一种简洁创建列表的方式，语法为 `[expr for item in iterable if cond]`。"}]}
 {"messages": [{"role": "user", "content": "Python 中 range(5) 产生哪些数？"}, {"role": "assistant", "content": "产生 0, 1, 2, 3, 4，共 5 个整数，不包含终止值 5。"}]}
 EOF
 
-uv run dit add .
-uv run dit commit -m "初始训练数据：2条基础样本"
+dit add .
+dit commit -m "初始训练数据：2条基础样本"
 
 cat >> "$TEST_DIR/train.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "如何在 Python 中打开文件？"}, {"role": "assistant", "content": "使用 `with open('file.txt', 'r') as f:` 语句，`with` 块结束后文件自动关闭。"}]}
 EOF
 
-uv run dit add .
-uv run dit commit -m "补充文件操作样本"
+dit add .
+dit commit -m "补充文件操作样本"
 ```
 
 验证清单：
@@ -93,7 +93,7 @@ uv run dit commit -m "补充文件操作样本"
 
 ```bash
 cd "$TEST_DIR"
-uv run dit branch
+dit branch
 ```
 
 ### 预期输出
@@ -135,7 +135,7 @@ cat "$TEST_DIR/.dit/refs/heads/main"
 
 ```bash
 cd "$TEST_DIR"
-uv run dit branch feature-x
+dit branch feature-x
 ```
 
 #### 预期输出
@@ -148,7 +148,7 @@ Created branch 'feature-x' at <8位哈希>.
 
 ```bash
 # 列出所有分支
-uv run dit branch
+dit branch
 # 预期：* main 和 feature-x 均出现，* 仍在 main
 
 # 检查分支引用文件是否已创建
@@ -177,7 +177,7 @@ diff "$TEST_DIR/.dit/refs/heads/main" "$TEST_DIR/.dit/refs/heads/feature-x"
 
 ```bash
 cd "$TEST_DIR"
-uv run dit checkout -b feature-y
+dit checkout -b feature-y
 ```
 
 #### 预期输出
@@ -190,7 +190,7 @@ Switched to new branch 'feature-y'.
 
 ```bash
 # 列出分支，验证 * 已移至 feature-y
-uv run dit branch
+dit branch
 # 预期：
 #   feature-x <哈希>
 # * feature-y <哈希>
@@ -211,7 +211,7 @@ cat "$TEST_DIR/.dit/HEAD"
 
 ```bash
 cd "$TEST_DIR"
-uv run dit branch feature-x
+dit branch feature-x
 echo "退出码: $?"
 ```
 
@@ -235,7 +235,7 @@ echo "退出码: $?"
 
 ```bash
 cd "$TEST_DIR"
-uv run dit checkout main
+dit checkout main
 ```
 
 #### 预期输出
@@ -251,7 +251,7 @@ Switched to branch 'main'.
 cat "$TEST_DIR/.dit/HEAD"
 # 预期：ref:main
 
-uv run dit branch
+dit branch
 # 预期：* main
 ```
 
@@ -268,7 +268,7 @@ uv run dit branch
 
 ```bash
 cd "$TEST_DIR"
-uv run dit switch feature-x
+dit switch feature-x
 ```
 
 #### 预期输出
@@ -283,7 +283,7 @@ Switched to branch 'feature-x'.
 cat "$TEST_DIR/.dit/HEAD"
 # 预期：ref:feature-x
 
-uv run dit branch
+dit branch
 # 预期：* feature-x
 ```
 
@@ -294,7 +294,7 @@ uv run dit branch
 切换回 main，为后续步骤做准备：
 
 ```bash
-uv run dit checkout main
+dit checkout main
 cat "$TEST_DIR/.dit/HEAD"
 # 预期：ref:main
 ```
@@ -316,7 +316,7 @@ cat "$TEST_DIR/.dit/HEAD"
 
 ```bash
 cd "$TEST_DIR"
-uv run dit checkout feature-x
+dit checkout feature-x
 ```
 
 向数据集追加一条新样本：
@@ -326,8 +326,8 @@ cat >> "$TEST_DIR/train.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "Python 中 enumerate 函数的作用是什么？"}, {"role": "assistant", "content": "`enumerate(iterable)` 返回 (索引, 值) 对的迭代器，常用于需要索引的循环：`for i, v in enumerate(lst):`。"}]}
 EOF
 
-uv run dit add train.jsonl
-uv run dit commit -m "feature-x：补充 enumerate 样本"
+dit add train.jsonl
+dit commit -m "feature-x：补充 enumerate 样本"
 ```
 
 #### 预期输出
@@ -340,7 +340,7 @@ uv run dit commit -m "feature-x：补充 enumerate 样本"
 
 ```bash
 # feature-x 的日志应比 main 多一个 commit
-uv run dit log
+dit log
 ```
 
 验证清单：
@@ -365,7 +365,7 @@ diff "$TEST_DIR/.dit/refs/heads/main" "$TEST_DIR/.dit/refs/heads/feature-x"
 
 ```bash
 cd "$TEST_DIR"
-uv run dit checkout main
+dit checkout main
 ```
 
 #### 验证方法
@@ -376,7 +376,7 @@ wc -l "$TEST_DIR/train.jsonl"
 # 预期：3（feature-x 上新增的第 4 行不在 main 上）
 
 # main 的日志应不含 feature-x 的 commit
-uv run dit log
+dit log
 ```
 
 验证清单：
@@ -392,20 +392,20 @@ uv run dit log
 
 ```bash
 cd "$TEST_DIR"
-uv run dit checkout feature-x
+dit checkout feature-x
 
 cat > "$TEST_DIR/feature-only.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "这是仅在 feature-x 分支存在的样本。"}, {"role": "assistant", "content": "仅在 feature-x 上存在。"}]}
 EOF
 
-uv run dit add feature-only.jsonl
-uv run dit commit -m "feature-x：新增仅该分支存在的文件"
+dit add feature-only.jsonl
+dit commit -m "feature-x：新增仅该分支存在的文件"
 ```
 
 切回 main 并验证：
 
 ```bash
-uv run dit checkout main
+dit checkout main
 
 ls "$TEST_DIR/feature-only.jsonl" 2>/dev/null && echo "存在" || echo "不存在"
 # 预期：不存在
@@ -427,7 +427,7 @@ ls "$TEST_DIR/feature-only.jsonl" 2>/dev/null && echo "存在" || echo "不存�
 
 ```bash
 cd "$TEST_DIR"
-uv run dit branch -d feature-y
+dit branch -d feature-y
 ```
 
 #### 预期输出
@@ -440,7 +440,7 @@ Deleted branch 'feature-y'.
 
 ```bash
 # feature-y 不再出现在分支列表中
-uv run dit branch
+dit branch
 # 预期：feature-x 和 main，无 feature-y
 
 # 引用文件已删除
@@ -458,7 +458,7 @@ ls "$TEST_DIR/.dit/refs/heads/"
 
 ```bash
 cd "$TEST_DIR"
-uv run dit branch -d nonexistent
+dit branch -d nonexistent
 echo "退出码: $?"
 ```
 
@@ -487,7 +487,7 @@ cd "$TEST_DIR"
 HEAD_HASH=$(cat "$TEST_DIR/.dit/refs/heads/main")
 echo "当前 main HEAD：$HEAD_HASH"
 
-uv run dit tag v1.0
+dit tag v1.0
 ```
 
 #### 预期输出
@@ -526,8 +526,8 @@ TAG_HASH=$(cat "$TEST_DIR/.dit/refs/tags/v1.0")
 
 ```bash
 cd "$TEST_DIR"
-uv run dit checkout feature-x
-uv run dit tag v2.0-beta
+dit checkout feature-x
+dit tag v2.0-beta
 ```
 
 #### 预期输出
@@ -552,7 +552,7 @@ TAG2_HASH=$(cat "$TEST_DIR/.dit/refs/tags/v2.0-beta")
 切回 main：
 
 ```bash
-uv run dit checkout main
+dit checkout main
 ```
 
 验证清单：
@@ -564,7 +564,7 @@ uv run dit checkout main
 
 ```bash
 cd "$TEST_DIR"
-uv run dit tag v1.0
+dit tag v1.0
 echo "退出码: $?"
 ```
 
@@ -586,7 +586,7 @@ echo "退出码: $?"
 
 ```bash
 cd "$TEST_DIR"
-uv run dit tag
+dit tag
 ```
 
 #### 预期输出
@@ -609,15 +609,15 @@ uv run dit tag
 # 创建全新的仓库验证空标签列表
 NOTAG_DIR=$(mktemp -d)
 cd "$NOTAG_DIR"
-uv run dit init
+dit init
 
 cat > "$NOTAG_DIR/data.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "测试"}, {"role": "assistant", "content": "测试回复"}]}
 EOF
-uv run dit add .
-uv run dit commit -m "测试提交"
+dit add .
+dit commit -m "测试提交"
 
-uv run dit tag
+dit tag
 ```
 
 预期输出：
@@ -644,7 +644,7 @@ cd "$TEST_DIR"
 
 ```bash
 cd "$TEST_DIR"
-uv run dit tag -d v2.0-beta
+dit tag -d v2.0-beta
 ```
 
 #### 预期输出
@@ -656,7 +656,7 @@ Deleted tag 'v2.0-beta'.
 #### 验证方法
 
 ```bash
-uv run dit tag
+dit tag
 # 预期：只剩 v1.0，v2.0-beta 不出现
 
 ls "$TEST_DIR/.dit/refs/tags/"
@@ -672,7 +672,7 @@ ls "$TEST_DIR/.dit/refs/tags/"
 
 ```bash
 cd "$TEST_DIR"
-uv run dit tag -d nonexistent
+dit tag -d nonexistent
 echo "退出码: $?"
 ```
 
@@ -692,7 +692,7 @@ echo "退出码: $?"
 
 ```bash
 cd "$TEST_DIR"
-uv run dit checkout ghost-branch
+dit checkout ghost-branch
 echo "退出码: $?"
 ```
 
@@ -709,7 +709,7 @@ echo "退出码: $?"
 
 ```bash
 cd "$TEST_DIR"
-uv run dit switch ghost-branch
+dit switch ghost-branch
 echo "退出码: $?"
 ```
 
@@ -729,7 +729,7 @@ cd "$TEST_DIR"
 cat "$TEST_DIR/.dit/HEAD"
 # 预期：ref:main
 
-uv run dit branch -d main
+dit branch -d main
 echo "退出码: $?"
 ```
 
@@ -749,13 +749,13 @@ echo "退出码: $?"
 ```bash
 cd "$TEST_DIR"
 # 确保在 main
-uv run dit checkout main
+dit checkout main
 
 # 修改文件但不暂存
 echo '{"messages": [{"role": "user", "content": "临时修改，不提交"}, {"role": "assistant", "content": "测试"}]}' >> "$TEST_DIR/train.jsonl"
 
 # 尝试切换到 feature-x
-uv run dit checkout feature-x
+dit checkout feature-x
 echo "退出码: $?"
 ```
 
@@ -807,17 +807,17 @@ PYEOF
 ```bash
 cd "$TEST_DIR"
 # 确保在 main 且工作目录干净
-uv run dit status
+dit status
 
 # 创建并暂存新文件，但不提交
 cat > "$TEST_DIR/staged-only.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "已暂存但未提交的样本"}, {"role": "assistant", "content": "测试"}]}
 EOF
 
-uv run dit add staged-only.jsonl
+dit add staged-only.jsonl
 
 # 尝试切换分支
-uv run dit checkout feature-x
+dit checkout feature-x
 echo "退出码: $?"
 ```
 
@@ -835,7 +835,7 @@ echo "退出码: $?"
 ```bash
 echo '{}' > "$TEST_DIR/.dit/index"
 rm "$TEST_DIR/staged-only.jsonl"
-uv run dit status
+dit status
 # 预期：Nothing to commit, working directory clean.
 ```
 
@@ -844,8 +844,8 @@ uv run dit status
 ```bash
 EMPTY_TAG_DIR=$(mktemp -d)
 cd "$EMPTY_TAG_DIR"
-uv run dit init
-uv run dit tag v0.0
+dit init
+dit tag v0.0
 echo "退出码: $?"
 ```
 

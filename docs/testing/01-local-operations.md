@@ -24,13 +24,15 @@
 ### 1.1 确认 dit 可用
 
 ```bash
-uv run dit --help
-uv run dit version
+dit --help
+dit version
 ```
 
 验证清单：
 - [ ] `dit --help` 显示帮助信息，列出 `init`、`add`、`commit`、`status`、`diff`、`log` 等子命令
 - [ ] `dit version` 输出版本号（如 `dit 0.1.0`）
+
+> 若当前终端还未安装 `dit`，请先完成指南 00 的 `uv tool install --force .` 步骤。后续测试需要在临时目录中直接运行 `dit`，不依赖仓库根目录下的 `uv run`。
 
 ### 1.2 创建测试工作目录
 
@@ -78,7 +80,7 @@ EOF
 
 ```bash
 cd "$TEST_DIR"
-uv run dit init
+dit init
 ```
 
 ### 预期输出
@@ -120,7 +122,7 @@ cat "$TEST_DIR/.dit/HEAD"
 ### 幂等性验证（已初始化时再次 init）
 
 ```bash
-uv run dit init
+dit init
 ```
 
 预期输出（不报错，不破坏现有仓库）：
@@ -143,7 +145,7 @@ Already initialized dit repository in /tmp/tmp.xxxxxxxxxx
 
 ```bash
 cd "$TEST_DIR"
-uv run dit add train.jsonl
+dit add train.jsonl
 ```
 
 #### 预期输出
@@ -174,7 +176,7 @@ cat "$TEST_DIR/.dit/index"
 ### 3.2 添加第二个文件
 
 ```bash
-uv run dit add eval.jsonl
+dit add eval.jsonl
 ```
 
 预期输出：
@@ -195,7 +197,7 @@ uv run dit add eval.jsonl
 echo '{}' > "$TEST_DIR/.dit/index"
 
 cd "$TEST_DIR"
-uv run dit add .
+dit add .
 ```
 
 预期输出（顺序可能不同）：
@@ -211,7 +213,7 @@ uv run dit add .
 ### 3.4 添加不存在的文件（错误场景）
 
 ```bash
-uv run dit add nonexistent.jsonl
+dit add nonexistent.jsonl
 echo "退出码: $?"
 ```
 
@@ -233,7 +235,7 @@ echo "退出码: $?"
 
 ```bash
 cd "$TEST_DIR"
-uv run dit status
+dit status
 ```
 
 预期输出（节选）：
@@ -262,8 +264,8 @@ Unstaged changes:
 # 创建全新的临时仓库验证空状态
 EMPTY_DIR=$(mktemp -d)
 cd "$EMPTY_DIR"
-uv run dit init
-uv run dit status
+dit init
+dit status
 ```
 
 预期输出：
@@ -295,8 +297,8 @@ cd "$TEST_DIR"
 
 ```bash
 cd "$TEST_DIR"
-uv run dit add .
-uv run dit commit -m "初始数据集：3条训练样本 + 2条评估样本"
+dit add .
+dit commit -m "初始数据集：3条训练样本 + 2条评估样本"
 ```
 
 #### 预期输出
@@ -376,7 +378,7 @@ Tree:    <64 位哈希>
 
 ```bash
 cd "$TEST_DIR"
-uv run dit commit -m "空提交"
+dit commit -m "空提交"
 echo "退出码: $?"
 ```
 
@@ -396,7 +398,7 @@ echo "退出码: $?"
 
 ```bash
 cd "$TEST_DIR"
-uv run dit log
+dit log
 ```
 
 预期输出格式：
@@ -420,8 +422,8 @@ Date:   2026-04-25 08:00:00 UTC
 ```bash
 EMPTY2=$(mktemp -d)
 cd "$EMPTY2"
-uv run dit init
-uv run dit log
+dit init
+dit log
 ```
 
 预期输出：
@@ -449,7 +451,7 @@ cd "$TEST_DIR"
 
 ```bash
 cd "$TEST_DIR"
-uv run dit diff
+dit diff
 ```
 
 预期输出：
@@ -475,7 +477,7 @@ EOF
 
 ```bash
 cd "$TEST_DIR"
-uv run dit diff
+dit diff
 ```
 
 预期输出：
@@ -504,7 +506,7 @@ EOF
 
 ```bash
 cd "$TEST_DIR"
-uv run dit diff
+dit diff
 ```
 
 预期输出（含行数变化 + refresh 提示）：
@@ -528,7 +530,7 @@ cat > "$TEST_DIR/extra.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "什么是 Python 的装饰器？"}, {"role": "assistant", "content": "装饰器是一个接受函数作为参数并返回新函数的高阶函数，用 `@` 语法糖修饰目标函数。"}]}
 EOF
 
-uv run dit diff
+dit diff
 ```
 
 预期输出（新文件 extra.jsonl 出现）：
@@ -552,8 +554,8 @@ train.jsonl: 3 → 4 rows (+1, -0)
 
 ```bash
 cd "$TEST_DIR"
-uv run dit add .
-uv run dit commit -m "增加GIL样本、修订eval回答、新增extra.jsonl"
+dit add .
+dit commit -m "增加GIL样本、修订eval回答、新增extra.jsonl"
 ```
 
 预期输出：
@@ -571,14 +573,14 @@ cat >> "$TEST_DIR/extra.jsonl" << 'EOF'
 EOF
 
 cd "$TEST_DIR"
-uv run dit add extra.jsonl
-uv run dit commit -m "extra.jsonl 补充 __new__ vs __init__ 样本"
+dit add extra.jsonl
+dit commit -m "extra.jsonl 补充 __new__ vs __init__ 样本"
 ```
 
 ### 8.3 验证 log 顺序与父子链
 
 ```bash
-uv run dit log
+dit log
 ```
 
 预期输出（最新提交在最前）：
@@ -654,7 +656,7 @@ PYEOF
 
 ```bash
 cd "$TEST_DIR"
-uv run dit status
+dit status
 ```
 
 预期输出：
@@ -689,7 +691,7 @@ cat > "$TEST_DIR/README.md" << 'EOF'
 EOF
 
 cd "$TEST_DIR"
-uv run dit add README.md
+dit add README.md
 ```
 
 预期输出：
@@ -712,7 +714,7 @@ cat "$TEST_DIR/.dit/index" | python3 -m json.tool
 ### 9.2 提交并验证 tree 条目类型
 
 ```bash
-uv run dit commit -m "添加 README.md 文档"
+dit commit -m "添加 README.md 文档"
 ```
 
 ```bash
@@ -753,7 +755,7 @@ PYEOF
 ### 9.3 status 显示
 
 ```bash
-uv run dit status
+dit status
 ```
 
 验证清单：
@@ -768,7 +770,7 @@ uv run dit status
 ```bash
 cd "$TEST_DIR"
 touch "$TEST_DIR/empty.jsonl"
-uv run dit add empty.jsonl
+dit add empty.jsonl
 ```
 
 预期输出：
@@ -780,7 +782,7 @@ uv run dit add empty.jsonl
 - [ ] 输出含 "staged empty.jsonl (0 rows)"（不报错，正常处理）
 
 ```bash
-uv run dit commit -m "添加空数据文件"
+dit commit -m "添加空数据文件"
 ```
 
 验证清单：
@@ -823,8 +825,8 @@ cat > "$TEST_DIR/unicode.jsonl" << 'EOF'
 EOF
 
 cd "$TEST_DIR"
-uv run dit add unicode.jsonl
-uv run dit commit -m "添加含中文和emoji的测试数据"
+dit add unicode.jsonl
+dit commit -m "添加含中文和emoji的测试数据"
 ```
 
 验证清单：
@@ -847,8 +849,8 @@ cat > "$TEST_DIR/data/review/style.jsonl" << 'EOF'
 EOF
 
 cd "$TEST_DIR"
-uv run dit add .
-uv run dit commit -m "添加子目录数据：coding/advanced 和 review/style"
+dit add .
+dit commit -m "添加子目录数据：coding/advanced 和 review/style"
 ```
 
 验证清单：
@@ -919,7 +921,7 @@ EOF
 
 ```bash
 cd "$TEST_DIR"
-uv run dit diff
+dit diff
 ```
 
 > **注意**：由于 manifest 存储行的顺序（entries 列表有序），行顺序变化**会**产生不同的 manifest 哈希，因此 dit 会检测到变化。这是预期行为。
@@ -940,7 +942,7 @@ cat > "$TEST_DIR/eval.jsonl" << 'EOF'
 {"messages": [{"role": "system", "content": "你是一位代码评审专家。"}, {"role": "user", "content": "如何判断一个字符串是否为回文？"}, {"role": "assistant", "content": "最简洁的 Python 写法：\n\n```python\ndef is_palindrome(s: str) -> bool:\n    s = s.lower().replace(\" \", \"\")\n    return s == s[::-1]\n```\n\n**说明**：先统一转小写、去空格，再与逆序字符串比较。时间复杂度 O(n)，空间复杂度 O(n)（切片会创建新字符串）。"}]}
 EOF
 
-uv run dit diff
+dit diff
 ```
 
 验证清单：
@@ -950,7 +952,7 @@ uv run dit diff
 
 ```bash
 cd /tmp
-uv run dit status
+dit status
 echo "退出码: $?"
 ```
 

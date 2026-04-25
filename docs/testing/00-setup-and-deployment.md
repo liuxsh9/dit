@@ -75,12 +75,15 @@ cd /path/to/dit
 
 # 安装所有依赖，包含 server extra
 uv sync --extra server
+
+# 安装 CLI，使后续可在任意目录直接运行 dit
+uv tool install --force .
 ```
 
 ### 2.2 验证 CLI 可用
 
 ```bash
-uv run dit --help
+dit --help
 ```
 
 预期输出（节选）：
@@ -99,8 +102,11 @@ Commands:
 
 验证清单：
 - [ ] `uv sync --extra server` 无报错完成
-- [ ] `uv run dit --help` 显示帮助信息并包含 `serve` 命令
-- [ ] `uv run dit version` 正常输出版本号（如 `dit 0.1.0`）
+- [ ] `uv tool install --force .` 无报错完成
+- [ ] `dit --help` 显示帮助信息并包含 `serve` 命令
+- [ ] `dit version` 正常输出版本号（如 `dit 0.1.0`）
+
+> **PATH 说明**：`uv tool install` 默认会把可执行文件安装到 `~/.local/bin`。如果执行 `dit` 提示找不到命令，请先把该目录加入 `PATH`。Windows 上通常对应 `%USERPROFILE%\\.local\\bin`。
 
 ---
 
@@ -255,13 +261,13 @@ psql -U postgres -d dit -c "\dt dit.*"
 export DIT_SERVER_DATABASE_URL="postgresql+asyncpg://localhost/dit"
 export DIT_SERVER_DATA_DIR="/tmp/dit-data"
 
-uv run dit serve
+dit serve
 ```
 
 也可以指定地址和端口：
 
 ```bash
-uv run dit serve --host 127.0.0.1 --port 8000
+dit serve --host 127.0.0.1 --port 8000
 ```
 
 预期输出：
@@ -285,7 +291,7 @@ uv run uvicorn dit.server.app:app \
 
 ```bash
 # 后台启动并将日志写入文件
-nohup uv run dit serve > /tmp/dit.log 2>&1 &
+nohup dit serve > /tmp/dit.log 2>&1 &
 echo "PID: $!"
 ```
 

@@ -58,16 +58,16 @@ mkdir -p "$WORK_DIR/repo-a"  # 用作推送方
 
 ```bash
 cd "$WORK_DIR/repo-a"
-uv run dit init
+dit init
 
 cat > train.jsonl << 'EOF'
 {"messages": [{"role": "user", "content": "What is 2+2?"}, {"role": "assistant", "content": "4"}]}
 {"messages": [{"role": "user", "content": "Name a color."}, {"role": "assistant", "content": "Blue"}]}
 EOF
 
-uv run dit add train.jsonl
-uv run dit commit -m "v1: initial training data"
-uv run dit log
+dit add train.jsonl
+dit commit -m "v1: initial training data"
+dit log
 ```
 
 验证清单：
@@ -84,7 +84,7 @@ uv run dit log
 
 ```bash
 cd "$WORK_DIR/repo-a"
-uv run dit remote add origin http://localhost:8000/sft-demo
+dit remote add origin http://localhost:8000/sft-demo
 ```
 
 验证清单：
@@ -93,7 +93,7 @@ uv run dit remote add origin http://localhost:8000/sft-demo
 ### 2.2 查看远程列表
 
 ```bash
-uv run dit remote list
+dit remote list
 ```
 
 验证清单：
@@ -102,9 +102,9 @@ uv run dit remote list
 ### 2.3 添加令牌（方法一：remote add 时附带）
 
 ```bash
-uv run dit remote remove origin  # 先删除刚才添加的
-uv run dit remote add origin http://localhost:8000/sft-demo --token "$ADMIN_TOKEN"
-uv run dit remote list
+dit remote remove origin  # 先删除刚才添加的
+dit remote add origin http://localhost:8000/sft-demo --token "$ADMIN_TOKEN"
+dit remote list
 ```
 
 验证清单：
@@ -116,7 +116,7 @@ uv run dit remote list
 ### 2.4 更新令牌（方法二：auth set-token）
 
 ```bash
-uv run dit auth set-token "$ADMIN_TOKEN"
+dit auth set-token "$ADMIN_TOKEN"
 ```
 
 验证清单：
@@ -127,10 +127,10 @@ uv run dit auth set-token "$ADMIN_TOKEN"
 ### 2.5 删除远程
 
 ```bash
-uv run dit remote add backup http://localhost:8000/backup-repo
-uv run dit remote list
-uv run dit remote remove backup
-uv run dit remote list
+dit remote add backup http://localhost:8000/backup-repo
+dit remote list
+dit remote remove backup
+dit remote list
 ```
 
 验证清单：
@@ -184,7 +184,7 @@ curl -s -H "Authorization: token $ADMIN_TOKEN" \
 
 ```bash
 cd "$WORK_DIR/repo-a"
-uv run dit push
+dit push
 ```
 
 验证清单：
@@ -208,7 +208,7 @@ curl -s -H "Authorization: token $ADMIN_TOKEN" \
 记录 commit hash：
 
 ```bash
-LOCAL_HASH=$(cd "$WORK_DIR/repo-a" && uv run dit log | head -1 | awk '{print $2}')
+LOCAL_HASH=$(cd "$WORK_DIR/repo-a" && dit log | head -1 | awk '{print $2}')
 echo "Commit hash: $LOCAL_HASH"
 
 # 检查 commit 对象
@@ -224,7 +224,7 @@ echo ""
 ### 4.4 重复推送（幂等性）
 
 ```bash
-uv run dit push
+dit push
 ```
 
 验证清单：
@@ -239,7 +239,7 @@ uv run dit push
 
 ```bash
 cd "$WORK_DIR"
-uv run dit clone http://localhost:8000/sft-demo repo-b --token "$ADMIN_TOKEN"
+dit clone http://localhost:8000/sft-demo repo-b --token "$ADMIN_TOKEN"
 ```
 
 验证清单：
@@ -282,10 +282,10 @@ wc -l "$WORK_DIR/repo-a/train.jsonl" "$WORK_DIR/repo-b/train.jsonl"
 
 ```bash
 echo "=== repo-a log ==="
-cd "$WORK_DIR/repo-a" && uv run dit log
+cd "$WORK_DIR/repo-a" && dit log
 
 echo "=== repo-b log ==="
-cd "$WORK_DIR/repo-b" && uv run dit log
+cd "$WORK_DIR/repo-b" && dit log
 ```
 
 验证清单：
@@ -308,9 +308,9 @@ cat > train.jsonl << 'EOF'
 {"messages": [{"role": "user", "content": "Capital of France?"}, {"role": "assistant", "content": "Paris"}]}
 EOF
 
-uv run dit add train.jsonl
-uv run dit commit -m "v2: add geography question"
-uv run dit log
+dit add train.jsonl
+dit commit -m "v2: add geography question"
+dit log
 ```
 
 验证清单：
@@ -322,7 +322,7 @@ uv run dit log
 
 ```bash
 cd "$WORK_DIR/repo-b"
-uv run dit push
+dit push
 ```
 
 验证清单：
@@ -338,7 +338,7 @@ curl -s -H "Authorization: token $ADMIN_TOKEN" \
 记录新的 `target_hash`，应与 B 的 v2 commit hash 一致：
 
 ```bash
-cd "$WORK_DIR/repo-b" && uv run dit log | head -1
+cd "$WORK_DIR/repo-b" && dit log | head -1
 ```
 
 验证清单：
@@ -352,7 +352,7 @@ cd "$WORK_DIR/repo-b" && uv run dit log | head -1
 
 ```bash
 cd "$WORK_DIR/repo-a"
-uv run dit fetch
+dit fetch
 ```
 
 验证清单：
@@ -370,7 +370,7 @@ wc -l "$WORK_DIR/repo-a/train.jsonl"
 
 ```bash
 cd "$WORK_DIR/repo-a"
-uv run dit pull
+dit pull
 ```
 
 验证清单：
@@ -406,15 +406,15 @@ echo "diff 退出码: $?"
 
 ```bash
 cd "$WORK_DIR/repo-a"
-uv run dit checkout -b feature/new-dataset
+dit checkout -b feature/new-dataset
 
 cat >> eval.jsonl << 'EOF'
 {"messages": [{"role": "user", "content": "What is the speed of light?"}, {"role": "assistant", "content": "Approximately 3×10^8 m/s"}]}
 EOF
 
-uv run dit add eval.jsonl
-uv run dit commit -m "feat: add eval dataset"
-uv run dit log
+dit add eval.jsonl
+dit commit -m "feat: add eval dataset"
+dit log
 ```
 
 验证清单：
@@ -424,7 +424,7 @@ uv run dit log
 ### 8.2 推送 feature 分支
 
 ```bash
-uv run dit push --branch feature/new-dataset
+dit push --branch feature/new-dataset
 ```
 
 验证清单：
@@ -446,7 +446,7 @@ curl -s -H "Authorization: token $ADMIN_TOKEN" \
 
 ```bash
 cd "$WORK_DIR"
-uv run dit clone http://localhost:8000/sft-demo repo-feature \
+dit clone http://localhost:8000/sft-demo repo-feature \
     --token "$ADMIN_TOKEN" --branch feature/new-dataset
 ```
 
@@ -467,17 +467,17 @@ uv run dit clone http://localhost:8000/sft-demo repo-feature \
 cd "$WORK_DIR"
 mkdir repo-noauth
 cd repo-noauth
-uv run dit init
+dit init
 
 cat > data.jsonl << 'EOF'
 {"messages": [{"role": "user", "content": "test"}, {"role": "assistant", "content": "response"}]}
 EOF
-uv run dit add data.jsonl
-uv run dit commit -m "test commit"
+dit add data.jsonl
+dit commit -m "test commit"
 
 # 添加远程但不设置令牌
-uv run dit remote add origin http://localhost:8000/sft-demo
-uv run dit push
+dit remote add origin http://localhost:8000/sft-demo
+dit push
 ```
 
 验证清单：
@@ -489,8 +489,8 @@ uv run dit push
 ### 9.2 令牌错误推送应失败
 
 ```bash
-uv run dit auth set-token "invalid_token_xyz"
-uv run dit push
+dit auth set-token "invalid_token_xyz"
+dit push
 ```
 
 验证清单：
@@ -500,8 +500,8 @@ uv run dit push
 ### 9.3 正确令牌推送成功
 
 ```bash
-uv run dit auth set-token "$ADMIN_TOKEN"
-uv run dit push
+dit auth set-token "$ADMIN_TOKEN"
+dit push
 ```
 
 验证清单：
@@ -511,7 +511,7 @@ uv run dit push
 
 ```bash
 cd "$WORK_DIR/repo-a"
-uv run dit auth login --url http://localhost:8000 --token "$ADMIN_TOKEN"
+dit auth login --url http://localhost:8000 --token "$ADMIN_TOKEN"
 ```
 
 验证清单：
@@ -529,8 +529,8 @@ uv run dit auth login --url http://localhost:8000 --token "$ADMIN_TOKEN"
 cd "$WORK_DIR/repo-a"
 
 # 配置指向不存在的仓库
-uv run dit remote add nonexist http://localhost:8000/does-not-exist --token "$ADMIN_TOKEN"
-uv run dit push --remote nonexist
+dit remote add nonexist http://localhost:8000/does-not-exist --token "$ADMIN_TOKEN"
+dit push --remote nonexist
 ```
 
 验证清单：
@@ -540,14 +540,14 @@ uv run dit push --remote nonexist
 清理：
 
 ```bash
-uv run dit remote remove nonexist
+dit remote remove nonexist
 ```
 
 ### 10.2 已是最新，pull 无变化
 
 ```bash
 cd "$WORK_DIR/repo-b"
-uv run dit pull
+dit pull
 ```
 
 验证清单：
@@ -559,7 +559,7 @@ uv run dit pull
 
 ```bash
 cd "$WORK_DIR/repo-b"
-uv run dit fetch
+dit fetch
 ```
 
 验证清单：
@@ -580,7 +580,7 @@ curl -s -X POST http://localhost:8000/api/v1/repos \
 
 ```bash
 cd "$WORK_DIR"
-uv run dit clone http://localhost:8000/empty-repo repo-empty --token "$ADMIN_TOKEN"
+dit clone http://localhost:8000/empty-repo repo-empty --token "$ADMIN_TOKEN"
 ```
 
 验证清单：
@@ -593,22 +593,22 @@ uv run dit clone http://localhost:8000/empty-repo repo-empty --token "$ADMIN_TOK
 
 ```bash
 # 确认 repo-a 和 repo-b 当前 main 分支一致
-cd "$WORK_DIR/repo-a" && uv run dit log | head -2
-cd "$WORK_DIR/repo-b" && uv run dit log | head -2
+cd "$WORK_DIR/repo-a" && dit log | head -2
+cd "$WORK_DIR/repo-b" && dit log | head -2
 
 # repo-a 新增提交并推送（先行一步）
 cd "$WORK_DIR/repo-a"
 echo '{"messages": [{"role": "user", "content": "a side"}, {"role": "assistant", "content": "yes"}]}' >> train.jsonl
-uv run dit add train.jsonl
-uv run dit commit -m "a-side commit"
-uv run dit push
+dit add train.jsonl
+dit commit -m "a-side commit"
+dit push
 
 # repo-b 从相同 base（v2）独立提交（注意：此时 repo-b 的 main 仍指向旧 hash）
 cd "$WORK_DIR/repo-b"
 echo '{"messages": [{"role": "user", "content": "b side"}, {"role": "assistant", "content": "yes"}]}' >> train.jsonl
-uv run dit add train.jsonl
-uv run dit commit -m "b-side diverged commit"
-uv run dit push
+dit add train.jsonl
+dit commit -m "b-side diverged commit"
+dit push
 ```
 
 验证清单：
@@ -622,8 +622,8 @@ uv run dit push
 
 ```bash
 cd "$WORK_DIR/repo-a"
-uv run dit remote add badhost http://localhost:19999/testrepo
-uv run dit push --remote badhost
+dit remote add badhost http://localhost:19999/testrepo
+dit push --remote badhost
 ```
 
 验证清单：
@@ -634,7 +634,7 @@ uv run dit push --remote badhost
 清理：
 
 ```bash
-uv run dit remote remove badhost
+dit remote remove badhost
 ```
 
 ---

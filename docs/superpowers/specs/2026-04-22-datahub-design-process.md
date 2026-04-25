@@ -714,7 +714,7 @@ dit pr merge <id>
 └───────────────────┬──────────────────────────────┘
                     │ HTTP
 ┌───────────────────▼──────────────────────────────┐
-│              datahub-gateway (Go)                │
+│                 dit-gateway (Go)                 │
 │   - 复用 Forgejo 的用户/权限/PR/通知/Webhook      │
 │   - 改造: git 仓库页面 → 数据仓库页面            │
 │   - 改造: diff 视图 → 调 dit-core 渲染        │
@@ -738,7 +738,7 @@ dit pr merge <id>
 ```
 
 **职责分工**：
-- **datahub-gateway**（Forgejo fork）：用户/权限/PR 生命周期/通知/Webhook/Actions，= "协作层"
+- **dit-gateway**（Forgejo fork）：用户/权限/PR 生命周期/通知/Webhook/Actions，= "协作层"
 - **dit-core**（Python FastAPI）：对象存储、行级 diff、merge、搜索、统计，= "数据层"
 - **PostgreSQL**：所有可变、事务性状态
 - **文件系统**：不可变对象（content-addressed）
@@ -1112,7 +1112,7 @@ Theirs (source branch 当前 manifest)
 ### 6.6 CI 集成流（预留）
 
 ```
-PR 创建/更新时触发 webhook → datahub-gateway 调 CI bridge：
+PR 创建/更新时触发 webhook → dit-gateway 调 CI bridge：
 
 1. CI bridge 拿到 PR 增量行，打包为临时 JSONL
 2. 上传到 S3 约定路径 s3://ci-staging/{pr-id}/input/
@@ -1314,7 +1314,7 @@ dit meta stats tag --in feature-impl/
 |---|---|---|
 | **dit-core** | Python 3.12+ / FastAPI / Uvicorn | 团队熟悉，async IO 性能足够 |
 | **CLI (dit)** | Python / Typer / httpx | 同语言、uv 分发 |
-| **Web (datahub-gateway)** | Forgejo fork (Go / Go template / Vue 3) | 复用 80% 协作功能 |
+| **Web (dit-gateway)** | Forgejo fork (Go / Go template / Vue 3) | 复用 80% 协作功能 |
 | **数据库** | PostgreSQL 16 | refs、元数据、审计、PR 状态、权限 |
 | **对象存储** | 本地文件系统 (ext4/xfs) | 10T 服务器，简单可靠 |
 | **对象压缩** | zstd (pyzstd) | 高压缩比、快速解压 |

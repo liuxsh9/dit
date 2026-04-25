@@ -36,7 +36,7 @@ cd "$MERGE_TEST"
 本节将建立一个具有"分叉历史"的仓库，作为后续所有测试的起点。
 
 ```bash
-uv run dit init
+dit init
 ```
 
 **写入基础训练文件 `train.jsonl`（3 条样本，代表合并基点数据）：**
@@ -52,12 +52,12 @@ EOF
 **提交基础数据：**
 
 ```bash
-uv run dit add train.jsonl
-uv run dit commit -m "initial: 3 Python QA rows"
+dit add train.jsonl
+dit commit -m "initial: 3 Python QA rows"
 ```
 
 验证清单：
-- [ ] `uv run dit log` 显示一条 `initial: 3 Python QA rows` 提交
+- [ ] `dit log` 显示一条 `initial: 3 Python QA rows` 提交
 - [ ] 工作目录有 `train.jsonl`，内容 3 行
 
 ---
@@ -69,7 +69,7 @@ uv run dit commit -m "initial: 3 Python QA rows"
 ### 2.1 创建 feature 分支并添加新数据
 
 ```bash
-uv run dit checkout -b feature/ff-demo
+dit checkout -b feature/ff-demo
 ```
 
 **向 `train.jsonl` 追加一条新样本（feature 分支独有）：**
@@ -81,22 +81,22 @@ EOF
 ```
 
 ```bash
-uv run dit add train.jsonl
-uv run dit commit -m "feature: add singleton QA"
+dit add train.jsonl
+dit commit -m "feature: add singleton QA"
 ```
 
 记录 feature 分支的提交哈希：
 
 ```bash
-FEATURE_HASH=$(uv run dit log --oneline | head -1 | awk '{print $1}')
+FEATURE_HASH=$(dit log --oneline | head -1 | awk '{print $1}')
 echo "feature 分支最新提交：$FEATURE_HASH"
 ```
 
 ### 2.2 切回 main 并执行快进合并
 
 ```bash
-uv run dit checkout main
-uv run dit merge feature/ff-demo
+dit checkout main
+dit merge feature/ff-demo
 ```
 
 预期输出（含 `fast-forward`，大小写不限）：
@@ -108,14 +108,14 @@ Fast-forward to <hash>.
 ### 2.3 验证快进合并结果
 
 ```bash
-uv run dit log --oneline
+dit log --oneline
 ```
 
 验证清单：
 - [ ] 输出包含 `Fast-forward`
 - [ ] `main` 分支 HEAD 与 `feature/ff-demo` HEAD 相同（没有创建新的合并提交）
 - [ ] `train.jsonl` 共 4 行，第 4 行含 `单例模式`
-- [ ] `uv run dit log` 显示 2 条提交，没有带两个父节点的合并提交
+- [ ] `dit log` 显示 2 条提交，没有带两个父节点的合并提交
 
 **检查 main 指针是否已移动到 feature 哈希：**
 
@@ -139,7 +139,7 @@ cat "$MERGE_TEST/.dit/refs/heads/main"
 ```bash
 export THREEWAY_DIR=$(mktemp -d)
 cd "$THREEWAY_DIR"
-uv run dit init
+dit init
 ```
 
 **写入共同基础文件：**
@@ -148,48 +148,48 @@ uv run dit init
 cat > "$THREEWAY_DIR/base.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "什么是 REST API？"}, {"role": "assistant", "content": "REST 是一种基于 HTTP 的架构风格，使用标准方法（GET/POST/PUT/DELETE）操作资源。"}]}
 EOF
-uv run dit add base.jsonl
-uv run dit commit -m "base: REST API QA"
+dit add base.jsonl
+dit commit -m "base: REST API QA"
 ```
 
 **创建 feature 分支，添加 `feature.jsonl`：**
 
 ```bash
-uv run dit checkout -b feature/new-data
+dit checkout -b feature/new-data
 ```
 
 ```bash
 cat > "$THREEWAY_DIR/feature.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "解释 HTTP 状态码 404 和 500"}, {"role": "assistant", "content": "404 表示资源未找到，500 表示服务器内部错误。两者的区别在于前者是客户端错误，后者是服务端错误。"}]}
 EOF
-uv run dit add feature.jsonl
-uv run dit commit -m "feature: add HTTP status codes QA"
+dit add feature.jsonl
+dit commit -m "feature: add HTTP status codes QA"
 ```
 
 **切回 main，添加不同的 `main-extra.jsonl`：**
 
 ```bash
-uv run dit checkout main
+dit checkout main
 ```
 
 ```bash
 cat > "$THREEWAY_DIR/main-extra.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "什么是 JSON Web Token？"}, {"role": "assistant", "content": "JWT 是一种用于在网络应用间安全传递信息的开放标准，由 Header、Payload 和 Signature 三部分组成。"}]}
 EOF
-uv run dit add main-extra.jsonl
-uv run dit commit -m "main: add JWT QA"
+dit add main-extra.jsonl
+dit commit -m "main: add JWT QA"
 ```
 
 查看分叉图示（此时 main 和 feature 各有一个 base 之后的提交）：
 
 ```bash
-uv run dit log --oneline
+dit log --oneline
 ```
 
 ### 3.2 执行三方合并
 
 ```bash
-uv run dit merge feature/new-data
+dit merge feature/new-data
 ```
 
 预期输出：
@@ -207,13 +207,13 @@ ls "$THREEWAY_DIR"
 验证清单：
 - [ ] 输出包含 `Merge made`（而非 `Fast-forward`）
 - [ ] 工作目录同时存在 `base.jsonl`、`feature.jsonl`、`main-extra.jsonl`
-- [ ] `uv run dit log --oneline` 最新一条是合并提交，消息含 `Merge branch`
+- [ ] `dit log --oneline` 最新一条是合并提交，消息含 `Merge branch`
 - [ ] `.dit/MERGE_HEAD` 文件**不存在**（合并已完成，状态文件已清理）
 
 **验证合并提交有两个父节点：**
 
 ```bash
-uv run dit log --oneline
+dit log --oneline
 # 复制顶部 merge commit 的 hash（前 8 位），下面替换 <MERGE_HASH>
 ```
 
@@ -232,7 +232,7 @@ uv run dit log --oneline
 ```bash
 export CONFLICT_DIR=$(mktemp -d)
 cd "$CONFLICT_DIR"
-uv run dit init
+dit init
 ```
 
 **写入共同基础（1 条样本，只有 user turn，没有 assistant turn）：**
@@ -241,42 +241,42 @@ uv run dit init
 cat > "$CONFLICT_DIR/data.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "用一句话描述递归"}]}
 EOF
-uv run dit add data.jsonl
-uv run dit commit -m "base: user-only row"
+dit add data.jsonl
+dit commit -m "base: user-only row"
 ```
 
 **创建 feature 分支，给出 feature 的回答：**
 
 ```bash
-uv run dit checkout -b feature/answer-A
+dit checkout -b feature/answer-A
 ```
 
 ```bash
 cat > "$CONFLICT_DIR/data.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "用一句话描述递归"}, {"role": "assistant", "content": "递归是函数在执行过程中调用自身的编程技术，通常需要基本情况（base case）来终止。"}]}
 EOF
-uv run dit add data.jsonl
-uv run dit commit -m "feature: answer A for recursion"
+dit add data.jsonl
+dit commit -m "feature: answer A for recursion"
 ```
 
 **切回 main，给出不同的回答：**
 
 ```bash
-uv run dit checkout main
+dit checkout main
 ```
 
 ```bash
 cat > "$CONFLICT_DIR/data.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "用一句话描述递归"}, {"role": "assistant", "content": "递归是解决问题的方法，将大问题分解为结构相同的小问题，直到达到可直接求解的最小规模。"}]}
 EOF
-uv run dit add data.jsonl
-uv run dit commit -m "main: answer B for recursion"
+dit add data.jsonl
+dit commit -m "main: answer B for recursion"
 ```
 
 ### 4.2 触发冲突
 
 ```bash
-uv run dit merge feature/answer-A
+dit merge feature/answer-A
 ```
 
 预期输出（exit code 非 0）：
@@ -356,8 +356,8 @@ EOF
 ### 5.3 将解决后的文件加入暂存区
 
 ```bash
-uv run dit add data.jsonl
-uv run dit status
+dit add data.jsonl
+dit status
 ```
 
 验证清单：
@@ -366,7 +366,7 @@ uv run dit status
 ### 5.4 完成合并
 
 ```bash
-uv run dit merge --continue
+dit merge --continue
 ```
 
 预期输出：
@@ -379,7 +379,7 @@ uv run dit merge --continue
 
 ```bash
 ls "$CONFLICT_DIR/.dit/"
-uv run dit log --oneline
+dit log --oneline
 cat "$CONFLICT_DIR/data.jsonl"
 ```
 
@@ -387,7 +387,7 @@ cat "$CONFLICT_DIR/data.jsonl"
 - [ ] `.dit/MERGE_HEAD` 已删除
 - [ ] `.dit/MERGE_MSG` 已删除
 - [ ] `.dit/conflicts.json` 已删除
-- [ ] `uv run dit log` 最新提交为合并提交（含 `Merge branch`）
+- [ ] `dit log` 最新提交为合并提交（含 `Merge branch`）
 - [ ] `data.jsonl` 包含解决后的内容（含 `终止条件` 或你手动写入的内容）
 
 **尝试在没有暂存文件的情况下执行 --continue（应当报错）：**
@@ -395,7 +395,7 @@ cat "$CONFLICT_DIR/data.jsonl"
 ```bash
 # 先重新触发一个冲突状态用于测试（可跳过，仅用于确认错误提示）
 # 若不想额外操作，直接验证以下命令在当前目录（无冲突）下的输出
-uv run dit merge --continue
+dit merge --continue
 ```
 
 - [ ] 报错：`error: no merge in progress`
@@ -411,37 +411,37 @@ uv run dit merge --continue
 ```bash
 export ABORT_DIR=$(mktemp -d)
 cd "$ABORT_DIR"
-uv run dit init
+dit init
 ```
 
 ```bash
 cat > "$ABORT_DIR/data.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "什么是闭包？"}]}
 EOF
-uv run dit add data.jsonl
-uv run dit commit -m "base"
+dit add data.jsonl
+dit commit -m "base"
 ```
 
 ```bash
-uv run dit checkout -b feature/closure
+dit checkout -b feature/closure
 cat > "$ABORT_DIR/data.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "什么是闭包？"}, {"role": "assistant", "content": "闭包是引用了外部函数作用域变量的内部函数，即使外部函数已返回，这些变量仍然有效。(feature版)"}]}
 EOF
-uv run dit add data.jsonl
-uv run dit commit -m "feature: closure answer"
+dit add data.jsonl
+dit commit -m "feature: closure answer"
 ```
 
 ```bash
-uv run dit checkout main
+dit checkout main
 cat > "$ABORT_DIR/data.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "什么是闭包？"}, {"role": "assistant", "content": "闭包让函数记住并访问其词法作用域，即便函数在词法作用域外执行。(main版)"}]}
 EOF
-uv run dit add data.jsonl
-uv run dit commit -m "main: closure answer"
+dit add data.jsonl
+dit commit -m "main: closure answer"
 ```
 
 ```bash
-uv run dit merge feature/closure
+dit merge feature/closure
 ```
 
 - [ ] 输出含 `CONFLICT`，退出码非 0
@@ -457,7 +457,7 @@ cat "$ABORT_DIR/data.jsonl"
 ### 6.3 执行 abort
 
 ```bash
-uv run dit merge --abort
+dit merge --abort
 ```
 
 预期输出：
@@ -471,7 +471,7 @@ Merge aborted.
 ```bash
 ls "$ABORT_DIR/.dit/"
 cat "$ABORT_DIR/data.jsonl"
-uv run dit status
+dit status
 ```
 
 验证清单：
@@ -479,12 +479,12 @@ uv run dit status
 - [ ] `.dit/MERGE_MSG` 已删除
 - [ ] `.dit/conflicts.json` 已删除
 - [ ] `data.jsonl` 内容回到 main 分支的版本（含 `main版`）
-- [ ] `uv run dit status` 显示工作目录干净
+- [ ] `dit status` 显示工作目录干净
 
 **在没有合并进行时执行 abort（应当报错）：**
 
 ```bash
-uv run dit merge --abort
+dit merge --abort
 ```
 
 - [ ] 报错：`error: no merge in progress`
@@ -500,7 +500,7 @@ uv run dit merge --abort
 ```bash
 export CP_DIR=$(mktemp -d)
 cd "$CP_DIR"
-uv run dit init
+dit init
 ```
 
 **初始数据：**
@@ -509,14 +509,14 @@ uv run dit init
 cat > "$CP_DIR/data.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "什么是哈希表？"}, {"role": "assistant", "content": "哈希表是通过哈希函数将键映射到存储位置的数据结构，理想情况下查找、插入、删除均为 O(1)。"}]}
 EOF
-uv run dit add data.jsonl
-uv run dit commit -m "base: hash table QA"
+dit add data.jsonl
+dit commit -m "base: hash table QA"
 ```
 
 **在 experiment 分支上做两个提交：**
 
 ```bash
-uv run dit checkout -b experiment
+dit checkout -b experiment
 ```
 
 提交 A — 添加新文件：
@@ -525,14 +525,14 @@ uv run dit checkout -b experiment
 cat > "$CP_DIR/new-algo.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "解释 Dijkstra 算法"}, {"role": "assistant", "content": "Dijkstra 算法用于求单源最短路径，使用优先队列（最小堆）逐步松弛边，时间复杂度为 O((V+E)logV)。"}]}
 EOF
-uv run dit add new-algo.jsonl
-uv run dit commit -m "experiment: add Dijkstra QA"
+dit add new-algo.jsonl
+dit commit -m "experiment: add Dijkstra QA"
 ```
 
 记录这个提交哈希（后面要 cherry-pick 它）：
 
 ```bash
-PICK_HASH=$(uv run dit log --oneline | head -1 | awk '{print $1}')
+PICK_HASH=$(dit log --oneline | head -1 | awk '{print $1}')
 echo "要 cherry-pick 的提交：$PICK_HASH"
 ```
 
@@ -542,14 +542,14 @@ echo "要 cherry-pick 的提交：$PICK_HASH"
 cat > "$CP_DIR/extra.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "什么是 A* 算法？"}, {"role": "assistant", "content": "A* 是启发式搜索算法，结合了 Dijkstra 的最短路径保证和贪心最佳优先搜索的效率，使用 f(n)=g(n)+h(n) 评估节点。"}]}
 EOF
-uv run dit add extra.jsonl
-uv run dit commit -m "experiment: add A-star QA"
+dit add extra.jsonl
+dit commit -m "experiment: add A-star QA"
 ```
 
 ### 7.2 切回 main 并执行 cherry-pick
 
 ```bash
-uv run dit checkout main
+dit checkout main
 ```
 
 确认 main 上没有 `new-algo.jsonl`：
@@ -563,7 +563,7 @@ ls "$CP_DIR/"
 **执行 cherry-pick：**
 
 ```bash
-uv run dit cherry-pick "$PICK_HASH"
+dit cherry-pick "$PICK_HASH"
 ```
 
 预期输出：
@@ -577,13 +577,13 @@ uv run dit cherry-pick "$PICK_HASH"
 ```bash
 ls "$CP_DIR/"
 cat "$CP_DIR/new-algo.jsonl"
-uv run dit log --oneline
+dit log --oneline
 ```
 
 验证清单：
 - [ ] `new-algo.jsonl` 现在存在于 main 分支
 - [ ] `extra.jsonl` **不存在**（只摘取了提交 A，不包括提交 B）
-- [ ] `uv run dit log` 最新提交消息含 `cherry-pick`
+- [ ] `dit log` 最新提交消息含 `cherry-pick`
 - [ ] 最新提交只有 **1 个父节点**（cherry-pick 不创建合并提交）
 
 **确认 cherry-pick 状态文件已清理：**
@@ -605,45 +605,45 @@ ls "$CP_DIR/.dit/"
 ```bash
 export CP_CONFLICT_DIR=$(mktemp -d)
 cd "$CP_CONFLICT_DIR"
-uv run dit init
+dit init
 ```
 
 ```bash
 cat > "$CP_CONFLICT_DIR/data.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "什么是 TCP/IP？"}]}
 EOF
-uv run dit add data.jsonl
-uv run dit commit -m "base"
+dit add data.jsonl
+dit commit -m "base"
 ```
 
 **feature 分支做修改（这个提交是我们想 cherry-pick 的）：**
 
 ```bash
-uv run dit checkout -b feature/tcp
+dit checkout -b feature/tcp
 cat > "$CP_CONFLICT_DIR/data.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "什么是 TCP/IP？"}, {"role": "assistant", "content": "TCP/IP 是互联网的核心协议族，TCP 提供可靠传输，IP 负责寻址和路由。(feature版)"}]}
 EOF
-uv run dit add data.jsonl
-uv run dit commit -m "feature: TCP/IP answer"
-PICK_HASH=$(uv run dit log --oneline | head -1 | awk '{print $1}')
+dit add data.jsonl
+dit commit -m "feature: TCP/IP answer"
+PICK_HASH=$(dit log --oneline | head -1 | awk '{print $1}')
 echo "cherry-pick 目标：$PICK_HASH"
 ```
 
 **回到 main，也修改同一行（制造冲突）：**
 
 ```bash
-uv run dit checkout main
+dit checkout main
 cat > "$CP_CONFLICT_DIR/data.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "什么是 TCP/IP？"}, {"role": "assistant", "content": "TCP/IP 协议栈分四层：应用层、传输层、网络层、链路层，每层有明确的职责分工。(main版)"}]}
 EOF
-uv run dit add data.jsonl
-uv run dit commit -m "main: TCP/IP answer"
+dit add data.jsonl
+dit commit -m "main: TCP/IP answer"
 ```
 
 ### 8.2 触发 cherry-pick 冲突
 
 ```bash
-uv run dit cherry-pick "$PICK_HASH"
+dit cherry-pick "$PICK_HASH"
 ```
 
 预期输出（exit code 非 0）：
@@ -671,8 +671,8 @@ cat "$CP_CONFLICT_DIR/.dit/conflicts.json"
 cat > "$CP_CONFLICT_DIR/data.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "什么是 TCP/IP？"}, {"role": "assistant", "content": "TCP/IP 是互联网核心协议族，分四层架构（应用/传输/网络/链路），TCP 提供可靠传输，IP 负责寻址路由。(resolved)"}]}
 EOF
-uv run dit add data.jsonl
-uv run dit cherry-pick --continue
+dit add data.jsonl
+dit cherry-pick --continue
 ```
 
 预期输出：
@@ -684,7 +684,7 @@ uv run dit cherry-pick --continue
 验证清单：
 - [ ] `.dit/CHERRY_PICK_HEAD` 已删除
 - [ ] `data.jsonl` 包含解决后的内容
-- [ ] `uv run dit log` 最新提交含 `cherry-pick`
+- [ ] `dit log` 最新提交含 `cherry-pick`
 
 ### 8.4 测试 cherry-pick --abort
 
@@ -693,36 +693,36 @@ uv run dit cherry-pick --continue
 ```bash
 export CP_ABORT_DIR=$(mktemp -d)
 cd "$CP_ABORT_DIR"
-uv run dit init
+dit init
 
 cat > "$CP_ABORT_DIR/data.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "什么是虚拟内存？"}]}
 EOF
-uv run dit add data.jsonl
-uv run dit commit -m "base"
+dit add data.jsonl
+dit commit -m "base"
 
-uv run dit checkout -b feature/vm
+dit checkout -b feature/vm
 cat > "$CP_ABORT_DIR/data.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "什么是虚拟内存？"}, {"role": "assistant", "content": "虚拟内存是操作系统抽象层，让每个进程拥有独立的地址空间，通过页面置换算法管理物理内存与磁盘的换入换出。(feature)"}]}
 EOF
-uv run dit add data.jsonl
-uv run dit commit -m "feature: virtual memory"
-VM_PICK_HASH=$(uv run dit log --oneline | head -1 | awk '{print $1}')
+dit add data.jsonl
+dit commit -m "feature: virtual memory"
+VM_PICK_HASH=$(dit log --oneline | head -1 | awk '{print $1}')
 
-uv run dit checkout main
+dit checkout main
 cat > "$CP_ABORT_DIR/data.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "什么是虚拟内存？"}, {"role": "assistant", "content": "虚拟内存允许程序使用比物理内存更大的地址空间，通过将不活跃页面换出到磁盘来实现。(main)"}]}
 EOF
-uv run dit add data.jsonl
-uv run dit commit -m "main: virtual memory"
+dit add data.jsonl
+dit commit -m "main: virtual memory"
 
-uv run dit cherry-pick "$VM_PICK_HASH"
+dit cherry-pick "$VM_PICK_HASH"
 ```
 
 - [ ] 触发冲突，`.dit/CHERRY_PICK_HEAD` 存在
 
 ```bash
-uv run dit cherry-pick --abort
+dit cherry-pick --abort
 ```
 
 预期输出：
@@ -752,39 +752,39 @@ ls "$CP_ABORT_DIR/.dit/"
 ```bash
 export FILE_CONFLICT_DIR=$(mktemp -d)
 cd "$FILE_CONFLICT_DIR"
-uv run dit init
+dit init
 
 cat > "$FILE_CONFLICT_DIR/shared.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "什么是微服务？"}, {"role": "assistant", "content": "微服务是将单体应用拆分为多个小型、独立部署的服务的架构风格。"}]}
 EOF
-uv run dit add shared.jsonl
-uv run dit commit -m "base: microservices"
+dit add shared.jsonl
+dit commit -m "base: microservices"
 ```
 
 feature 分支添加 `feature-only.jsonl`：
 
 ```bash
-uv run dit checkout -b feature/add-file
+dit checkout -b feature/add-file
 cat > "$FILE_CONFLICT_DIR/feature-only.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "什么是 Docker？"}, {"role": "assistant", "content": "Docker 是容器化平台，将应用及其依赖打包到轻量级容器中，确保环境一致性。"}]}
 EOF
-uv run dit add feature-only.jsonl
-uv run dit commit -m "feature: add Docker QA"
+dit add feature-only.jsonl
+dit commit -m "feature: add Docker QA"
 ```
 
 main 分支添加 `main-only.jsonl`：
 
 ```bash
-uv run dit checkout main
+dit checkout main
 cat > "$FILE_CONFLICT_DIR/main-only.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "什么是 Kubernetes？"}, {"role": "assistant", "content": "Kubernetes（K8s）是容器编排系统，用于自动化容器的部署、扩缩容和管理。"}]}
 EOF
-uv run dit add main-only.jsonl
-uv run dit commit -m "main: add K8s QA"
+dit add main-only.jsonl
+dit commit -m "main: add K8s QA"
 ```
 
 ```bash
-uv run dit merge feature/add-file
+dit merge feature/add-file
 ```
 
 验证清单：
@@ -796,7 +796,7 @@ uv run dit merge feature/add-file
 ```bash
 export DEL_DIR=$(mktemp -d)
 cd "$DEL_DIR"
-uv run dit init
+dit init
 
 cat > "$DEL_DIR/to-delete.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "占位问题"}, {"role": "assistant", "content": "占位答案"}]}
@@ -804,32 +804,32 @@ EOF
 cat > "$DEL_DIR/keep.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "保留问题"}, {"role": "assistant", "content": "保留答案"}]}
 EOF
-uv run dit add to-delete.jsonl keep.jsonl
-uv run dit commit -m "base: two files"
+dit add to-delete.jsonl keep.jsonl
+dit commit -m "base: two files"
 ```
 
 feature 分支删除 `to-delete.jsonl`：
 
 ```bash
-uv run dit checkout -b feature/delete
+dit checkout -b feature/delete
 rm "$DEL_DIR/to-delete.jsonl"
-uv run dit add to-delete.jsonl
-uv run dit commit -m "feature: delete to-delete.jsonl"
+dit add to-delete.jsonl
+dit commit -m "feature: delete to-delete.jsonl"
 ```
 
 main 分支保持不动，只添加一条新记录到 keep.jsonl：
 
 ```bash
-uv run dit checkout main
+dit checkout main
 cat >> "$DEL_DIR/keep.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "追加问题"}, {"role": "assistant", "content": "追加答案"}]}
 EOF
-uv run dit add keep.jsonl
-uv run dit commit -m "main: append to keep.jsonl"
+dit add keep.jsonl
+dit commit -m "main: append to keep.jsonl"
 ```
 
 ```bash
-uv run dit merge feature/delete
+dit merge feature/delete
 ```
 
 验证清单：
@@ -842,39 +842,39 @@ uv run dit merge feature/delete
 ```bash
 export BOTH_ADD_DIR=$(mktemp -d)
 cd "$BOTH_ADD_DIR"
-uv run dit init
+dit init
 
 cat > "$BOTH_ADD_DIR/existing.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "已有数据"}]}
 EOF
-uv run dit add existing.jsonl
-uv run dit commit -m "base"
+dit add existing.jsonl
+dit commit -m "base"
 ```
 
 feature 分支创建 `new-topic.jsonl`：
 
 ```bash
-uv run dit checkout -b feature/new-topic
+dit checkout -b feature/new-topic
 cat > "$BOTH_ADD_DIR/new-topic.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "什么是 GraphQL？"}, {"role": "assistant", "content": "GraphQL 是 API 查询语言，允许客户端按需获取数据，避免过度获取。(feature版)"}]}
 EOF
-uv run dit add new-topic.jsonl
-uv run dit commit -m "feature: add new-topic.jsonl"
+dit add new-topic.jsonl
+dit commit -m "feature: add new-topic.jsonl"
 ```
 
 main 分支也创建同名的 `new-topic.jsonl`，但内容不同：
 
 ```bash
-uv run dit checkout main
+dit checkout main
 cat > "$BOTH_ADD_DIR/new-topic.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "什么是 GraphQL？"}, {"role": "assistant", "content": "GraphQL 由 Facebook 开发，与 REST 相比提供更灵活的数据查询接口。(main版)"}]}
 EOF
-uv run dit add new-topic.jsonl
-uv run dit commit -m "main: add new-topic.jsonl"
+dit add new-topic.jsonl
+dit commit -m "main: add new-topic.jsonl"
 ```
 
 ```bash
-uv run dit merge feature/new-topic
+dit merge feature/new-topic
 ```
 
 预期输出（exit code 非 0）：
@@ -895,8 +895,8 @@ CONFLICT: 1 file(s) have conflicts.
 cat > "$BOTH_ADD_DIR/new-topic.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "什么是 GraphQL？"}, {"role": "assistant", "content": "GraphQL 是 Facebook 开发的 API 查询语言，允许客户端按需获取数据，与 REST 相比更灵活高效。(resolved)"}]}
 EOF
-uv run dit add new-topic.jsonl
-uv run dit merge --continue
+dit add new-topic.jsonl
+dit merge --continue
 ```
 
 - [ ] 合并成功，`.dit/MERGE_HEAD` 已删除
@@ -906,37 +906,37 @@ uv run dit merge --continue
 ```bash
 export MOD_DEL_DIR=$(mktemp -d)
 cd "$MOD_DEL_DIR"
-uv run dit init
+dit init
 
 cat > "$MOD_DEL_DIR/contested.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "什么是 CAP 定理？"}]}
 EOF
-uv run dit add contested.jsonl
-uv run dit commit -m "base"
+dit add contested.jsonl
+dit commit -m "base"
 ```
 
 feature 分支修改该文件：
 
 ```bash
-uv run dit checkout -b feature/modify
+dit checkout -b feature/modify
 cat > "$MOD_DEL_DIR/contested.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "什么是 CAP 定理？"}, {"role": "assistant", "content": "CAP 定理指出分布式系统无法同时满足一致性（C）、可用性（A）、分区容错性（P）三项保证。"}]}
 EOF
-uv run dit add contested.jsonl
-uv run dit commit -m "feature: answer CAP theorem"
+dit add contested.jsonl
+dit commit -m "feature: answer CAP theorem"
 ```
 
 main 分支删除该文件：
 
 ```bash
-uv run dit checkout main
+dit checkout main
 rm "$MOD_DEL_DIR/contested.jsonl"
-uv run dit add contested.jsonl
-uv run dit commit -m "main: remove contested.jsonl"
+dit add contested.jsonl
+dit commit -m "main: remove contested.jsonl"
 ```
 
 ```bash
-uv run dit merge feature/modify
+dit merge feature/modify
 ```
 
 预期输出（exit code 非 0）：
@@ -957,7 +957,7 @@ cat "$MOD_DEL_DIR/.dit/conflicts.json"
 **中止此合并（不解决，直接放弃）：**
 
 ```bash
-uv run dit merge --abort
+dit merge --abort
 ```
 
 - [ ] `contested.jsonl` 不存在（恢复到 main 分支的已删除状态）
@@ -971,14 +971,14 @@ uv run dit merge --abort
 ```bash
 export EDGE_DIR=$(mktemp -d)
 cd "$EDGE_DIR"
-uv run dit init
+dit init
 cat > "$EDGE_DIR/data.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "测试数据"}]}
 EOF
-uv run dit add data.jsonl
-uv run dit commit -m "initial"
+dit add data.jsonl
+dit commit -m "initial"
 
-uv run dit merge main
+dit merge main
 ```
 
 验证清单：
@@ -989,7 +989,7 @@ uv run dit merge main
 
 ```bash
 cd "$EDGE_DIR"
-uv run dit merge nonexistent-branch
+dit merge nonexistent-branch
 ```
 
 验证清单：
@@ -1000,13 +1000,13 @@ uv run dit merge nonexistent-branch
 
 ```bash
 cd "$EDGE_DIR"
-uv run dit branch feature/edge
+dit branch feature/edge
 cat > "$EDGE_DIR/data.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "未提交的修改"}]}
 EOF
-uv run dit add data.jsonl
+dit add data.jsonl
 # 暂存但不提交
-uv run dit merge feature/edge
+dit merge feature/edge
 ```
 
 验证清单：
@@ -1018,27 +1018,27 @@ uv run dit merge feature/edge
 ```bash
 export UPTODATE_DIR=$(mktemp -d)
 cd "$UPTODATE_DIR"
-uv run dit init
+dit init
 cat > "$UPTODATE_DIR/data.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "问题"}]}
 EOF
-uv run dit add data.jsonl
-uv run dit commit -m "initial"
+dit add data.jsonl
+dit commit -m "initial"
 
 # 创建 feature 分支，添加数据
-uv run dit checkout -b feature/already-merged
+dit checkout -b feature/already-merged
 cat > "$UPTODATE_DIR/more.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "更多数据"}]}
 EOF
-uv run dit add more.jsonl
-uv run dit commit -m "feature: more data"
+dit add more.jsonl
+dit commit -m "feature: more data"
 
 # 合并到 main
-uv run dit checkout main
-uv run dit merge feature/already-merged
+dit checkout main
+dit merge feature/already-merged
 
 # 再次合并同一个分支
-uv run dit merge feature/already-merged
+dit merge feature/already-merged
 ```
 
 验证清单：
@@ -1050,7 +1050,7 @@ uv run dit merge feature/already-merged
 
 ```bash
 cd "$EDGE_DIR"
-uv run dit cherry-pick 0000000000000000000000000000000000000000000000000000000000000000
+dit cherry-pick 0000000000000000000000000000000000000000000000000000000000000000
 ```
 
 验证清单：
@@ -1064,15 +1064,15 @@ uv run dit cherry-pick 000000000000000000000000000000000000000000000000000000000
 ```bash
 export ROOT_DIR=$(mktemp -d)
 cd "$ROOT_DIR"
-uv run dit init
+dit init
 cat > "$ROOT_DIR/data.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "根提交数据"}]}
 EOF
-uv run dit add data.jsonl
-uv run dit commit -m "root commit"
+dit add data.jsonl
+dit commit -m "root commit"
 
-ROOT_HASH=$(uv run dit log --oneline | head -1 | awk '{print $1}')
-uv run dit cherry-pick "$ROOT_HASH"
+ROOT_HASH=$(dit log --oneline | head -1 | awk '{print $1}')
+dit cherry-pick "$ROOT_HASH"
 ```
 
 验证清单：
@@ -1084,17 +1084,17 @@ uv run dit cherry-pick "$ROOT_HASH"
 ```bash
 export MUTEX_DIR=$(mktemp -d)
 cd "$MUTEX_DIR"
-uv run dit init
+dit init
 cat > "$MUTEX_DIR/data.jsonl" << 'EOF'
 {"messages": [{"role": "user", "content": "互斥测试"}]}
 EOF
-uv run dit add data.jsonl
-uv run dit commit -m "base"
+dit add data.jsonl
+dit commit -m "base"
 
 # 手动写入 MERGE_HEAD 模拟合并进行中
 echo "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" > "$MUTEX_DIR/.dit/MERGE_HEAD"
 
-uv run dit cherry-pick bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+dit cherry-pick bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 ```
 
 验证清单：
