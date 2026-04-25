@@ -4,11 +4,15 @@ import time
 from dit.core.objects import (
     ManifestEntry,
     Manifest,
+    SidecarEntry,
+    Sidecar,
     TreeEntry,
     Tree,
     Commit,
     serialize_manifest,
     deserialize_manifest,
+    serialize_sidecar,
+    deserialize_sidecar,
     serialize_tree,
     deserialize_tree,
     serialize_commit,
@@ -127,3 +131,61 @@ class TestBlob:
         data1 = serialize_blob(b"foo")
         data2 = serialize_blob(b"bar")
         assert object_hash(data1) != object_hash(data2)
+
+
+class TestSidecar:
+    def _make_entry(self, row_hash="aa" * 32, char_count=100, token_estimate=25, field_count=3, lang="en"):
+        return SidecarEntry(
+            row_hash=row_hash,
+            char_count=char_count,
+            token_estimate=token_estimate,
+            field_count=field_count,
+            lang=lang,
+        )
+
+    def test_roundtrip_basic(self):
+        entry = self._make_entry()
+        s = Sidecar(manifest_hash="bb" * 32, entries=[entry])
+        data = serialize_sidecar(s)
+        s2 = deserialize_sidecar(data)
+        assert s2.manifest_hash == "bb" * 32
+        assert len(s2.entries) == 1
+        e = s2.entries[0]
+        assert e.row_hash == "aa" * 32
+        assert e.char_count == 100
+        assert e.token_estimate == 25
+        assert e.field_count == 3
+        assert e.lang == "en"
+
+    def test_roundtrip_lang_none(self):
+        entry = self._make_entry(lang=None)
+        s = Sidecar(manifest_hash="cc" * 32, entries=[entry])
+        data = serialize_sidecar(s)
+        s2 = deserialize_sidecar(data)
+        assert s2.entries[0].lang is None
+
+    def test_roundtrip_empty_entries(self):
+        s = Sidecar(manifest_hash="dd" * 32, entries=[])
+        data = serialize_sidecar(s)
+        s2 = deserialize_sidecar(data)
+        assert s2.manifest_hash == "dd" * 32
+        assert s2.entries == []
+
+    def test_serialize_type_field(self):
+        s = Sidecar(manifest_hash="ee" * 32, entries=[])
+        data = serialize_sidecar(s)
+        obj = json.loads(data)
+        assert obj["type"] == "sidecar"
+
+    def test_serialize_deterministic(self):
+        entry = self._make_entry()
+        s = Sidecar(manifest_hash="ff" * 32, entries=[entry])
+        assert serialize_sidecar(s) == serialize_sidecar(s)
+
+    def test_serialize_entry_key_order(self):
+        entry = self._make_entry()
+        s = Sidecar(manifest_hash="11" * 32, entries=[entry])
+        data = serialize_sidecar(s)
+        obj = json.loads(data)
+        keys = list(obj["entries"][0].keys())
+        assert keys == sorted(keys)

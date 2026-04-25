@@ -27,6 +27,54 @@ class Tree:
     entries: list[TreeEntry]
 
 
+@dataclass(frozen=True)
+class SidecarEntry:
+    row_hash: str
+    char_count: int
+    token_estimate: int
+    field_count: int
+    lang: Optional[str]
+
+
+@dataclass(frozen=True)
+class Sidecar:
+    manifest_hash: str
+    entries: list[SidecarEntry]
+
+
+def serialize_sidecar(s: Sidecar) -> bytes:
+    data = {
+        "type": "sidecar",
+        "manifest_hash": s.manifest_hash,
+        "entries": [
+            {
+                "char_count": e.char_count,
+                "field_count": e.field_count,
+                "lang": e.lang,
+                "row_hash": e.row_hash,
+                "token_estimate": e.token_estimate,
+            }
+            for e in s.entries
+        ],
+    }
+    return json.dumps(data, separators=(",", ":"), sort_keys=True).encode("utf-8")
+
+
+def deserialize_sidecar(data: bytes) -> Sidecar:
+    obj = json.loads(data)
+    entries = [
+        SidecarEntry(
+            row_hash=e["row_hash"],
+            char_count=e["char_count"],
+            token_estimate=e["token_estimate"],
+            field_count=e["field_count"],
+            lang=e.get("lang"),
+        )
+        for e in obj["entries"]
+    ]
+    return Sidecar(manifest_hash=obj["manifest_hash"], entries=entries)
+
+
 @dataclass
 class Commit:
     tree_hash: str
