@@ -265,3 +265,41 @@ class TestDeserializeTreeSidecar:
         ])
         t2 = deserialize_tree(serialize_tree(t))
         assert t2.entries[0].sidecar_hash == "bb" * 32
+
+
+class TestTreeHashStability:
+    # Known-good bytes for a tree entry without sidecar_hash (old format)
+    _OLD_FORMAT_BYTES = (
+        b'{"entries":[{"name":"data.jsonl","obj_hash":"'
+        + (b"aa" * 32)
+        + b'","obj_type":"manifest"}],"type":"tree"}'
+    )
+    _OLD_FORMAT_HASH = object_hash(_OLD_FORMAT_BYTES)
+
+    def test_old_format_roundtrip_byte_identical(self):
+        t = Tree(entries=[
+            TreeEntry(name="data.jsonl", obj_type="manifest", obj_hash="aa" * 32),
+        ])
+        data = serialize_tree(t)
+        assert data == self._OLD_FORMAT_BYTES
+
+    def test_old_format_hash_unchanged(self):
+        t = Tree(entries=[
+            TreeEntry(name="data.jsonl", obj_type="manifest", obj_hash="aa" * 32),
+        ])
+        data = serialize_tree(t)
+        assert object_hash(data) == self._OLD_FORMAT_HASH
+
+    def test_new_format_with_sidecar_hash_stable(self):
+        t = Tree(entries=[
+            TreeEntry(name="data.jsonl", obj_type="manifest", obj_hash="aa" * 32, sidecar_hash="bb" * 32),
+        ])
+        data = serialize_tree(t)
+        # Round-trip must be byte-identical
+        t2 = deserialize_tree(data)
+        data2 = serialize_tree(t2)
+        assert data == data2
+        # Hash must be deterministic
+        assert object_hash(data) == object_hash(data2)
+        # New format hash must differ from old format hash (sidecar_hash changes bytes)
+        assert object_hash(data) != self._OLD_FORMAT_HASH
