@@ -1321,7 +1321,7 @@ def push(
     else:
         new_objects = local_objects
 
-    upload_order = ["rows", "manifests", "trees", "commits"]
+    upload_order = ["rows", "manifests", "sidecars", "trees", "commits"]
     to_upload: dict[str, list[str]] = {}
     for obj_type in upload_order:
         hashes = list(new_objects.get(obj_type, set()))
