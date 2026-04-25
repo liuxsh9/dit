@@ -185,10 +185,19 @@ mkdir -p /tmp/dit-data
 
 Dit 使用 Alembic 管理数据库 schema。迁移脚本和配置文件位于 `src/dit/server/` 目录下。
 
+> **说明**：迁移命令会优先读取 `DIT_SERVER_DATABASE_URL`；若未设置，才回退到 `src/dit/server/alembic.ini` 中的默认 `sqlalchemy.url`。
+
+推荐直接在项目根目录执行：
+
+```bash
+# 运行所有迁移（将 schema 升级至最新版本）
+uv run alembic -c src/dit/server/alembic.ini upgrade head
+```
+
+如果你已经切到 `src/dit/server/` 目录，也可以执行：
+
 ```bash
 cd src/dit/server
-
-# 运行所有迁移（将 schema 升级至最新版本）
 uv run alembic -c alembic.ini upgrade head
 ```
 
@@ -203,11 +212,6 @@ INFO  [alembic.runtime.migration] Running upgrade 003 -> 004, pr comment
 INFO  [alembic.runtime.migration] Running upgrade 004 -> 005, branch protection
 INFO  [alembic.runtime.migration] Running upgrade 005 -> 006, pr approval
 INFO  [alembic.runtime.migration] Running upgrade 006 -> 007, reviewer rules
-```
-
-回到项目根目录：
-```bash
-cd -
 ```
 
 验证迁移结果：
@@ -654,12 +658,12 @@ uv sync --extra server
 
 **解决**：
 ```bash
-# 方式一：切换到 alembic.ini 所在目录
+# 推荐：从根目录指定配置文件路径
+uv run alembic -c src/dit/server/alembic.ini upgrade head
+
+# 或者切换到 alembic.ini 所在目录再执行
 cd src/dit/server
 uv run alembic -c alembic.ini upgrade head
-
-# 方式二：从根目录指定配置文件路径
-uv run alembic -c src/dit/server/alembic.ini upgrade head
 ```
 
 ### 问题 6：创建令牌时返回 401
