@@ -1922,6 +1922,106 @@ def search(
         typer.echo(f"Limit reached. Pass --limit N to see more.")
 
 
+@app.command()
+def validate(
+    ref: str = typer.Option("main", "--ref", help="Branch name or commit hash to validate"),
+    format: str = typer.Option("table", "--format", help="Output format: table or json"),
+):
+    """Validate all JSONL rows in a commit against .ditvalidate.yaml rules."""
+    import json as _json
+    from dit.core.validate import load_rules, validate_commit
+
+    repo_root = find_repo_root()
+    dot = get_dot(repo_root)
+    store = ObjectStore(dot / "objects")
+    refs = RefStore(dot)
+
+    # Resolve ref to commit hash
+    commit_hash = refs.get_branch(ref)
+    if commit_hash is None:
+        if len(ref) == 64 and all(c in "0123456789abcdef" for c in ref):
+            commit_hash = ref
+        else:
+            typer.echo(f"fatal: ref '{ref}' not found", err=True)
+            raise typer.Exit(1)
+
+    rules = load_rules(repo_root)
+
+    try:
+        result = validate_commit(store, commit_hash, rules)
+    except FileNotFoundError as exc:
+        typer.echo(f"fatal: {exc}", err=True)
+        raise typer.Exit(1)
+
+    if format == "json":
+        typer.echo(_json.dumps(result, indent=2))
+        raise typer.Exit(0 if result["status"] == "pass" else 1)
+
+    # Table format
+    ref_display = f"heads/{ref}" if refs.get_branch(ref) else ref
+    typer.echo(f"Validating {ref_display} (commit {commit_hash[:8]})")
+
+    rf = rules["required_fields"]
+    fk = rules["forbidden_keywords"]
+    mx = rules["max_row_chars"]
+    rules_parts = []
+    if rf:
+        rules_parts.append(f"required_fields=[{', '.join(rf)}]")
+    if fk:
+        rules_parts.append(f"forbidden_keywords={len(fk)}")
+    if mx is not None:
+        rules_parts.append(f"max_row_chars={mx}")
+    if rules["min_row_chars"] is not None:
+        rules_parts.append(f"min_row_chars={rules['min_row_chars']}")
+    if rules_parts:
+        typer.echo("Rules: " + "  ".join(rules_parts))
+    typer.echo("")
+
+    violations = result["violations"]
+    checked = result["checked_rows"]
+
+    if not violations:
+        n_files = _count_result_files(store, commit_hash)
+        typer.echo(f"Checked {checked} rows across {n_files} files.")
+        typer.echo("PASS")
+        raise typer.Exit(0)
+
+    # Count unique files for summary
+    n_files = _count_result_files(store, commit_hash)
+
+    typer.echo(f"FAIL \u2014 {len(violations)} violation(s)")
+    typer.echo("")
+
+    col_file = max((len(v["file"]) for v in violations), default=4)
+    col_file = max(col_file, 4)
+    col_rule = max((len(v["rule"]) for v in violations), default=4)
+    col_rule = max(col_rule, 4)
+    header = f"{'File':<{col_file}}   {'Row':>5}   {'Rule':<{col_rule}}   Detail"
+    sep = "\u2500" * max(len(header), 80)
+    typer.echo(header)
+    typer.echo(sep)
+    for v in violations:
+        typer.echo(f"{v['file']:<{col_file}}   {v['row_index']:>5}   {v['rule']:<{col_rule}}   {v['detail']}")
+    typer.echo(sep)
+    typer.echo(f"Checked {checked} rows across {n_files} files.")
+    raise typer.Exit(1)
+
+
+def _count_result_files(store, commit_hash: str) -> int:
+    """Count manifest files in a commit (used for validate summary line)."""
+    from dit.core.objects import deserialize_commit
+    from dit.core.tree_walker import flatten_tree
+    try:
+        commit_data = store.read("commits", commit_hash)
+        if commit_data is None:
+            return 0
+        commit = deserialize_commit(commit_data)
+        flat = flatten_tree(store, commit.tree_hash)
+        return sum(1 for _, (t, _, _) in flat.items() if t == "manifest")
+    except Exception:
+        return 0
+
+
 def _fmt_tokens(n: int | None) -> str:
     if n is None:
         return "\u2014"
