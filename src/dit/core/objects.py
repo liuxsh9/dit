@@ -110,12 +110,15 @@ def deserialize_manifest(data: bytes) -> Manifest:
 
 def serialize_tree(t: Tree) -> bytes:
     sorted_entries = sorted(t.entries, key=lambda e: e.name)
+    entry_list = []
+    for e in sorted_entries:
+        entry_dict = {"name": e.name, "obj_hash": e.obj_hash, "obj_type": e.obj_type}
+        if e.sidecar_hash is not None:
+            entry_dict["sidecar_hash"] = e.sidecar_hash
+        entry_list.append(entry_dict)
     data = {
         "type": "tree",
-        "entries": [
-            {"name": e.name, "obj_type": e.obj_type, "obj_hash": e.obj_hash}
-            for e in sorted_entries
-        ],
+        "entries": entry_list,
     }
     return json.dumps(data, separators=(",", ":"), sort_keys=True).encode("utf-8")
 

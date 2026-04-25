@@ -207,3 +207,32 @@ class TestTreeEntryWithSidecar:
             assert False, "should have raised"
         except Exception:
             pass
+
+
+class TestSerializeTreeSidecar:
+    def test_sidecar_hash_omitted_when_none(self):
+        t = Tree(entries=[
+            TreeEntry(name="data.jsonl", obj_type="manifest", obj_hash="aa" * 32),
+        ])
+        data = serialize_tree(t)
+        obj = json.loads(data)
+        assert "sidecar_hash" not in obj["entries"][0]
+
+    def test_sidecar_hash_included_when_set(self):
+        t = Tree(entries=[
+            TreeEntry(name="data.jsonl", obj_type="manifest", obj_hash="aa" * 32, sidecar_hash="bb" * 32),
+        ])
+        data = serialize_tree(t)
+        obj = json.loads(data)
+        assert obj["entries"][0]["sidecar_hash"] == "bb" * 32
+
+    def test_mixed_entries_sidecar_selectively_included(self):
+        t = Tree(entries=[
+            TreeEntry(name="a.jsonl", obj_type="manifest", obj_hash="aa" * 32, sidecar_hash="cc" * 32),
+            TreeEntry(name="b.jsonl", obj_type="manifest", obj_hash="bb" * 32),
+        ])
+        data = serialize_tree(t)
+        obj = json.loads(data)
+        entries = {e["name"]: e for e in obj["entries"]}
+        assert "sidecar_hash" in entries["a.jsonl"]
+        assert "sidecar_hash" not in entries["b.jsonl"]
