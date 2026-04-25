@@ -100,6 +100,9 @@ def create_app(settings: ServerSettings | None = None) -> FastAPI:
     from dit.server.routes.blame_api import router as blame_router
     application.include_router(blame_router)
 
+    from dit.server.routes.gc_api import router as gc_router
+    application.include_router(gc_router)
+
     return application
 
 
