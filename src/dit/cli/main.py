@@ -2111,6 +2111,94 @@ def blame(
         raise typer.Exit(1)
 
 
+@app.command()
+def gc(
+    grace: int = typer.Option(24, "--grace", help="Grace period in hours"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Count without deleting"),
+    format: str = typer.Option("table", "--format", help="Output format: table or json"),
+):
+    """Remove unreachable objects from the object store."""
+    import json as _json
+    from dit.core.gc import gc as run_gc
+
+    repo_root = find_repo_root()
+    dot = get_dot(repo_root)
+    store = ObjectStore(dot / "objects")
+    refs = RefStore(dot)
+
+    ref_hashes = []
+    for _name, h in refs.list_branches().items():
+        ref_hashes.append(h)
+    for _name, h in refs.list_tags().items():
+        ref_hashes.append(h)
+
+    index = StagingIndex(dot / "index")
+    index_entries = index.entries_typed()
+
+    result = run_gc(
+        store,
+        ref_hashes,
+        index_entries=index_entries if index_entries else None,
+        grace_seconds=grace * 3600,
+        dry_run=dry_run,
+    )
+
+    if format == "json":
+        typer.echo(_json.dumps({
+            "live_counts": result.live_counts,
+            "deleted_counts": result.deleted_counts,
+            "total_scanned": result.total_scanned,
+            "total_deleted": result.total_deleted,
+            "tmp_deleted": result.tmp_deleted,
+            "errors": result.errors,
+        }, indent=2))
+        return
+
+    mode = "dry run" if dry_run else "cleanup"
+    typer.echo(f"Garbage collection ({mode}) \u2014 grace period: {grace}h")
+    typer.echo("")
+
+    if dry_run:
+        header = f"{'Object type':<14} {'Live':>6} {'Unreachable':>13} {'Would delete':>14}"
+        sep = "\u2500" * len(header)
+        typer.echo(header)
+        typer.echo(sep)
+        total_live = 0
+        total_unreachable = 0
+        total_would_delete = 0
+        for obj_type in ["commits", "trees", "manifests", "rows", "sidecars", "blobs"]:
+            live = result.live_counts.get(obj_type, 0)
+            deleted = result.deleted_counts.get(obj_type, 0)
+            total_live += live
+            total_unreachable += deleted
+            total_would_delete += deleted
+            typer.echo(f"{obj_type:<14} {live:>6} {deleted:>13} {deleted:>14}")
+        typer.echo(sep)
+        typer.echo(f"{'TOTAL':<14} {total_live:>6} {total_unreachable:>13} {total_would_delete:>14}")
+        typer.echo("")
+        if result.tmp_deleted > 0:
+            typer.echo(f"{result.tmp_deleted} stale tmp file(s) would be deleted.")
+    else:
+        if result.total_deleted == 0 and result.tmp_deleted == 0:
+            typer.echo("No unreachable objects found.")
+            return
+
+        parts = []
+        for obj_type in ["commits", "trees", "manifests", "rows", "sidecars", "blobs"]:
+            count = result.deleted_counts.get(obj_type, 0)
+            if count > 0:
+                singular = obj_type.rstrip("s") if count == 1 else obj_type
+                parts.append(f"{count} {singular}")
+        if parts:
+            typer.echo(f"Deleted {result.total_deleted} unreachable object(s) ({', '.join(parts)}).")
+        if result.tmp_deleted > 0:
+            typer.echo(f"Deleted {result.tmp_deleted} stale tmp file(s).")
+
+    if result.errors:
+        for err in result.errors:
+            typer.echo(f"warning: {err}", err=True)
+
+
 def _count_result_files(store, commit_hash: str) -> int:
     """Count manifest files in a commit (used for validate summary line)."""
     from dit.core.objects import deserialize_commit
