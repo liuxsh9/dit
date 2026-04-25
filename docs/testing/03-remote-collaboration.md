@@ -28,17 +28,17 @@
 ### 1.1 确认服务端运行
 
 ```bash
-curl -s http://localhost:8000/api/health | python3 -m json.tool
+curl -s http://localhost:8000/health | python3 -m json.tool
 ```
 
 验证清单：
-- [ ] 返回 HTTP 200，JSON 中含 `"status": "ok"`（或类似健康字段）
+- [ ] 返回 HTTP 200，JSON 中含 `"status": "healthy"`（或等价健康字段）
 
 ### 1.2 确认 Admin 令牌可用
 
 ```bash
 export ADMIN_TOKEN="<你的 admin token>"   # 替换为实际令牌
-curl -s -H "Authorization: token $ADMIN_TOKEN" \
+curl -s -H "Authorization: Bearer $ADMIN_TOKEN" \
      http://localhost:8000/api/v1/repos | python3 -m json.tool
 ```
 
@@ -158,7 +158,7 @@ cat "$WORK_DIR/repo-a/.dit/config"
 ```bash
 curl -s -X POST http://localhost:8000/api/v1/repos \
      -H "Content-Type: application/json" \
-     -H "Authorization: token $ADMIN_TOKEN" \
+     -H "Authorization: Bearer $ADMIN_TOKEN" \
      -d '{"name": "sft-demo"}' | python3 -m json.tool
 ```
 
@@ -169,7 +169,7 @@ curl -s -X POST http://localhost:8000/api/v1/repos \
 **确认仓库已出现在列表中：**
 
 ```bash
-curl -s -H "Authorization: token $ADMIN_TOKEN" \
+curl -s -H "Authorization: Bearer $ADMIN_TOKEN" \
      http://localhost:8000/api/v1/repos | python3 -m json.tool
 ```
 
@@ -194,7 +194,7 @@ dit push
 ### 4.2 服务端验证 — 检查 ref
 
 ```bash
-curl -s -H "Authorization: token $ADMIN_TOKEN" \
+curl -s -H "Authorization: Bearer $ADMIN_TOKEN" \
      "http://localhost:8000/api/v1/repos/sft-demo/refs/heads/main" | python3 -m json.tool
 ```
 
@@ -213,7 +213,7 @@ echo "Commit hash: $LOCAL_HASH"
 
 # 检查 commit 对象
 curl -s -o /dev/null -w "%{http_code}" \
-     -H "Authorization: token $ADMIN_TOKEN" \
+     -H "Authorization: Bearer $ADMIN_TOKEN" \
      "http://localhost:8000/api/v1/repos/sft-demo/objects/commits/$LOCAL_HASH"
 echo ""
 ```
@@ -272,11 +272,25 @@ cat "$WORK_DIR/repo-b/train.jsonl"
 
 # 行数比较
 wc -l "$WORK_DIR/repo-a/train.jsonl" "$WORK_DIR/repo-b/train.jsonl"
+
+# 语义比较（Dit 物化时会规范化 JSON key 顺序）
+WORK_DIR="$WORK_DIR" python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+
+work_dir = Path(os.environ["WORK_DIR"])
+repo_a = [json.loads(line) for line in (work_dir / "repo-a" / "train.jsonl").read_text().splitlines() if line.strip()]
+repo_b = [json.loads(line) for line in (work_dir / "repo-b" / "train.jsonl").read_text().splitlines() if line.strip()]
+print("semantic_equal =", repo_a == repo_b)
+print("bytes_equal    =", (work_dir / "repo-a" / "train.jsonl").read_bytes() == (work_dir / "repo-b" / "train.jsonl").read_bytes())
+PY
 ```
 
 验证清单：
 - [ ] 两个文件行数相同
-- [ ] 内容逐行一致（或语义等价）
+- [ ] 输出 `semantic_equal = True`
+- [ ] 若 `bytes_equal = False`，通常仅表示 JSON key 顺序被规范化，不视为失败
 
 ### 5.4 验证 git log 一致
 
@@ -331,7 +345,7 @@ dit push
 ### 6.3 服务端验证 ref 已更新
 
 ```bash
-curl -s -H "Authorization: token $ADMIN_TOKEN" \
+curl -s -H "Authorization: Bearer $ADMIN_TOKEN" \
      "http://localhost:8000/api/v1/repos/sft-demo/refs/heads/main" | python3 -m json.tool
 ```
 
@@ -391,12 +405,20 @@ wc -l "$WORK_DIR/repo-a/train.jsonl"
 ### 7.4 两端内容一致性最终确认
 
 ```bash
-diff "$WORK_DIR/repo-a/train.jsonl" "$WORK_DIR/repo-b/train.jsonl"
-echo "diff 退出码: $?"
+WORK_DIR="$WORK_DIR" python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+
+work_dir = Path(os.environ["WORK_DIR"])
+repo_a = [json.loads(line) for line in (work_dir / "repo-a" / "train.jsonl").read_text().splitlines() if line.strip()]
+repo_b = [json.loads(line) for line in (work_dir / "repo-b" / "train.jsonl").read_text().splitlines() if line.strip()]
+print("semantic_equal =", repo_a == repo_b)
+PY
 ```
 
 验证清单：
-- [ ] `diff` 无输出，退出码为 0（两文件完全相同）
+- [ ] 输出 `semantic_equal = True`
 
 ---
 
@@ -433,7 +455,7 @@ dit push --branch feature/new-dataset
 ### 8.3 服务端验证分支 ref
 
 ```bash
-curl -s -H "Authorization: token $ADMIN_TOKEN" \
+curl -s -H "Authorization: Bearer $ADMIN_TOKEN" \
      "http://localhost:8000/api/v1/repos/sft-demo/refs/heads/feature/new-dataset" \
      | python3 -m json.tool
 ```
@@ -485,6 +507,7 @@ dit push
 - [ ] 错误信息包含 `401`、`Unauthorized` 或 `forbidden` 等认证失败提示
 
 > 服务端默认要求令牌验证，无令牌推送会被拒绝。
+> 期望表现应为 CLI 友好报错，而不是 Python traceback。
 
 ### 9.2 令牌错误推送应失败
 
@@ -572,7 +595,7 @@ dit fetch
 ```bash
 curl -s -X POST http://localhost:8000/api/v1/repos \
      -H "Content-Type: application/json" \
-     -H "Authorization: token $ADMIN_TOKEN" \
+     -H "Authorization: Bearer $ADMIN_TOKEN" \
      -d '{"name": "empty-repo"}' | python3 -m json.tool
 ```
 
@@ -642,19 +665,12 @@ dit remote remove badhost
 ## 测试完成清理
 
 ```bash
-# 删除服务端测试仓库（可选）
-curl -s -X DELETE \
-     -H "Authorization: token $ADMIN_TOKEN" \
-     "http://localhost:8000/api/v1/repos/sft-demo"
-
-curl -s -X DELETE \
-     -H "Authorization: token $ADMIN_TOKEN" \
-     "http://localhost:8000/api/v1/repos/empty-repo"
-
 # 删除本地测试目录
 rm -rf "$WORK_DIR"
 echo "清理完成"
 ```
+
+> 当前服务端未提供仓库删除 API；如需清理测试仓库，请直接清理测试数据库或对象目录。
 
 ---
 
