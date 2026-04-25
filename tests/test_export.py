@@ -52,7 +52,8 @@ from pathlib import Path
 from dit.core.export import export_commit
 from dit.core.objects import (
     Commit, Manifest, ManifestEntry,
-    serialize_commit, serialize_manifest,
+    Sidecar, SidecarEntry,
+    serialize_commit, serialize_manifest, serialize_sidecar,
 )
 from dit.core.store import ObjectStore
 from dit.core.tree_builder import build_nested_tree
@@ -202,3 +203,76 @@ class TestExportCommitCsv:
 
         with pytest.raises(ValueError, match="Unknown format"):
             export_commit(store, commit_hash, out, fmt="parquet")
+
+
+def _build_repo_with_sidecar(tmp_path: Path) -> tuple[ObjectStore, str]:
+    store = ObjectStore(tmp_path / "objects")
+
+    row = json.dumps({"messages": [{"role": "user", "content": "hello"}]})
+    rh = store.write("rows", row.encode("utf-8"))
+
+    manifest = Manifest(entries=[ManifestEntry(row_hash=rh, query_fingerprint=None)])
+    mh = store.write("manifests", serialize_manifest(manifest))
+
+    sc_entries = [SidecarEntry(row_hash=rh, char_count=len(row), token_estimate=len(row) // 4, field_count=1, lang="en")]
+    sidecar = Sidecar(manifest_hash=mh, entries=sc_entries)
+    sc_hash = store.write("sidecars", serialize_sidecar(sidecar))
+
+    tree_entries = {"train.jsonl": ("manifest", mh, sc_hash)}
+    tree_hash = build_nested_tree(store, tree_entries)
+
+    commit = Commit(
+        tree_hash=tree_hash,
+        parent_hashes=[],
+        author="tester",
+        message="initial",
+        timestamp=int(time.time()),
+    )
+    commit_hash = store.write("commits", serialize_commit(commit))
+    return store, commit_hash
+
+
+class TestExportIncludeMeta:
+    def test_meta_file_created_when_flag_set(self, tmp_path: Path):
+        store, commit_hash = _build_repo_with_sidecar(tmp_path)
+        out = tmp_path / "exported"
+        out.mkdir()
+
+        export_commit(store, commit_hash, out, include_meta=True)
+
+        assert (out / "train.jsonl").exists()
+        assert (out / "train.jsonl.meta.json").exists()
+
+    def test_meta_file_not_created_by_default(self, tmp_path: Path):
+        store, commit_hash = _build_repo_with_sidecar(tmp_path)
+        out = tmp_path / "exported"
+        out.mkdir()
+
+        export_commit(store, commit_hash, out)
+
+        assert not (out / "train.jsonl.meta.json").exists()
+
+    def test_meta_file_content(self, tmp_path: Path):
+        store, commit_hash = _build_repo_with_sidecar(tmp_path)
+        out = tmp_path / "exported"
+        out.mkdir()
+
+        export_commit(store, commit_hash, out, include_meta=True)
+
+        meta = json.loads((out / "train.jsonl.meta.json").read_text())
+        assert meta["file"] == "train.jsonl"
+        assert "manifest_hash" in meta
+        assert "sidecar_hash" in meta
+        assert meta["row_count"] == 1
+        assert meta["char_count"] > 0
+        assert "lang_distribution" in meta
+
+    def test_meta_skipped_when_no_sidecar(self, tmp_path: Path):
+        store, commit_hash = _build_repo(tmp_path)
+        out = tmp_path / "exported"
+        out.mkdir()
+
+        export_commit(store, commit_hash, out, include_meta=True)
+
+        assert (out / "train.jsonl").exists()
+        assert not (out / "train.jsonl.meta.json").exists()
