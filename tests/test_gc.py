@@ -196,6 +196,7 @@ class TestSweep:
 
         assert result.total_deleted == 0
         assert fresh_path.exists()
+        assert result.skipped_counts["rows"] >= 1
 
     def test_sweep_dry_run_no_delete(self, tmp_path: Path) -> None:
         from dit.core.gc import sweep

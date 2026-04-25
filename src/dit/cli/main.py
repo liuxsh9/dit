@@ -2147,6 +2147,7 @@ def gc(
         typer.echo(_json.dumps({
             "live_counts": result.live_counts,
             "deleted_counts": result.deleted_counts,
+            "skipped_counts": result.skipped_counts,
             "total_scanned": result.total_scanned,
             "total_deleted": result.total_deleted,
             "tmp_deleted": result.tmp_deleted,
@@ -2169,15 +2170,20 @@ def gc(
         for obj_type in ["commits", "trees", "manifests", "rows", "sidecars", "blobs"]:
             live = result.live_counts.get(obj_type, 0)
             deleted = result.deleted_counts.get(obj_type, 0)
+            skipped = result.skipped_counts.get(obj_type, 0)
+            unreachable = deleted + skipped
             total_live += live
-            total_unreachable += deleted
+            total_unreachable += unreachable
             total_would_delete += deleted
-            typer.echo(f"{obj_type:<14} {live:>6} {deleted:>13} {deleted:>14}")
+            typer.echo(f"{obj_type:<14} {live:>6} {unreachable:>13} {deleted:>14}")
         typer.echo(sep)
         typer.echo(f"{'TOTAL':<14} {total_live:>6} {total_unreachable:>13} {total_would_delete:>14}")
         typer.echo("")
         if result.tmp_deleted > 0:
             typer.echo(f"{result.tmp_deleted} stale tmp file(s) would be deleted.")
+        total_skipped = sum(result.skipped_counts.values())
+        if total_skipped > 0:
+            typer.echo(f"{total_skipped} unreachable object(s) within grace period (skipped).")
     else:
         if result.total_deleted == 0 and result.tmp_deleted == 0:
             typer.echo("No unreachable objects found.")

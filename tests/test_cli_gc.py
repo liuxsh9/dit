@@ -82,6 +82,9 @@ def test_gc_dry_run_table(tmp_path):
     result = runner.invoke(app, ["gc", "--dry-run"], catch_exceptions=False)
     assert result.exit_code == 0, result.output
     assert "dry run" in result.output.lower()
+    assert "Would delete" in result.output
+    # Orphan row should show up in the would-delete column
+    assert "1" in result.output
 
     # Orphan still exists (dry run)
     obj_path = store._object_path("rows", orphan_hash)
@@ -123,7 +126,11 @@ def test_gc_json_format(tmp_path):
     data = json.loads(result.output)
     assert "live_counts" in data
     assert "deleted_counts" in data
+    assert "skipped_counts" in data
     assert "total_scanned" in data
+    assert "total_deleted" in data
+    assert "tmp_deleted" in data
+    assert "errors" in data
 
 
 def test_gc_custom_grace(tmp_path):

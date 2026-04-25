@@ -14,6 +14,7 @@ from dit.core.objects import deserialize_manifest
 class GCResult:
     live_counts: dict[str, int] = field(default_factory=dict)
     deleted_counts: dict[str, int] = field(default_factory=dict)
+    skipped_counts: dict[str, int] = field(default_factory=dict)
     total_scanned: int = 0
     total_deleted: int = 0
     tmp_deleted: int = 0
@@ -62,6 +63,7 @@ def sweep(
     for obj_type in OBJ_TYPES:
         result.live_counts[obj_type] = len(live_set.get(obj_type, set()))
         result.deleted_counts[obj_type] = 0
+        result.skipped_counts[obj_type] = 0
 
         type_dir = store.root / obj_type
         if not type_dir.exists():
@@ -92,6 +94,8 @@ def sweep(
                                 obj_file.unlink()
                             except OSError as e:
                                 result.errors.append(f"Failed to delete {obj_file}: {e}")
+                    else:
+                        result.skipped_counts[obj_type] += 1
 
     tmp_dir = store.root / "tmp"
     if tmp_dir.exists():
