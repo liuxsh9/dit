@@ -2251,3 +2251,96 @@ def _fmt_lang(dist: dict | None) -> str:
 
 def _get_author() -> str:
     return os.environ.get("DIT_AUTHOR", os.environ.get("USER", "unknown"))
+
+
+@app.command()
+def dedup(
+    ref: str = typer.Option("main", "--ref", help="Branch name or commit hash"),
+    path: Optional[str] = typer.Option(None, "--path", help="Path prefix filter"),
+    format: str = typer.Option("table", "--format", help="Output format: table or json"),
+    exact_only: bool = typer.Option(False, "--exact-only", help="Only show exact duplicates"),
+    query_only: bool = typer.Option(False, "--query-only", help="Only show query duplicates"),
+):
+    """Detect duplicate rows across files."""
+    import json as _json
+    from dit.core.dedup import detect_duplicates
+
+    repo_root = find_repo_root()
+    dot = get_dot(repo_root)
+    store = ObjectStore(dot / "objects")
+    refs_store = RefStore(dot)
+
+    commit_hash = refs_store.get_branch(ref)
+    if commit_hash is None:
+        if len(ref) == 64 and all(c in "0123456789abcdef" for c in ref):
+            commit_hash = ref
+        else:
+            typer.echo(f"fatal: ref '{ref}' not found", err=True)
+            raise typer.Exit(1)
+
+    try:
+        result = detect_duplicates(store, commit_hash, path_prefix=path)
+    except FileNotFoundError as exc:
+        typer.echo(f"fatal: {exc}", err=True)
+        raise typer.Exit(1)
+
+    if exact_only:
+        result["query_duplicates"] = []
+        result["summary"]["query_dup_groups"] = 0
+        result["summary"]["query_dup_rows"] = 0
+        if not result["exact_duplicates"]:
+            result["summary"]["severity"] = "clean"
+    if query_only:
+        result["exact_duplicates"] = []
+        result["summary"]["exact_dup_groups"] = 0
+        result["summary"]["exact_dup_rows"] = 0
+        if result["summary"]["severity"] == "warning" and not result["exact_duplicates"]:
+            result["summary"]["severity"] = "info" if result["query_duplicates"] else "clean"
+
+    severity = result["summary"]["severity"]
+    exit_code = 1 if severity == "warning" else 0
+
+    if format == "json":
+        typer.echo(_json.dumps(result, indent=2))
+        raise typer.Exit(exit_code)
+
+    s = result["summary"]
+    ref_display = f"heads/{ref}" if refs_store.get_branch(ref) else ref
+    typer.echo(f"Duplicate detection for {ref_display} (commit {commit_hash[:8]})")
+    typer.echo("")
+
+    if severity == "clean":
+        typer.echo(f"No duplicates found. {s['total_rows']} rows across {s['total_files']} files.")
+        raise typer.Exit(0)
+
+    if result["exact_duplicates"]:
+        typer.echo(f"⚠ EXACT DUPLICATES ({s['exact_dup_groups']} groups, {s['exact_dup_rows']} rows) \u2014 identical content")
+        typer.echo("\u2500" * 60)
+        typer.echo("  row_hash    Count  Files")
+        for group in result["exact_duplicates"]:
+            file_counts: dict[str, int] = {}
+            for occ in group["occurrences"]:
+                file_counts[occ["file"]] = file_counts.get(occ["file"], 0) + 1
+            files_str = ", ".join(f"{f} (\u00d7{c})" for f, c in file_counts.items())
+            typer.echo(f"  {group['row_hash'][:8]}    {group['count']:>3}x   {files_str}")
+        typer.echo("")
+
+    if result["query_duplicates"]:
+        typer.echo(f"ℹ QUERY DUPLICATES ({s['query_dup_groups']} groups, {s['query_dup_rows']} rows) \u2014 same query, different response")
+        typer.echo("\u2500" * 60)
+        typer.echo("  fingerprint  Variants  Files")
+        for group in result["query_duplicates"]:
+            file_counts: dict[str, int] = {}
+            for occ in group["occurrences"]:
+                file_counts[occ["file"]] = file_counts.get(occ["file"], 0) + 1
+            files_str = ", ".join(f"{f} (\u00d7{c})" for f, c in file_counts.items())
+            typer.echo(f"  {group['query_fingerprint'][:8]}    {len(group['row_hashes'])} variants   {files_str}")
+        typer.echo("")
+
+    typer.echo(f"Summary: {s['total_rows']} rows across {s['total_files']} files")
+    if s["exact_dup_groups"] > 0:
+        typer.echo(f"  Exact duplicates: {s['exact_dup_groups']} groups ({s['exact_dup_rows']} rows) WARNING")
+    if s["query_dup_groups"] > 0:
+        typer.echo(f"  Query duplicates: {s['query_dup_groups']} groups ({s['query_dup_rows']} rows) INFO")
+
+    raise typer.Exit(exit_code)
