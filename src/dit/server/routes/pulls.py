@@ -113,19 +113,19 @@ def _compute_diff_stats(store, source_commit: str, target_commit: str) -> dict:
 
         if src_entry is None:
             # File only in target (removed from source perspective)
-            tgt_obj_type, tgt_hash = tgt_entry
+            tgt_obj_type, tgt_hash, _sc = tgt_entry
             if tgt_obj_type == "manifest":
                 m = deserialize_manifest(store.read("manifests", tgt_hash))
                 total_removed += len(m.entries)
         elif tgt_entry is None:
             # File only in source (added)
-            src_obj_type, src_hash = src_entry
+            src_obj_type, src_hash, _sc = src_entry
             if src_obj_type == "manifest":
                 m = deserialize_manifest(store.read("manifests", src_hash))
                 total_added += len(m.entries)
         else:
-            src_obj_type, src_hash = src_entry
-            tgt_obj_type, tgt_hash = tgt_entry
+            src_obj_type, src_hash, _sc1 = src_entry
+            tgt_obj_type, tgt_hash, _sc2 = tgt_entry
             if src_obj_type == "manifest" and tgt_obj_type == "manifest":
                 if src_hash != tgt_hash:
                     old_m = deserialize_manifest(store.read("manifests", tgt_hash))

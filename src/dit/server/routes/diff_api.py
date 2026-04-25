@@ -90,7 +90,7 @@ async def diff_commits(
     new_flat = flatten_tree(store, new_commit.tree_hash)
 
     def manifest_map(flat: dict) -> dict[str, str]:
-        return {p: h for p, (t, h) in flat.items() if t == "manifest"}
+        return {p: h for p, (t, h, _sc) in flat.items() if t == "manifest"}
 
     old_manifests = manifest_map(old_flat)
     new_manifests = manifest_map(new_flat)

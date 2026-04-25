@@ -10,8 +10,8 @@ def flatten_tree(
     store: ObjectStore,
     tree_hash: str,
     prefix: str = "",
-) -> dict[str, tuple[str, str]]:
-    """Recursively expand a Tree into a flat map of path → (obj_type, obj_hash).
+) -> dict[str, tuple[str, str, str | None]]:
+    """Recursively expand a Tree into a flat map of path → (obj_type, obj_hash, sidecar_hash).
 
     Tree-type entries are descended recursively; manifest and blob entries are
     included as leaves with their full relative path.
@@ -20,13 +20,13 @@ def flatten_tree(
     if data is None:
         return {}
     tree = deserialize_tree(data)
-    result: dict[str, tuple[str, str]] = {}
+    result: dict[str, tuple[str, str, str | None]] = {}
     for entry in tree.entries:
         full_path = f"{prefix}{entry.name}" if not prefix else f"{prefix}/{entry.name}"
         if entry.obj_type == "tree":
             result.update(flatten_tree(store, entry.obj_hash, prefix=full_path))
         else:
-            result[full_path] = (entry.obj_type, entry.obj_hash)
+            result[full_path] = (entry.obj_type, entry.obj_hash, entry.sidecar_hash)
     return result
 
 
@@ -37,7 +37,7 @@ def resolve_path(
 ) -> list[dict] | None:
     """Navigate a nested tree to the given path and return its directory listing.
 
-    Returns list of entry dicts with keys: name, obj_type, obj_hash.
+    Returns list of entry dicts with keys: name, obj_type, obj_hash, sidecar_hash.
     Returns None if the path does not exist or points to a non-tree entry.
     """
     data = store.read("trees", tree_hash)
@@ -47,7 +47,7 @@ def resolve_path(
     if path == "" or path == ".":
         tree = deserialize_tree(data)
         return [
-            {"name": e.name, "obj_type": e.obj_type, "obj_hash": e.obj_hash}
+            {"name": e.name, "obj_type": e.obj_type, "obj_hash": e.obj_hash, "sidecar_hash": e.sidecar_hash}
             for e in tree.entries
         ]
 
@@ -73,7 +73,7 @@ def resolve_path(
                 return None
             leaf = deserialize_tree(leaf_data)
             return [
-                {"name": e.name, "obj_type": e.obj_type, "obj_hash": e.obj_hash}
+                {"name": e.name, "obj_type": e.obj_type, "obj_hash": e.obj_hash, "sidecar_hash": e.sidecar_hash}
                 for e in leaf.entries
             ]
         else:

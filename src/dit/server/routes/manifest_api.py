@@ -46,7 +46,7 @@ async def get_manifest(
     if clean_path not in flat:
         raise HTTPException(status_code=404, detail=f"Path '{clean_path}' not found")
 
-    obj_type, obj_hash = flat[clean_path]
+    obj_type, obj_hash, _sidecar = flat[clean_path]
     if obj_type != "manifest":
         raise HTTPException(
             status_code=404,

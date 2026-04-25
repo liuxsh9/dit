@@ -143,7 +143,7 @@ def diff():
         commit_data = store.read("commits", head_hash)
         head_commit = deserialize_commit(commit_data)
         flat = flatten_tree(store, head_commit.tree_hash)
-        for path, (obj_type, obj_hash) in flat.items():
+        for path, (obj_type, obj_hash, _sidecar) in flat.items():
             if obj_type == "manifest":
                 m_data = store.read("manifests", obj_hash)
                 if m_data:
@@ -272,7 +272,7 @@ def status():
         commit_data = store.read("commits", head_hash)
         head_commit = deserialize_commit(commit_data)
         flat = flatten_tree(store, head_commit.tree_hash)
-        head_manifests = {k: v for k, (t, v) in flat.items() if t == "manifest"}
+        head_manifests = {k: h for k, (t, h, _sc) in flat.items() if t == "manifest"}
 
     current_files = find_jsonl_files(repo_root)
     current_rels = {str(f.relative_to(repo_root)) for f in current_files}
@@ -398,7 +398,7 @@ def _has_uncommitted_changes(repo_root: Path, dot: Path, store: ObjectStore, ref
     flat = flatten_tree(store, head_commit.tree_hash)
     head_manifests = {
         path: obj_hash
-        for path, (obj_type, obj_hash) in flat.items()
+        for path, (obj_type, obj_hash, _sc) in flat.items()
         if obj_type == "manifest"
     }
 
@@ -426,12 +426,12 @@ def _materialize_tree(repo_root: Path, store: ObjectStore, tree_hash: str, old_t
     from dit.core.tree_walker import flatten_tree
 
     new_flat = flatten_tree(store, tree_hash)
-    new_files = {path: obj_hash for path, (obj_type, obj_hash) in new_flat.items() if obj_type == "manifest"}
+    new_files = {path: obj_hash for path, (obj_type, obj_hash, _sc) in new_flat.items() if obj_type == "manifest"}
 
     old_files: dict[str, str] = {}
     if old_tree_hash:
         old_flat = flatten_tree(store, old_tree_hash)
-        old_files = {path: obj_hash for path, (obj_type, obj_hash) in old_flat.items() if obj_type == "manifest"}
+        old_files = {path: obj_hash for path, (obj_type, obj_hash, _sc) in old_flat.items() if obj_type == "manifest"}
 
     for name, mhash in new_files.items():
         if old_files.get(name) != mhash:
