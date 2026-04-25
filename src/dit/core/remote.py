@@ -9,8 +9,11 @@ class RemoteClient:
     def __init__(self, base_url: str, token: str = "", repo: str = "") -> None:
         self.base_url = base_url.rstrip("/")
         self.repo = repo
+        headers: dict[str, str] = {}
+        if token:
+            headers["Authorization"] = f"token {token}"
         self.client = httpx.Client(
-            headers={"Authorization": f"token {token}"},
+            headers=headers,
             trust_env=False,
         )
 

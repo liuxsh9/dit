@@ -27,6 +27,18 @@ def _make_client(handler) -> RemoteClient:
     return rc
 
 
+def test_init_omits_authorization_header_when_token_empty() -> None:
+    rc = RemoteClient("http://test", token="", repo="my-repo")
+    assert "Authorization" not in rc.client.headers
+    rc.client.close()
+
+
+def test_init_sets_authorization_header_when_token_present() -> None:
+    rc = RemoteClient("http://test", token="secret", repo="my-repo")
+    assert rc.client.headers["Authorization"] == "token secret"
+    rc.client.close()
+
+
 def test_create_repo() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "POST"
