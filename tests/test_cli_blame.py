@@ -18,7 +18,7 @@ runner = CliRunner()
 
 
 def _init_repo(tmp_path: Path):
-    dot = tmp_path / ".datahub"
+    dot = tmp_path / ".dit"
     dot.mkdir()
     (dot / "objects").mkdir()
     RefStore(dot).init()

@@ -79,13 +79,13 @@ git commit -m "feat: add IsDataRepo template conditional and view.go guard"
 ### Task 2: Webpack + Feature Loader
 
 **Files:**
-- Create: `web_src/js/features/datahub.js`
+- Create: `web_src/js/features/dit.js`
 - Modify: `webpack.config.js`
 
 - [ ] **Step 1: Create feature loader**
 
 ```js
-// web_src/js/features/datahub.js
+// web_src/js/features/dit.js
 const dataRepoHome = document.getElementById('data-repo-home');
 if (dataRepoHome) {
   import('../components/DataRepoHome.vue').then(({default: App}) => {
@@ -131,7 +131,7 @@ Find the `entry` object in `webpack.config.js` and add:
 ```js
 entry: {
   // ... existing entries
-  datahub: [path.join(__dirname, 'web_src/js/features/datahub.js')],
+  dit: [path.join(__dirname, 'web_src/js/features/dit.js')],
 },
 ```
 
@@ -140,22 +140,22 @@ entry: {
 In `templates/repo/home.tmpl`, inside the `{{if .Repository.IsDataRepo}}` block, add:
 
 ```html
-<script src="{{AssetUrlPrefix}}/js/datahub.js"></script>
+<script src="{{AssetUrlPrefix}}/js/dit.js"></script>
 ```
 
 - [ ] **Step 4: Verify build**
 
 ```bash
 npx webpack
-# Expected: new chunk at public/assets/js/datahub.*.js
-ls public/assets/js/datahub*
+# Expected: new chunk at public/assets/js/dit.*.js
+ls public/assets/js/dit*
 ```
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add web_src/js/features/datahub.js webpack.config.js templates/repo/home.tmpl
-git commit -m "feat: add datahub feature loader and webpack entry"
+git add web_src/js/features/dit.js webpack.config.js templates/repo/home.tmpl
+git commit -m "feat: add dit feature loader and webpack entry"
 ```
 
 ---
@@ -163,15 +163,15 @@ git commit -m "feat: add datahub feature loader and webpack entry"
 ### Task 3: API Utility
 
 **Files:**
-- Create: `web_src/js/utils/datahub-api.js`
+- Create: `web_src/js/utils/dit-api.js`
 
 - [ ] **Step 1: Create API wrapper**
 
 ```js
-// web_src/js/utils/datahub-api.js
+// web_src/js/utils/dit-api.js
 
-export async function datahubFetch(owner, repo, path, options = {}) {
-  const url = `/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/datahub${path}`;
+export async function ditFetch(owner, repo, path, options = {}) {
+  const url = `/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/dit${path}`;
   const resp = await fetch(url, {
     headers: {
       'Content-Type': 'application/json',
@@ -186,8 +186,8 @@ export async function datahubFetch(owner, repo, path, options = {}) {
   return resp.json();
 }
 
-export async function datahubFetchRaw(owner, repo, path, options = {}) {
-  const url = `/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/datahub${path}`;
+export async function ditFetchRaw(owner, repo, path, options = {}) {
+  const url = `/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/dit${path}`;
   const resp = await fetch(url, {
     headers: {
       'X-Csrf-Token': document.querySelector('meta[name=_csrf]')?.content || '',
@@ -202,13 +202,13 @@ export async function datahubFetchRaw(owner, repo, path, options = {}) {
 }
 ```
 
-Note: `datahubFetchRaw` returns the Response object directly — used by JsonlViewer for streaming large objects.
+Note: `ditFetchRaw` returns the Response object directly — used by JsonlViewer for streaming large objects.
 
 - [ ] **Step 2: Commit**
 
 ```bash
-git add web_src/js/utils/datahub-api.js
-git commit -m "feat: add datahub API fetch utility"
+git add web_src/js/utils/dit-api.js
+git commit -m "feat: add dit API fetch utility"
 ```
 
 ---
@@ -279,7 +279,7 @@ git commit -m "feat: add datahub API fetch utility"
 </template>
 
 <script>
-import {datahubFetch} from '../utils/datahub-api.js';
+import {ditFetch} from '../utils/dit-api.js';
 
 export default {
   props: {
@@ -299,7 +299,7 @@ export default {
   },
   async mounted() {
     try {
-      const refsData = await datahubFetch(this.owner, this.repo, '/refs');
+      const refsData = await ditFetch(this.owner, this.repo, '/refs');
       this.refs = refsData.filter((r) => r.name.startsWith('heads/'));
       this.currentBranch = this.refs.find((r) => r.name === `heads/${this.defaultBranch}`)?.name || this.refs[0]?.name || '';
       if (this.currentBranch) await this.loadTree();
@@ -322,8 +322,8 @@ export default {
       }
     },
     async loadTree() {
-      const ref = await datahubFetch(this.owner, this.repo, `/refs/${this.currentBranch}`);
-      this.tree = await datahubFetch(this.owner, this.repo, `/tree/${ref.target_hash}`);
+      const ref = await ditFetch(this.owner, this.repo, `/refs/${this.currentBranch}`);
+      this.tree = await ditFetch(this.owner, this.repo, `/tree/${ref.target_hash}`);
       let totalRows = 0;
       let fileCount = 0;
       for (const entry of this.tree.entries || []) {
@@ -382,7 +382,7 @@ git commit -m "feat: add DataRepoHome Vue component"
     </div>
 
     <!-- Table -->
-    <div class="datahub-jsonl-table" ref="scrollContainer" @scroll="onScroll">
+    <div class="dit-jsonl-table" ref="scrollContainer" @scroll="onScroll">
       <table class="ui very basic compact table">
         <thead>
           <tr>
@@ -394,7 +394,7 @@ git commit -m "feat: add DataRepoHome Vue component"
           <tr v-for="(row, idx) in visibleRows" :key="startIndex + idx">
             <td class="collapsing">{{ startIndex + idx + 1 }}</td>
             <td v-for="col in columns" :key="col" @click="toggleExpand(startIndex + idx, col)">
-              <div :class="{'datahub-cell-truncated': !isExpanded(startIndex + idx, col)}">
+              <div :class="{'dit-cell-truncated': !isExpanded(startIndex + idx, col)}">
                 {{ formatCell(row[col]) }}
               </div>
             </td>
@@ -415,7 +415,7 @@ git commit -m "feat: add DataRepoHome Vue component"
 </template>
 
 <script>
-import {datahubFetch} from '../utils/datahub-api.js';
+import {ditFetch} from '../utils/dit-api.js';
 
 const PAGE_SIZE = 50;
 
@@ -448,7 +448,7 @@ export default {
   },
   methods: {
     async loadManifest() {
-      const manifest = await datahubFetch(this.owner, this.repo, `/manifest/${this.manifestHash}`);
+      const manifest = await ditFetch(this.owner, this.repo, `/manifest/${this.manifestHash}`);
       this.totalRows = manifest.row_count || 0;
       this.totalPages = Math.ceil(this.totalRows / PAGE_SIZE);
       if (manifest.chunks && manifest.chunks.length > 0) {
@@ -456,7 +456,7 @@ export default {
       }
     },
     async loadChunk(chunkHash) {
-      const data = await datahubFetch(this.owner, this.repo, `/objects/${chunkHash}`);
+      const data = await ditFetch(this.owner, this.repo, `/objects/${chunkHash}`);
       if (typeof data === 'string') {
         this.rows = data.split('\n').filter(Boolean).map((line) => JSON.parse(line));
       } else if (Array.isArray(data)) {
@@ -495,11 +495,11 @@ export default {
 </script>
 
 <style scoped>
-.datahub-jsonl-table {
+.dit-jsonl-table {
   max-height: 600px;
   overflow: auto;
 }
-.datahub-cell-truncated {
+.dit-cell-truncated {
   max-width: 300px;
   white-space: nowrap;
   overflow: hidden;
@@ -554,36 +554,36 @@ git commit -m "feat: add JsonlViewer Vue component"
 
       <div class="ui segment" v-else-if="activeChanges">
         <!-- Added rows -->
-        <div v-if="addedRows.length" class="datahub-diff-section">
+        <div v-if="addedRows.length" class="dit-diff-section">
           <h4 class="ui header">Added ({{ addedRows.length }})</h4>
           <table class="ui very basic table">
             <tr v-for="row in addedRows" :key="row.row_hash" class="positive">
               <td class="collapsing">{{ row.row_hash?.slice(0, 8) }}</td>
-              <td><pre class="datahub-diff-content">{{ formatRow(row.row_content) }}</pre></td>
+              <td><pre class="dit-diff-content">{{ formatRow(row.row_content) }}</pre></td>
             </tr>
           </table>
         </div>
 
         <!-- Removed rows -->
-        <div v-if="removedRows.length" class="datahub-diff-section">
+        <div v-if="removedRows.length" class="dit-diff-section">
           <h4 class="ui header">Removed ({{ removedRows.length }})</h4>
           <table class="ui very basic table">
             <tr v-for="row in removedRows" :key="row.row_hash" class="negative">
               <td class="collapsing">{{ row.row_hash?.slice(0, 8) }}</td>
-              <td><pre class="datahub-diff-content">{{ formatRow(row.row_content) }}</pre></td>
+              <td><pre class="dit-diff-content">{{ formatRow(row.row_content) }}</pre></td>
             </tr>
           </table>
         </div>
 
         <!-- Refreshed rows -->
-        <div v-if="refreshedRows.length" class="datahub-diff-section">
+        <div v-if="refreshedRows.length" class="dit-diff-section">
           <h4 class="ui header">Refreshed ({{ refreshedRows.length }})</h4>
           <table class="ui very basic table">
             <tr v-for="row in refreshedRows" :key="row.new_row_hash" class="warning">
               <td class="collapsing">{{ row.new_row_hash?.slice(0, 8) }}</td>
               <td>
-                <div class="datahub-diff-side negative"><pre>{{ formatRow(row.old_content) }}</pre></div>
-                <div class="datahub-diff-side positive"><pre>{{ formatRow(row.new_content) }}</pre></div>
+                <div class="dit-diff-side negative"><pre>{{ formatRow(row.old_content) }}</pre></div>
+                <div class="dit-diff-side positive"><pre>{{ formatRow(row.new_content) }}</pre></div>
               </td>
             </tr>
           </table>
@@ -594,7 +594,7 @@ git commit -m "feat: add JsonlViewer Vue component"
 </template>
 
 <script>
-import {datahubFetch} from '../utils/datahub-api.js';
+import {ditFetch} from '../utils/dit-api.js';
 
 export default {
   props: {
@@ -623,7 +623,7 @@ export default {
     },
   },
   async mounted() {
-    const diff = await datahubFetch(this.owner, this.repo, `/diff/${this.oldCommit}/${this.newCommit}`);
+    const diff = await ditFetch(this.owner, this.repo, `/diff/${this.oldCommit}/${this.newCommit}`);
     this.files = diff.files || [];
     if (this.files.length > 0) {
       this.activeFile = this.files[0].path;
@@ -646,10 +646,10 @@ export default {
 </script>
 
 <style scoped>
-.datahub-diff-section {
+.dit-diff-section {
   margin-bottom: 1em;
 }
-.datahub-diff-content {
+.dit-diff-content {
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 200px;
@@ -657,15 +657,15 @@ export default {
   font-size: 12px;
   margin: 0;
 }
-.datahub-diff-side {
+.dit-diff-side {
   padding: 4px 8px;
   margin: 2px 0;
   border-radius: 3px;
 }
-.datahub-diff-side.negative {
+.dit-diff-side.negative {
   background-color: var(--color-diff-removed-row-bg, #ffeef0);
 }
-.datahub-diff-side.positive {
+.dit-diff-side.positive {
   background-color: var(--color-diff-added-row-bg, #e6ffec);
 }
 </style>
@@ -715,11 +715,11 @@ git commit -m "feat: add DataDiffView Vue component"
         <div class="ui two column grid">
           <div class="column">
             <h5 class="ui header">Source</h5>
-            <pre class="datahub-conflict-content">{{ formatRow(conflict.source) }}</pre>
+            <pre class="dit-conflict-content">{{ formatRow(conflict.source) }}</pre>
           </div>
           <div class="column">
             <h5 class="ui header">Target</h5>
-            <pre class="datahub-conflict-content">{{ formatRow(conflict.target) }}</pre>
+            <pre class="dit-conflict-content">{{ formatRow(conflict.target) }}</pre>
           </div>
         </div>
         <div class="ui buttons" style="margin-top: 8px;">
@@ -742,7 +742,7 @@ git commit -m "feat: add DataDiffView Vue component"
 </template>
 
 <script>
-import {datahubFetch} from '../utils/datahub-api.js';
+import {ditFetch} from '../utils/dit-api.js';
 
 export default {
   props: {
@@ -773,12 +773,12 @@ export default {
     },
   },
   async mounted() {
-    const pr = await datahubFetch(this.owner, this.repo, `/pulls/${this.pullId}`);
+    const pr = await ditFetch(this.owner, this.repo, `/pulls/${this.pullId}`);
     if (pr.conflict_files) {
       this.conflictFiles = JSON.parse(pr.conflict_files);
       // Load conflicts for each file from diff endpoint
       for (const file of this.conflictFiles) {
-        const diff = await datahubFetch(this.owner, this.repo,
+        const diff = await ditFetch(this.owner, this.repo,
           `/diff/${pr.target_commit}/${pr.source_commit}`);
         const fileData = diff.files?.find((f) => f.path === file);
         if (fileData) this.conflicts[file] = fileData.changes?.filter((c) => c.conflict) || [];
@@ -800,7 +800,7 @@ export default {
     async submitResolutions() {
       this.submitting = true;
       try {
-        await datahubFetch(this.owner, this.repo, `/pulls/${this.pullId}/merge`, {
+        await ditFetch(this.owner, this.repo, `/pulls/${this.pullId}/merge`, {
           method: 'POST',
           body: JSON.stringify({resolutions: this.resolutions}),
         });
@@ -816,7 +816,7 @@ export default {
 </script>
 
 <style scoped>
-.datahub-conflict-content {
+.dit-conflict-content {
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 300px;

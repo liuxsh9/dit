@@ -71,14 +71,14 @@ class TestCheckout:
         runner.invoke(app, ["branch", "feature"], catch_exceptions=False)
         result = runner.invoke(app, ["checkout", "feature"], catch_exceptions=False)
         assert result.exit_code == 0
-        head = (tmp_path / ".datahub" / "HEAD").read_text().strip()
+        head = (tmp_path / ".dit" / "HEAD").read_text().strip()
         assert head == "ref:feature"
 
     def test_checkout_creates_new_branch(self, tmp_path):
         _init_and_commit(tmp_path)
         result = runner.invoke(app, ["checkout", "-b", "feature"], catch_exceptions=False)
         assert result.exit_code == 0
-        head = (tmp_path / ".datahub" / "HEAD").read_text().strip()
+        head = (tmp_path / ".dit" / "HEAD").read_text().strip()
         assert head == "ref:feature"
 
     def test_checkout_nonexistent_branch_fails(self, tmp_path):
@@ -129,7 +129,7 @@ class TestSwitch:
         runner.invoke(app, ["branch", "feature"], catch_exceptions=False)
         result = runner.invoke(app, ["switch", "feature"], catch_exceptions=False)
         assert result.exit_code == 0
-        head = (tmp_path / ".datahub" / "HEAD").read_text().strip()
+        head = (tmp_path / ".dit" / "HEAD").read_text().strip()
         assert head == "ref:feature"
 
     def test_switch_nonexistent_fails(self, tmp_path):

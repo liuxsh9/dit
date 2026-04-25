@@ -474,7 +474,7 @@ def _init_repo_with_rows(
     os.chdir(tmp_path)
     runner.invoke(app, ["init"])
 
-    dot = tmp_path / ".datahub"
+    dot = tmp_path / ".dit"
     store = ObjectStore(dot / "objects")
     refs = RefStore(dot)
 
@@ -489,7 +489,7 @@ def _init_repo_with_rows(
             ],
         }
 
-    # Write rules file alongside repo root (where .datahub lives)
+    # Write rules file alongside repo root (where .dit lives)
     if rules_yaml is not None:
         (tmp_path / ".ditvalidate.yaml").write_text(rules_yaml)
 
@@ -749,11 +749,11 @@ class CICheck(Base):
     __tablename__ = "ci_checks"
     __table_args__ = (
         sa.UniqueConstraint("repo_id", "commit_hash", "check_name", name="uq_ci_check"),
-        {"schema": "datahub"},
+        {"schema": "dit"},
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    repo_id: Mapped[int] = mapped_column(ForeignKey("datahub.repos.id"), nullable=False, index=True)
+    repo_id: Mapped[int] = mapped_column(ForeignKey("dit.repos.id"), nullable=False, index=True)
     commit_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     check_name: Mapped[str] = mapped_column(String(128), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False)  # pending|pass|fail
@@ -780,9 +780,9 @@ class CICheck(Base):
 The project has no Alembic migrations directory. The test suite uses `Base.metadata.create_all` via the in-memory SQLite fixture in `tests/server/conftest.py` — adding the model to `Base` is sufficient for the test DB. For a production deployment with an existing database, run:
 
 ```sql
-CREATE TABLE datahub.ci_checks (
+CREATE TABLE dit.ci_checks (
     id SERIAL PRIMARY KEY,
-    repo_id INTEGER NOT NULL REFERENCES datahub.repos(id),
+    repo_id INTEGER NOT NULL REFERENCES dit.repos(id),
     commit_hash VARCHAR(64) NOT NULL,
     check_name VARCHAR(128) NOT NULL,
     status VARCHAR(16) NOT NULL,
@@ -791,7 +791,7 @@ CREATE TABLE datahub.ci_checks (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT uq_ci_check UNIQUE (repo_id, commit_hash, check_name)
 );
-CREATE INDEX ON datahub.ci_checks (repo_id);
+CREATE INDEX ON dit.ci_checks (repo_id);
 ```
 
 Document this in `docs/superpowers/plans/2026-04-25-phase4e-ci-bridge.md` as a manual migration step.
@@ -1289,7 +1289,7 @@ Add after the `search_router` registration:
 
 ## Task 5: Gateway proxy — Go handlers, client methods, routes
 
-### 5.1 Add client methods to `modules/datahub/client.go`
+### 5.1 Add client methods to `modules/dit/client.go`
 
 Append after the `Search` method:
 
@@ -1307,7 +1307,7 @@ func (c *Client) GetChecks(ctx context.Context, repoName, commitHash string) ([]
 }
 ```
 
-### 5.2 Add handler functions to `routers/api/v1/repo/datahub.go`
+### 5.2 Add handler functions to `routers/api/v1/repo/dit.go`
 
 Append after `DatahubSearch`:
 
@@ -1318,7 +1318,7 @@ func DatahubValidate(ctx *context.APIContext) {
 		return
 	}
 	proxyToDatahub(ctx, func() ([]byte, int, error) {
-		return datahub.DefaultClient().Validate(ctx, ctx.Repo.Repository.Name, body)
+		return dit.DefaultClient().Validate(ctx, ctx.Repo.Repository.Name, body)
 	})
 }
 
@@ -1328,20 +1328,20 @@ func DatahubReportCheck(ctx *context.APIContext) {
 		return
 	}
 	proxyToDatahub(ctx, func() ([]byte, int, error) {
-		return datahub.DefaultClient().ReportCheck(ctx, ctx.Repo.Repository.Name, body)
+		return dit.DefaultClient().ReportCheck(ctx, ctx.Repo.Repository.Name, body)
 	})
 }
 
 func DatahubGetChecks(ctx *context.APIContext) {
 	proxyToDatahub(ctx, func() ([]byte, int, error) {
-		return datahub.DefaultClient().GetChecks(ctx, ctx.Repo.Repository.Name, ctx.Params(":commit"))
+		return dit.DefaultClient().GetChecks(ctx, ctx.Repo.Repository.Name, ctx.Params(":commit"))
 	})
 }
 ```
 
 ### 5.3 Register routes in `routers/api/v1/api.go`
 
-In the datahub route group, after `m.Post("/search", repo.DatahubSearch)` and before the closing `})`:
+In the dit route group, after `m.Post("/search", repo.DatahubSearch)` and before the closing `})`:
 
 ```go
 						m.Post("/validate",         repo.DatahubValidate)
@@ -1361,8 +1361,8 @@ The exact lines to add go at line 1443 in `api.go` (immediately after the search
 
 ### 5.4 Checklist
 
-- [ ] Append three client methods to `/Users/lxs/code/datahub-gateway/modules/datahub/client.go`
-- [ ] Append three handler functions to `/Users/lxs/code/datahub-gateway/routers/api/v1/repo/datahub.go`
+- [ ] Append three client methods to `/Users/lxs/code/datahub-gateway/modules/dit/client.go`
+- [ ] Append three handler functions to `/Users/lxs/code/datahub-gateway/routers/api/v1/repo/dit.go`
 - [ ] Add three route registrations to `/Users/lxs/code/datahub-gateway/routers/api/v1/api.go` after the search route
 - [ ] Verify Go build: `cd /Users/lxs/code/datahub-gateway && go build ./...`
 
@@ -1466,7 +1466,7 @@ Add to the `methods` section, after `loadStats()`:
       if (!this.commitHash) return;
       this.checksLoading = true;
       try {
-        this.checksData = await datahubFetch(
+        this.checksData = await ditFetch(
           this.owner, this.repo,
           `/checks/${this.commitHash}`,
         );
@@ -1495,7 +1495,7 @@ Add to the `methods` section, after `loadStats()`:
 ### 7.1 Full Python test suite
 
 ```bash
-cd /Users/lxs/code/datahub
+cd /Users/lxs/code/dit
 uv run pytest tests/ -v
 ```
 
@@ -1515,11 +1515,11 @@ No compilation errors.
 
 ### 7.3 Manual smoke test (optional but recommended)
 
-Start the datahub server:
+Start the dit server:
 
 ```bash
-cd /Users/lxs/code/datahub
-DIT_DATA_DIR=/tmp/datahub-smoke uv run dit serve &
+cd /Users/lxs/code/dit
+DIT_DATA_DIR=/tmp/dit-smoke uv run dit serve &
 ```
 
 Create a repo and validate:
@@ -1559,7 +1559,7 @@ curl -s http://localhost:8000/api/v1/repos/smoke-test/checks/$(python3 -c "print
 | `src/dit/server/routes/validate_api.py` | **New** — validate + checks endpoints |
 | `src/dit/server/app.py` | **Modified** — register `validate_router` |
 | `tests/server/test_routes_validate.py` | **New** — server endpoint tests |
-| `modules/datahub/client.go` | **Modified** — `Validate`, `ReportCheck`, `GetChecks` methods |
-| `routers/api/v1/repo/datahub.go` | **Modified** — `DatahubValidate`, `DatahubReportCheck`, `DatahubGetChecks` handlers |
-| `routers/api/v1/api.go` | **Modified** — register three new datahub routes |
+| `modules/dit/client.go` | **Modified** — `Validate`, `ReportCheck`, `GetChecks` methods |
+| `routers/api/v1/repo/dit.go` | **Modified** — `DatahubValidate`, `DatahubReportCheck`, `DatahubGetChecks` handlers |
+| `routers/api/v1/api.go` | **Modified** — register three new dit routes |
 | `web_src/js/components/DataRepoHome.vue` | **Modified** — CI badge template + script additions |

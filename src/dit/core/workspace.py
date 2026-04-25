@@ -10,14 +10,14 @@ from dit.utils.jsonl import read_rows
 def find_jsonl_files(root: Path) -> list[Path]:
     results = []
     for p in sorted(root.rglob("*.jsonl")):
-        if ".datahub" in p.parts:
+        if ".dit" in p.parts:
             continue
         results.append(p)
     return results
 
 
 def find_all_files(root: Path) -> tuple[list[Path], list[Path]]:
-    """Return (jsonl_files, blob_files) under root, excluding .datahub/.
+    """Return (jsonl_files, blob_files) under root, excluding .dit/.
 
     jsonl_files: all *.jsonl paths
     blob_files: all other regular files
@@ -25,7 +25,7 @@ def find_all_files(root: Path) -> tuple[list[Path], list[Path]]:
     jsonl: list[Path] = []
     blobs: list[Path] = []
     for p in sorted(root.rglob("*")):
-        if ".datahub" in p.parts:
+        if ".dit" in p.parts:
             continue
         if not p.is_file():
             continue

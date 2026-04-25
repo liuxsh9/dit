@@ -4,7 +4,7 @@
 
 **Goal:** Add gateway proxy routes for sidecar metadata API and enhance Vue components with metadata display.
 
-**Architecture:** 4 new Go proxy routes forwarding to datahub-core, Vue components fetch and display sidecar stats.
+**Architecture:** 4 new Go proxy routes forwarding to dit-core, Vue components fetch and display sidecar stats.
 
 **Tech Stack:** Go 1.22, Vue 3, JavaScript
 
@@ -14,11 +14,11 @@
 
 ## Overview
 
-This plan covers the Forgejo fork (`datahub-gateway`) changes for Phase 4A. It is entirely contained within `~/code/datahub-gateway/`. There are no changes to `datahub-core` in this plan.
+This plan covers the Forgejo fork (`datahub-gateway`) changes for Phase 4A. It is entirely contained within `~/code/datahub-gateway/`. There are no changes to `dit-core` in this plan.
 
 The work breaks into three layers:
-1. **Go client** — 4 new methods on `Client` that call datahub-core
-2. **Go handlers + routes** — 4 handler functions wired into the existing datahub route group
+1. **Go client** — 4 new methods on `Client` that call dit-core
+2. **Go handlers + routes** — 4 handler functions wired into the existing dit route group
 3. **Vue UI** — `DataRepoHome.vue` gains Tokens/Lang columns; `DataDiffView.vue` gains a metadata delta header
 
 Each Go task is TDD: write failing tests first, then implement.
@@ -28,12 +28,12 @@ Each Go task is TDD: write failing tests first, then implement.
 ## Task 1 — Go client: MetaCompute (TDD)
 
 **Files:**
-- `modules/datahub/client.go`
-- `modules/datahub/client_test.go`
+- `modules/dit/client.go`
+- `modules/dit/client_test.go`
 
 ### Step 1A — Write the failing test
 
-Append to `modules/datahub/client_test.go`:
+Append to `modules/dit/client_test.go`:
 
 ```go
 func TestMetaCompute(t *testing.T) {
@@ -54,11 +54,11 @@ func TestMetaCompute(t *testing.T) {
 }
 ```
 
-Run: `cd ~/code/datahub-gateway && go test ./modules/datahub/... -run TestMetaCompute` — expect compile error (method not yet defined).
+Run: `cd ~/code/datahub-gateway && go test ./modules/dit/... -run TestMetaCompute` — expect compile error (method not yet defined).
 
 ### Step 1B — Implement MetaCompute
 
-Append to `modules/datahub/client.go`:
+Append to `modules/dit/client.go`:
 
 ```go
 func (c *Client) MetaCompute(ctx context.Context, repoName string, body []byte) ([]byte, int, error) {
@@ -66,7 +66,7 @@ func (c *Client) MetaCompute(ctx context.Context, repoName string, body []byte) 
 }
 ```
 
-Run: `go test ./modules/datahub/... -run TestMetaCompute` — expect pass.
+Run: `go test ./modules/dit/... -run TestMetaCompute` — expect pass.
 
 ---
 
@@ -74,7 +74,7 @@ Run: `go test ./modules/datahub/... -run TestMetaCompute` — expect pass.
 
 ### Step 2A — Write the failing test
 
-Append to `modules/datahub/client_test.go`:
+Append to `modules/dit/client_test.go`:
 
 ```go
 func TestMetaGet(t *testing.T) {
@@ -92,11 +92,11 @@ func TestMetaGet(t *testing.T) {
 }
 ```
 
-Run: `go test ./modules/datahub/... -run TestMetaGet` — expect compile error.
+Run: `go test ./modules/dit/... -run TestMetaGet` — expect compile error.
 
 ### Step 2B — Implement MetaGet
 
-Append to `modules/datahub/client.go`:
+Append to `modules/dit/client.go`:
 
 ```go
 func (c *Client) MetaGet(ctx context.Context, repoName, commit, filePath string) ([]byte, int, error) {
@@ -104,7 +104,7 @@ func (c *Client) MetaGet(ctx context.Context, repoName, commit, filePath string)
 }
 ```
 
-Run: `go test ./modules/datahub/... -run TestMetaGet` — expect pass.
+Run: `go test ./modules/dit/... -run TestMetaGet` — expect pass.
 
 ---
 
@@ -112,7 +112,7 @@ Run: `go test ./modules/datahub/... -run TestMetaGet` — expect pass.
 
 ### Step 3A — Write the failing test
 
-Append to `modules/datahub/client_test.go`:
+Append to `modules/dit/client_test.go`:
 
 ```go
 func TestMetaSummary(t *testing.T) {
@@ -130,11 +130,11 @@ func TestMetaSummary(t *testing.T) {
 }
 ```
 
-Run: `go test ./modules/datahub/... -run TestMetaSummary` — expect compile error.
+Run: `go test ./modules/dit/... -run TestMetaSummary` — expect compile error.
 
 ### Step 3B — Implement MetaSummary
 
-Append to `modules/datahub/client.go`:
+Append to `modules/dit/client.go`:
 
 ```go
 func (c *Client) MetaSummary(ctx context.Context, repoName, commit, filePath string) ([]byte, int, error) {
@@ -142,17 +142,17 @@ func (c *Client) MetaSummary(ctx context.Context, repoName, commit, filePath str
 }
 ```
 
-Run: `go test ./modules/datahub/... -run TestMetaSummary` — expect pass.
+Run: `go test ./modules/dit/... -run TestMetaSummary` — expect pass.
 
 ---
 
 ## Task 4 — Go client: MetaDiff (TDD)
 
-MetaDiff forwards a `file` query parameter from the incoming request to datahub-core.
+MetaDiff forwards a `file` query parameter from the incoming request to dit-core.
 
 ### Step 4A — Write the failing test
 
-Append to `modules/datahub/client_test.go`:
+Append to `modules/dit/client_test.go`:
 
 ```go
 func TestMetaDiff(t *testing.T) {
@@ -187,13 +187,13 @@ func TestMetaDiffNoFile(t *testing.T) {
 }
 ```
 
-Run: `go test ./modules/datahub/... -run TestMetaDiff` — expect compile error.
+Run: `go test ./modules/dit/... -run TestMetaDiff` — expect compile error.
 
 ### Step 4B — Implement MetaDiff
 
 The `file` query parameter is optional. Build the URL with `net/url` to avoid manual escaping.
 
-Append to `modules/datahub/client.go`:
+Append to `modules/dit/client.go`:
 
 ```go
 func (c *Client) MetaDiff(ctx context.Context, repoName, oldCommit, newCommit, filePath string) ([]byte, int, error) {
@@ -205,7 +205,7 @@ func (c *Client) MetaDiff(ctx context.Context, repoName, oldCommit, newCommit, f
 }
 ```
 
-Update the import block at the top of `modules/datahub/client.go` to include `"net/url"` in the stdlib section:
+Update the import block at the top of `modules/dit/client.go` to include `"net/url"` in the stdlib section:
 
 ```go
 import (
@@ -222,17 +222,17 @@ import (
 )
 ```
 
-Run: `go test ./modules/datahub/... -run TestMetaDiff` — expect both tests pass.
+Run: `go test ./modules/dit/... -run TestMetaDiff` — expect both tests pass.
 
-Verify the module compiles cleanly: `cd ~/code/datahub-gateway && go build ./modules/datahub/...`
+Verify the module compiles cleanly: `cd ~/code/datahub-gateway && go build ./modules/dit/...`
 
-Run full client test suite: `go test ./modules/datahub/...` — all existing tests must still pass.
+Run full client test suite: `go test ./modules/dit/...` — all existing tests must still pass.
 
 ---
 
 ## Task 5 — Go handlers: DatahubMetaCompute and DatahubMetaGet
 
-**File:** `routers/api/v1/repo/datahub.go`
+**File:** `routers/api/v1/repo/dit.go`
 
 Append to the existing file (after `DatahubGetManifest`):
 
@@ -243,13 +243,13 @@ func DatahubMetaCompute(ctx *context.APIContext) {
 		return
 	}
 	proxyToDatahub(ctx, func() ([]byte, int, error) {
-		return datahub.DefaultClient().MetaCompute(ctx, ctx.Repo.Repository.Name, body)
+		return dit.DefaultClient().MetaCompute(ctx, ctx.Repo.Repository.Name, body)
 	})
 }
 
 func DatahubMetaGet(ctx *context.APIContext) {
 	proxyToDatahub(ctx, func() ([]byte, int, error) {
-		return datahub.DefaultClient().MetaGet(
+		return dit.DefaultClient().MetaGet(
 			ctx,
 			ctx.Repo.Repository.Name,
 			ctx.Params(":commit"),
@@ -259,18 +259,18 @@ func DatahubMetaGet(ctx *context.APIContext) {
 }
 ```
 
-No new imports needed — `datahub`, `context`, and `http` are already imported.
+No new imports needed — `dit`, `context`, and `http` are already imported.
 
 ---
 
 ## Task 6 — Go handlers: DatahubMetaSummary and DatahubMetaDiff
 
-Append to `routers/api/v1/repo/datahub.go`:
+Append to `routers/api/v1/repo/dit.go`:
 
 ```go
 func DatahubMetaSummary(ctx *context.APIContext) {
 	proxyToDatahub(ctx, func() ([]byte, int, error) {
-		return datahub.DefaultClient().MetaSummary(
+		return dit.DefaultClient().MetaSummary(
 			ctx,
 			ctx.Repo.Repository.Name,
 			ctx.Params(":commit"),
@@ -281,7 +281,7 @@ func DatahubMetaSummary(ctx *context.APIContext) {
 
 func DatahubMetaDiff(ctx *context.APIContext) {
 	proxyToDatahub(ctx, func() ([]byte, int, error) {
-		return datahub.DefaultClient().MetaDiff(
+		return dit.DefaultClient().MetaDiff(
 			ctx,
 			ctx.Repo.Repository.Name,
 			ctx.Params(":old"),
@@ -302,13 +302,13 @@ Verify compilation: `go build ./routers/api/v1/repo/...`
 
 **File:** `routers/api/v1/api.go`
 
-Find the existing datahub group (search for `m.Group("/datahub"`). The current block ends with:
+Find the existing dit group (search for `m.Group("/dit"`). The current block ends with:
 
 ```go
 m.Get("/manifest/{hash}", repo.DatahubGetManifest)
 ```
 
-Add the 4 new routes immediately after that line, before the closing `}` of the datahub group:
+Add the 4 new routes immediately after that line, before the closing `}` of the dit group:
 
 ```go
 				m.Post("/meta/compute", repo.DatahubMetaCompute)
@@ -321,7 +321,7 @@ Add the 4 new routes immediately after that line, before the closing `}` of the 
 
 After editing, verify: `go build ./routers/...`
 
-Run all datahub-related tests: `go test ./modules/datahub/... ./routers/...`
+Run all dit-related tests: `go test ./modules/dit/... ./routers/...`
 
 ---
 
@@ -366,9 +366,9 @@ Replace the `loadTree` method with:
 
 ```javascript
 async loadTree() {
-  const ref = await datahubFetch(this.owner, this.repo, `/refs/${this.currentBranch}`);
+  const ref = await ditFetch(this.owner, this.repo, `/refs/${this.currentBranch}`);
   const commitHash = ref.target_hash;
-  this.tree = await datahubFetch(this.owner, this.repo, `/tree/${commitHash}`);
+  this.tree = await ditFetch(this.owner, this.repo, `/tree/${commitHash}`);
   let totalRows = 0;
   let fileCount = 0;
   const sidecars = {};
@@ -378,7 +378,7 @@ async loadTree() {
       totalRows += entry.row_count || 0;
       // Fetch sidecar summary; null means not yet computed
       try {
-        const summary = await datahubFetch(
+        const summary = await ditFetch(
           this.owner, this.repo,
           `/meta/${commitHash}/${encodeURIComponent(entry.name)}/summary`,
         );
@@ -399,7 +399,7 @@ async loadTree() {
 async computeMeta(entry) {
   this.computingMeta = {...this.computingMeta, [entry.name]: true};
   try {
-    await datahubFetch(this.owner, this.repo, '/meta/compute', {
+    await ditFetch(this.owner, this.repo, '/meta/compute', {
       method: 'POST',
       body: JSON.stringify({file: entry.name}),
     });
@@ -501,7 +501,7 @@ Replace `mounted()` with:
 
 ```javascript
 async mounted() {
-  const diff = await datahubFetch(this.owner, this.repo, `/diff/${this.oldCommit}/${this.newCommit}`);
+  const diff = await ditFetch(this.owner, this.repo, `/diff/${this.oldCommit}/${this.newCommit}`);
   this.files = diff.files || [];
   if (this.files.length > 0) {
     this.activeFile = this.files[0].path;
@@ -509,7 +509,7 @@ async mounted() {
   }
   // Fetch meta diff; non-fatal if sidecars not computed
   try {
-    const meta = await datahubFetch(
+    const meta = await ditFetch(
       this.owner, this.repo,
       `/meta/diff/${this.oldCommit}/${this.newCommit}`,
     );
@@ -585,7 +585,7 @@ Run from `~/code/datahub-gateway/`:
 ```bash
 # Go: full build + all tests
 go build ./...
-go test ./modules/datahub/... ./routers/...
+go test ./modules/dit/... ./routers/...
 
 # Frontend: lint + build (adjust command to match project's npm scripts)
 npm run lint --prefix web_src
@@ -604,9 +604,9 @@ Confirm:
 
 | File | Change |
 |------|--------|
-| `modules/datahub/client.go` | Add `MetaCompute`, `MetaGet`, `MetaSummary`, `MetaDiff` methods; add `net/url` import |
-| `modules/datahub/client_test.go` | Add `TestMetaCompute`, `TestMetaGet`, `TestMetaSummary`, `TestMetaDiff`, `TestMetaDiffNoFile` |
-| `routers/api/v1/repo/datahub.go` | Add `DatahubMetaCompute`, `DatahubMetaGet`, `DatahubMetaSummary`, `DatahubMetaDiff` handlers |
-| `routers/api/v1/api.go` | Add 4 routes to datahub group (ordered: diff before generic path) |
+| `modules/dit/client.go` | Add `MetaCompute`, `MetaGet`, `MetaSummary`, `MetaDiff` methods; add `net/url` import |
+| `modules/dit/client_test.go` | Add `TestMetaCompute`, `TestMetaGet`, `TestMetaSummary`, `TestMetaDiff`, `TestMetaDiffNoFile` |
+| `routers/api/v1/repo/dit.go` | Add `DatahubMetaCompute`, `DatahubMetaGet`, `DatahubMetaSummary`, `DatahubMetaDiff` handlers |
+| `routers/api/v1/api.go` | Add 4 routes to dit group (ordered: diff before generic path) |
 | `web_src/js/components/DataRepoHome.vue` | Add `sidecars`/`computingMeta` state, sidecar fetch in `loadTree`, Tokens/Lang columns, Compute button |
 | `web_src/js/components/DataDiffView.vue` | Add `metaDiff` state, meta diff fetch in `mounted`, delta header above file list |

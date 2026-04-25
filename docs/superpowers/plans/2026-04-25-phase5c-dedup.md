@@ -211,7 +211,7 @@ class TestDetectDuplicates:
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /Users/lxs/code/datahub && uv run pytest tests/test_dedup.py -v`
+Run: `cd /Users/lxs/code/dit && uv run pytest tests/test_dedup.py -v`
 
 Expected: FAIL — `ModuleNotFoundError: No module named 'dit.core.dedup'`.
 
@@ -337,18 +337,18 @@ def detect_duplicates(
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd /Users/lxs/code/datahub && uv run pytest tests/test_dedup.py -v`
+Run: `cd /Users/lxs/code/dit && uv run pytest tests/test_dedup.py -v`
 
 Expected: All 10 tests PASS.
 
 - [ ] **Step 5: Run full test suite**
 
-Run: `cd /Users/lxs/code/datahub && uv run pytest tests/ -x -q`
+Run: `cd /Users/lxs/code/dit && uv run pytest tests/ -x -q`
 
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /Users/lxs/code/datahub
+cd /Users/lxs/code/dit
 git add src/dit/core/dedup.py tests/test_dedup.py
 git commit -m "feat: add core dedup module for duplicate detection
 
@@ -390,7 +390,7 @@ runner = CliRunner()
 
 
 def _setup_repo(tmp_path: Path) -> tuple[Path, ObjectStore, RefStore]:
-    dot = tmp_path / ".datahub"
+    dot = tmp_path / ".dit"
     dot.mkdir()
     (dot / "objects").mkdir()
     store = ObjectStore(dot / "objects")
@@ -521,7 +521,7 @@ class TestDedupCommand:
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /Users/lxs/code/datahub && uv run pytest tests/test_cli_dedup.py -v`
+Run: `cd /Users/lxs/code/dit && uv run pytest tests/test_cli_dedup.py -v`
 
 - [ ] **Step 3: Add `dedup` command to `main.py`**
 
@@ -621,16 +621,16 @@ def dedup(
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd /Users/lxs/code/datahub && uv run pytest tests/test_cli_dedup.py -v`
+Run: `cd /Users/lxs/code/dit && uv run pytest tests/test_cli_dedup.py -v`
 
 - [ ] **Step 5: Run full test suite**
 
-Run: `cd /Users/lxs/code/datahub && uv run pytest tests/ -x -q`
+Run: `cd /Users/lxs/code/dit && uv run pytest tests/ -x -q`
 
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /Users/lxs/code/datahub
+cd /Users/lxs/code/dit
 git add src/dit/cli/main.py tests/test_cli_dedup.py
 git commit -m "feat: add dit dedup CLI command
 
@@ -766,7 +766,7 @@ async def test_dedup_repo_not_found(client: AsyncClient):
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /Users/lxs/code/datahub && uv run pytest tests/server/test_routes_dedup.py -v`
+Run: `cd /Users/lxs/code/dit && uv run pytest tests/server/test_routes_dedup.py -v`
 
 - [ ] **Step 3: Create `src/dit/server/routes/dedup_api.py`**
 
@@ -822,16 +822,16 @@ Add after gc_router:
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cd /Users/lxs/code/datahub && uv run pytest tests/server/test_routes_dedup.py -v`
+Run: `cd /Users/lxs/code/dit && uv run pytest tests/server/test_routes_dedup.py -v`
 
 - [ ] **Step 6: Run full test suite**
 
-Run: `cd /Users/lxs/code/datahub && uv run pytest tests/ -x -q`
+Run: `cd /Users/lxs/code/dit && uv run pytest tests/ -x -q`
 
 - [ ] **Step 7: Commit**
 
 ```bash
-cd /Users/lxs/code/datahub
+cd /Users/lxs/code/dit
 git add src/dit/server/routes/dedup_api.py src/dit/server/app.py tests/server/test_routes_dedup.py
 git commit -m "feat: add server dedup API endpoint
 
@@ -844,8 +844,8 @@ Optional path prefix filter."
 ### Task 4: Gateway Proxy Route (Go)
 
 **Files:**
-- Modify: `~/code/datahub-gateway/modules/datahub/client.go`
-- Modify: `~/code/datahub-gateway/routers/api/v1/repo/datahub.go`
+- Modify: `~/code/datahub-gateway/modules/dit/client.go`
+- Modify: `~/code/datahub-gateway/routers/api/v1/repo/dit.go`
 - Modify: `~/code/datahub-gateway/routers/api/v1/api.go`
 
 - [ ] **Step 1: Add `GetDedup` method to `client.go`**
@@ -862,12 +862,12 @@ func (c *Client) GetDedup(ctx context.Context, repoName, commitHash, pathFilter 
 }
 ```
 
-- [ ] **Step 2: Add handler to `datahub.go`**
+- [ ] **Step 2: Add handler to `dit.go`**
 
 ```go
 func DatahubGetDedup(ctx *context.APIContext) {
 	proxyToDatahub(ctx, func() ([]byte, int, error) {
-		return datahub.DefaultClient().GetDedup(
+		return dit.DefaultClient().GetDedup(
 			ctx,
 			ctx.Repo.Repository.Name,
 			ctx.Params(":commit"),
@@ -892,8 +892,8 @@ Run: `cd /Users/lxs/code/datahub-gateway && go build ./...`
 
 ```bash
 cd /Users/lxs/code/datahub-gateway
-git add modules/datahub/client.go routers/api/v1/repo/datahub.go routers/api/v1/api.go
-git commit -m "feat: add dedup proxy route to datahub gateway
+git add modules/dit/client.go routers/api/v1/repo/dit.go routers/api/v1/api.go
+git commit -m "feat: add dedup proxy route to dit gateway
 
-GET /dedup/{commit} proxied to datahub-core for duplicate detection."
+GET /dedup/{commit} proxied to dit-core for duplicate detection."
 ```

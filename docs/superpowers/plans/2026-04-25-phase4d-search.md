@@ -256,7 +256,7 @@ class TestSearchRows:
 Run to confirm all tests fail:
 
 ```
-cd /Users/lxs/code/datahub && uv run pytest tests/test_search.py -v 2>&1 | head -30
+cd /Users/lxs/code/dit && uv run pytest tests/test_search.py -v 2>&1 | head -30
 ```
 
 Expected: `ImportError: cannot import name 'search_rows' from 'dit.core.search'` or `ModuleNotFoundError`.
@@ -265,7 +265,7 @@ Expected: `ImportError: cannot import name 'search_rows' from 'dit.core.search'`
 
 ### 1.2 Implement `src/dit/core/search.py`
 
-Create `/Users/lxs/code/datahub/src/dit/core/search.py`:
+Create `/Users/lxs/code/dit/src/dit/core/search.py`:
 
 ```python
 # src/dit/core/search.py
@@ -454,7 +454,7 @@ def search_rows(
 ### 1.3 Run tests and verify
 
 ```
-cd /Users/lxs/code/datahub && uv run pytest tests/test_search.py -v
+cd /Users/lxs/code/dit && uv run pytest tests/test_search.py -v
 ```
 
 Expected output (all passing):
@@ -528,7 +528,7 @@ def _init_repo_with_rows(tmp_path: Path) -> tuple[ObjectStore, RefStore, str]:
     os.chdir(tmp_path)
     runner.invoke(app, ["init"])
 
-    dot = tmp_path / ".datahub"
+    dot = tmp_path / ".dit"
     store = ObjectStore(dot / "objects")
     refs = RefStore(dot)
 
@@ -668,7 +668,7 @@ class TestSearchCommand:
 Run to confirm failure:
 
 ```
-cd /Users/lxs/code/datahub && uv run pytest tests/test_cli_search.py -v 2>&1 | head -20
+cd /Users/lxs/code/dit && uv run pytest tests/test_cli_search.py -v 2>&1 | head -20
 ```
 
 Expected: all tests fail with `No such command 'search'`.
@@ -677,7 +677,7 @@ Expected: all tests fail with `No such command 'search'`.
 
 ### 2.2 Implement the `dit search` command
 
-Add this command to `/Users/lxs/code/datahub/src/dit/cli/main.py`, before `_fmt_tokens`:
+Add this command to `/Users/lxs/code/dit/src/dit/cli/main.py`, before `_fmt_tokens`:
 
 ```python
 @app.command()
@@ -769,7 +769,7 @@ def search(
 ### 2.3 Run CLI tests and verify
 
 ```
-cd /Users/lxs/code/datahub && uv run pytest tests/test_cli_search.py -v
+cd /Users/lxs/code/dit && uv run pytest tests/test_cli_search.py -v
 ```
 
 Expected output:
@@ -991,7 +991,7 @@ class TestSearchEndpoint:
 Run to confirm failure:
 
 ```
-cd /Users/lxs/code/datahub && uv run pytest tests/server/test_routes_search.py -v 2>&1 | head -20
+cd /Users/lxs/code/dit && uv run pytest tests/server/test_routes_search.py -v 2>&1 | head -20
 ```
 
 Expected: `404 Not Found` (route not registered yet).
@@ -1000,7 +1000,7 @@ Expected: `404 Not Found` (route not registered yet).
 
 ### 3.2 Implement `src/dit/server/routes/search_api.py`
 
-Create `/Users/lxs/code/datahub/src/dit/server/routes/search_api.py`:
+Create `/Users/lxs/code/dit/src/dit/server/routes/search_api.py`:
 
 ```python
 # src/dit/server/routes/search_api.py
@@ -1081,7 +1081,7 @@ async def repo_search_endpoint(
 
 ### 3.3 Register the router in `src/dit/server/app.py`
 
-In `/Users/lxs/code/datahub/src/dit/server/app.py`, add after the `stats_router` block:
+In `/Users/lxs/code/dit/src/dit/server/app.py`, add after the `stats_router` block:
 
 ```python
     from dit.server.routes.search_api import router as search_router
@@ -1103,7 +1103,7 @@ The diff from the current end of `create_app`:
 ### 3.4 Run server tests and verify
 
 ```
-cd /Users/lxs/code/datahub && uv run pytest tests/server/test_routes_search.py -v
+cd /Users/lxs/code/dit && uv run pytest tests/server/test_routes_search.py -v
 ```
 
 Expected output:
@@ -1129,9 +1129,9 @@ tests/server/test_routes_search.py::TestSearchEndpoint::test_search_unknown_repo
 
 ## Task 4: Gateway proxy
 
-### 4.1 Add client method to `modules/datahub/client.go`
+### 4.1 Add client method to `modules/dit/client.go`
 
-File: `/Users/lxs/code/datahub-gateway/modules/datahub/client.go`
+File: `/Users/lxs/code/datahub-gateway/modules/dit/client.go`
 
 Add after the `GetStats` method at the bottom of the file:
 
@@ -1141,9 +1141,9 @@ func (c *Client) Search(ctx context.Context, repoName string, body []byte) ([]by
 }
 ```
 
-### 4.2 Add handler to `routers/api/v1/repo/datahub.go`
+### 4.2 Add handler to `routers/api/v1/repo/dit.go`
 
-File: `/Users/lxs/code/datahub-gateway/routers/api/v1/repo/datahub.go`
+File: `/Users/lxs/code/datahub-gateway/routers/api/v1/repo/dit.go`
 
 Add after the `DatahubGetStats` function at the bottom of the file:
 
@@ -1154,7 +1154,7 @@ func DatahubSearch(ctx *context.APIContext) {
 		return
 	}
 	proxyToDatahub(ctx, func() ([]byte, int, error) {
-		return datahub.DefaultClient().Search(ctx, ctx.Repo.Repository.Name, body)
+		return dit.DefaultClient().Search(ctx, ctx.Repo.Repository.Name, body)
 	})
 }
 ```
@@ -1163,7 +1163,7 @@ func DatahubSearch(ctx *context.APIContext) {
 
 File: `/Users/lxs/code/datahub-gateway/routers/api/v1/api.go`
 
-Add `m.Post("/search", repo.DatahubSearch)` inside the `/datahub` group, after `m.Get("/stats/{commit}", repo.DatahubGetStats)`:
+Add `m.Post("/search", repo.DatahubSearch)` inside the `/dit` group, after `m.Get("/stats/{commit}", repo.DatahubGetStats)`:
 
 ```go
 				m.Get("/stats/{commit}", repo.DatahubGetStats)
@@ -1290,7 +1290,7 @@ File: `/Users/lxs/code/datahub-gateway/web_src/js/components/DataRepoHome.vue`
       this.searchError = null;
       this.searchResults = null;
       try {
-        this.searchResults = await datahubFetch(
+        this.searchResults = await ditFetch(
           this.owner, this.repo,
           '/search',
           {
@@ -1346,7 +1346,7 @@ Expected: `OK`
 ### 6.1 Run all new tests together
 
 ```
-cd /Users/lxs/code/datahub && uv run pytest tests/test_search.py tests/test_cli_search.py tests/server/test_routes_search.py -v
+cd /Users/lxs/code/dit && uv run pytest tests/test_search.py tests/test_cli_search.py tests/server/test_routes_search.py -v
 ```
 
 Expected: 55 passed (29 + 14 + 12).
@@ -1356,7 +1356,7 @@ Expected: 55 passed (29 + 14 + 12).
 ### 6.2 Run full test suite to check for regressions
 
 ```
-cd /Users/lxs/code/datahub && uv run pytest tests/ -v 2>&1 | tail -20
+cd /Users/lxs/code/dit && uv run pytest tests/ -v 2>&1 | tail -20
 ```
 
 Expected: all pre-existing tests still pass; no regressions.
@@ -1401,7 +1401,7 @@ Expected: JSON object with `commit_hash`, `query`, `matches`, `total_scanned`, `
 | `tests/test_search.py` | Create — 29 unit tests |
 | `tests/test_cli_search.py` | Create — 14 CLI tests |
 | `tests/server/test_routes_search.py` | Create — 12 server tests |
-| `routers/api/v1/repo/datahub.go` | Edit — add `DatahubSearch` handler |
-| `modules/datahub/client.go` | Edit — add `Search` method |
+| `routers/api/v1/repo/dit.go` | Edit — add `DatahubSearch` handler |
+| `modules/dit/client.go` | Edit — add `Search` method |
 | `routers/api/v1/api.go` | Edit — register `m.Post("/search", ...)` |
 | `web_src/js/components/DataRepoHome.vue` | Edit — search bar, results panel, data fields, `submitSearch` |

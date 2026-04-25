@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Production-ready Docker Compose deployment for datahub-gateway + datahub-core + PostgreSQL
+**Goal:** Production-ready Docker Compose deployment for datahub-gateway + dit-core + PostgreSQL
 
 **Architecture:** Three-service Docker Compose with shared PostgreSQL, health checks, and volume management
 
@@ -23,13 +23,13 @@
   ```sql
   -- Forgejo uses the default 'forgejo' database (created by POSTGRES_DB env)
 
-  -- Create datahub database and user
-  CREATE USER datahub WITH PASSWORD 'datahub';
-  CREATE DATABASE datahub OWNER datahub;
+  -- Create dit database and user
+  CREATE USER dit WITH PASSWORD 'dit';
+  CREATE DATABASE dit OWNER dit;
 
-  -- Connect to datahub database and create schema
-  \c datahub
-  CREATE SCHEMA IF NOT EXISTS datahub AUTHORIZATION datahub;
+  -- Connect to dit database and create schema
+  \c dit
+  CREATE SCHEMA IF NOT EXISTS dit AUTHORIZATION dit;
   ```
 
 - [ ] 3. Test the script manually:
@@ -46,13 +46,13 @@
   ```bash
   docker exec -it <container_id> psql -U forgejo -c "\l"
   ```
-  Expected output: rows for both `forgejo` and `datahub` databases.
+  Expected output: rows for both `forgejo` and `dit` databases.
 
 - [ ] 4. Commit:
   ```bash
   cd ~/code/datahub-gateway
   git add scripts/init-db.sql
-  git commit -m "feat: add PostgreSQL init script for forgejo + datahub databases"
+  git commit -m "feat: add PostgreSQL init script for forgejo + dit databases"
   ```
 
 ---
@@ -119,16 +119,16 @@
 
 ## Task 3: Core Dockerfile
 
-**Files:** `~/code/datahub/Dockerfile`
+**Files:** `~/code/dit/Dockerfile`
 
-> datahub-core is a FastAPI/uvicorn service. The project uses `pyproject.toml` with the `[server]` optional group providing `fastapi`, `uvicorn`, `sqlalchemy[asyncio]`, `asyncpg`, `pydantic-settings`, and `alembic`. No Dockerfile currently exists in the repo.
+> dit-core is a FastAPI/uvicorn service. The project uses `pyproject.toml` with the `[server]` optional group providing `fastapi`, `uvicorn`, `sqlalchemy[asyncio]`, `asyncpg`, `pydantic-settings`, and `alembic`. No Dockerfile currently exists in the repo.
 
 - [ ] 1. Confirm no Dockerfile exists:
   ```bash
-  ls ~/code/datahub/Dockerfile 2>/dev/null && echo "EXISTS" || echo "MISSING"
+  ls ~/code/dit/Dockerfile 2>/dev/null && echo "EXISTS" || echo "MISSING"
   ```
 
-- [ ] 2. Create `~/code/datahub/Dockerfile`:
+- [ ] 2. Create `~/code/dit/Dockerfile`:
   ```dockerfile
   FROM python:3.12-slim
 
@@ -161,9 +161,9 @@
 
 - [ ] 3. Verify the health endpoint exists in the application. Check:
   ```bash
-  grep -r "health" ~/code/datahub/src/dit/server/ --include="*.py" -l
+  grep -r "health" ~/code/dit/src/dit/server/ --include="*.py" -l
   ```
-  If `/health` is not found, add it to the app. Open `~/code/datahub/src/dit/server/app.py` and add:
+  If `/health` is not found, add it to the app. Open `~/code/dit/src/dit/server/app.py` and add:
   ```python
   @app.get("/health")
   async def health():
@@ -172,8 +172,8 @@
 
 - [ ] 4. Test the Docker build:
   ```bash
-  cd ~/code/datahub
-  docker build -t datahub-core:dev .
+  cd ~/code/dit
+  docker build -t dit-core:dev .
   ```
   Expected: build completes without error.
 
@@ -182,7 +182,7 @@
   docker run --rm -d -p 8000:8000 \
     -e DATABASE_URL="sqlite+aiosqlite:///./test.db" \
     -e DATA_DIR="/data/objects" \
-    --name core-test datahub-core:dev
+    --name core-test dit-core:dev
   sleep 5
   curl -f http://localhost:8000/health
   docker stop core-test
@@ -191,9 +191,9 @@
 
 - [ ] 6. Commit:
   ```bash
-  cd ~/code/datahub
+  cd ~/code/dit
   git add Dockerfile src/dit/server/app.py  # include app.py only if /health was added
-  git commit -m "feat: Dockerfile for datahub-core (Python 3.12 + uvicorn + health check)"
+  git commit -m "feat: Dockerfile for dit-core (Python 3.12 + uvicorn + health check)"
   ```
 
 ---
@@ -219,9 +219,9 @@
         FORGEJO__database__NAME: forgejo
         FORGEJO__database__USER: forgejo
         FORGEJO__database__PASSWD: forgejo
-        FORGEJO__datahub__ENABLED: "true"
-        FORGEJO__datahub__CORE_URL: "http://core:8000"
-        FORGEJO__datahub__SERVICE_TOKEN: "${SERVICE_TOKEN}"
+        FORGEJO__dit__ENABLED: "true"
+        FORGEJO__dit__CORE_URL: "http://core:8000"
+        FORGEJO__dit__SERVICE_TOKEN: "${SERVICE_TOKEN}"
       depends_on:
         db:
           condition: service_healthy
@@ -239,12 +239,12 @@
 
     core:
       build:
-        context: ../datahub
+        context: ../dit
         dockerfile: Dockerfile
       ports:
         - "8000:8000"
       environment:
-        DATABASE_URL: "postgresql+asyncpg://datahub:datahub@db:5432/datahub"
+        DATABASE_URL: "postgresql+asyncpg://dit:dit@db:5432/dit"
         DATA_DIR: "/data/objects"
       depends_on:
         db:
@@ -382,8 +382,8 @@
         - uses: actions/setup-go@v5
           with:
             go-version: "1.23"
-        - name: Run datahub unit tests
-          run: go test ./modules/datahub/... ./routers/api/v1/repo/...
+        - name: Run dit unit tests
+          run: go test ./modules/dit/... ./routers/api/v1/repo/...
 
     lint:
       name: Go Lint
@@ -461,13 +461,13 @@
   docker compose up db
   ```
 
-  **Terminal 2 — datahub-core**
+  **Terminal 2 — dit-core**
   ```bash
-  cd ~/code/datahub
+  cd ~/code/dit
   # First time only:
   pip install -e ".[server]"
   # Set database URL to the Docker Postgres instance
-  export DATABASE_URL="postgresql+asyncpg://datahub:datahub@localhost:5432/datahub"
+  export DATABASE_URL="postgresql+asyncpg://dit:dit@localhost:5432/dit"
   export DATA_DIR="./data/objects"
   uvicorn dit.server.app:app --reload --port 8000
   ```
@@ -522,9 +522,9 @@
   | `docker compose up --build` | Build and start all services |
   | `docker compose down -v` | Full teardown including volumes |
   | `docker compose ps` | Check service health status |
-  | `docker compose logs core` | View datahub-core logs |
+  | `docker compose logs core` | View dit-core logs |
   | `docker compose logs gateway` | View gateway logs |
-  | `go test ./modules/datahub/...` | Run datahub Go unit tests |
+  | `go test ./modules/dit/...` | Run dit Go unit tests |
   | `make watch` | Start gateway with hot reload |
 
   ---
@@ -535,8 +535,8 @@
   # Connect to forgejo database
   docker compose exec db psql -U forgejo forgejo
 
-  # Connect to datahub database
-  docker compose exec db psql -U datahub datahub
+  # Connect to dit database
+  docker compose exec db psql -U dit dit
 
   # List all databases
   docker compose exec db psql -U forgejo -c "\l"
@@ -565,9 +565,9 @@
 
 ## Completion Checklist
 
-- [ ] `scripts/init-db.sql` creates `datahub` user, database, and schema
+- [ ] `scripts/init-db.sql` creates `dit` user, database, and schema
 - [ ] Gateway `Dockerfile` has three stages: Go backend, webpack frontend, alpine final
-- [ ] Core `Dockerfile` exists at `~/code/datahub/Dockerfile` with health check
+- [ ] Core `Dockerfile` exists at `~/code/dit/Dockerfile` with health check
 - [ ] `docker-compose.yml` starts all three services with correct `depends_on` conditions
 - [ ] `.env.example` committed, `.env` gitignored
 - [ ] `.github/workflows/gateway.yml` passes YAML validation

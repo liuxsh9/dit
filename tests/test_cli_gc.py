@@ -18,7 +18,7 @@ runner = CliRunner()
 
 
 def _setup_repo(tmp_path: Path) -> tuple[Path, ObjectStore, RefStore]:
-    dot = tmp_path / ".datahub"
+    dot = tmp_path / ".dit"
     dot.mkdir()
     (dot / "objects").mkdir()
     store = ObjectStore(dot / "objects")

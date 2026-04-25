@@ -29,12 +29,12 @@ class TestMergeFastForward:
         )
         runner.invoke(app, ["add", "."], catch_exceptions=False)
         runner.invoke(app, ["commit", "-m", "feature change"], catch_exceptions=False)
-        feature_hash = (tmp_path / ".datahub" / "refs" / "heads" / "feature").read_text().strip()
+        feature_hash = (tmp_path / ".dit" / "refs" / "heads" / "feature").read_text().strip()
         runner.invoke(app, ["checkout", "main"], catch_exceptions=False)
         result = runner.invoke(app, ["merge", "feature"], catch_exceptions=False)
         assert result.exit_code == 0
         assert "fast-forward" in result.output.lower()
-        main_hash = (tmp_path / ".datahub" / "refs" / "heads" / "main").read_text().strip()
+        main_hash = (tmp_path / ".dit" / "refs" / "heads" / "main").read_text().strip()
         assert main_hash == feature_hash
 
     def test_already_up_to_date(self, tmp_path):
@@ -67,7 +67,7 @@ class TestMergeThreeWay:
         from dit.core.store import ObjectStore
         from dit.core.objects import deserialize_commit
         from dit.core.refs import RefStore
-        dot = tmp_path / ".datahub"
+        dot = tmp_path / ".dit"
         store = ObjectStore(dot / "objects")
         refs = RefStore(dot)
         head_hash = refs.resolve_head()
@@ -116,9 +116,9 @@ class TestMergeConflict:
         result = runner.invoke(app, ["merge", "feature"])
         assert result.exit_code != 0
         assert "conflict" in result.output.lower()
-        assert (tmp_path / ".datahub" / "MERGE_HEAD").exists()
-        assert (tmp_path / ".datahub" / "MERGE_MSG").exists()
-        assert (tmp_path / ".datahub" / "conflicts.json").exists()
+        assert (tmp_path / ".dit" / "MERGE_HEAD").exists()
+        assert (tmp_path / ".dit" / "MERGE_MSG").exists()
+        assert (tmp_path / ".dit" / "conflicts.json").exists()
 
     def test_merge_abort(self, tmp_path):
         _init_and_commit(tmp_path)
@@ -137,7 +137,7 @@ class TestMergeConflict:
         runner.invoke(app, ["merge", "feature"])
         result = runner.invoke(app, ["merge", "--abort"], catch_exceptions=False)
         assert result.exit_code == 0
-        assert not (tmp_path / ".datahub" / "MERGE_HEAD").exists()
+        assert not (tmp_path / ".dit" / "MERGE_HEAD").exists()
         content = (tmp_path / "data.jsonl").read_text()
         assert "main" in content
 
@@ -162,11 +162,11 @@ class TestMergeConflict:
         runner.invoke(app, ["add", "."], catch_exceptions=False)
         result = runner.invoke(app, ["merge", "--continue"], catch_exceptions=False)
         assert result.exit_code == 0
-        assert not (tmp_path / ".datahub" / "MERGE_HEAD").exists()
+        assert not (tmp_path / ".dit" / "MERGE_HEAD").exists()
         from dit.core.store import ObjectStore
         from dit.core.objects import deserialize_commit
         from dit.core.refs import RefStore
-        dot = tmp_path / ".datahub"
+        dot = tmp_path / ".dit"
         store = ObjectStore(dot / "objects")
         refs = RefStore(dot)
         head_hash = refs.resolve_head()

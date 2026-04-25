@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Add sidecar data model, serialization, computation, and walker/tree_builder support to datahub-core.
+**Goal:** Add sidecar data model, serialization, computation, and walker/tree_builder support to dit-core.
 
 **Architecture:** Content-addressable sidecar objects with backward-compatible TreeEntry extension.
 

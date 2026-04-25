@@ -191,7 +191,7 @@ m.Get("/dedup/{commit}", repo.DatahubGetDedup)
 
 ```go
 func DatahubGetDedup(ctx *context.APIContext) {
-    // proxy GET to datahub-core /api/v1/repos/{repo}/dedup/{commit}?path=...
+    // proxy GET to dit-core /api/v1/repos/{repo}/dedup/{commit}?path=...
 }
 ```
 

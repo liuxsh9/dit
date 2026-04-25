@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add Prometheus metrics, enhanced health check, and structured request logging to datahub-core.
+**Goal:** Add Prometheus metrics, enhanced health check, and structured request logging to dit-core.
 
 **Architecture:** Two ASGI middlewares (metrics + logging) wrap all requests. Enhanced health endpoint checks DB + data_dir. Prometheus metrics exposed at `/metrics`.
 
@@ -37,7 +37,7 @@ async def test_metrics_endpoint_returns_prometheus_format(client: AsyncClient):
     assert resp.status_code == 200
     assert "text/plain" in resp.headers["content-type"] or "text/plain" in resp.headers.get("content-type", "")
     body = resp.text
-    assert "datahub_http_requests_total" in body
+    assert "dit_http_requests_total" in body
 
 
 @pytest.mark.asyncio
@@ -47,7 +47,7 @@ async def test_metrics_counts_requests(client: AsyncClient):
 
     resp = await client.get("/metrics")
     body = resp.text
-    assert "datahub_http_requests_total" in body
+    assert "dit_http_requests_total" in body
 
 
 @pytest.mark.asyncio
@@ -56,7 +56,7 @@ async def test_metrics_records_latency(client: AsyncClient):
 
     resp = await client.get("/metrics")
     body = resp.text
-    assert "datahub_http_request_duration_seconds" in body
+    assert "dit_http_request_duration_seconds" in body
 
 
 @pytest.mark.asyncio
@@ -77,12 +77,12 @@ async def test_metrics_path_normalization(client: AsyncClient, session, tmp_path
 async def test_metrics_in_progress_gauge(client: AsyncClient):
     resp = await client.get("/metrics")
     body = resp.text
-    assert "datahub_http_requests_in_progress" in body
+    assert "dit_http_requests_in_progress" in body
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /Users/lxs/code/datahub && uv run pytest tests/server/test_metrics.py -v`
+Run: `cd /Users/lxs/code/dit && uv run pytest tests/server/test_metrics.py -v`
 
 Expected: FAIL — `/metrics` endpoint not found (404).
 
@@ -103,7 +103,7 @@ server = [
 ]
 ```
 
-Then install: `cd /Users/lxs/code/datahub && uv sync --extra server`
+Then install: `cd /Users/lxs/code/dit && uv sync --extra server`
 
 - [ ] **Step 4: Create middleware package**
 
@@ -112,7 +112,7 @@ Create `src/dit/server/middleware/__init__.py` (empty file).
 - [ ] **Step 5: Create `src/dit/server/middleware/metrics.py`**
 
 ```python
-"""Prometheus metrics middleware for datahub-core."""
+"""Prometheus metrics middleware for dit-core."""
 from __future__ import annotations
 
 import re
@@ -125,20 +125,20 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
 
 REQUEST_COUNT = Counter(
-    "datahub_http_requests_total",
+    "dit_http_requests_total",
     "Total HTTP requests",
     ["method", "path", "status"],
 )
 
 REQUEST_LATENCY = Histogram(
-    "datahub_http_request_duration_seconds",
+    "dit_http_request_duration_seconds",
     "HTTP request latency in seconds",
     ["method", "path"],
     buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0],
 )
 
 REQUESTS_IN_PROGRESS = Gauge(
-    "datahub_http_requests_in_progress",
+    "dit_http_requests_in_progress",
     "Number of HTTP requests currently being processed",
     ["method"],
 )
@@ -225,20 +225,20 @@ In `src/dit/server/app.py`, add after creating the `application` FastAPI instanc
 
 - [ ] **Step 7: Run tests to verify they pass**
 
-Run: `cd /Users/lxs/code/datahub && uv run pytest tests/server/test_metrics.py -v`
+Run: `cd /Users/lxs/code/dit && uv run pytest tests/server/test_metrics.py -v`
 
 Expected: All 5 tests PASS.
 
 - [ ] **Step 8: Run full test suite**
 
-Run: `cd /Users/lxs/code/datahub && uv run pytest tests/ -x -q`
+Run: `cd /Users/lxs/code/dit && uv run pytest tests/ -x -q`
 
 **IMPORTANT**: Prometheus metrics are global singletons. If tests run in the same process, metrics accumulate. This should be fine for our tests since we only assert presence, not exact values. But if tests fail due to metric state, check if `prometheus_client.REGISTRY` needs cleanup — add `from prometheus_client import REGISTRY; REGISTRY.unregister(...)` in a fixture if needed. Likely NOT needed.
 
 - [ ] **Step 9: Commit**
 
 ```bash
-cd /Users/lxs/code/datahub
+cd /Users/lxs/code/dit
 git add pyproject.toml src/dit/server/middleware/__init__.py src/dit/server/middleware/metrics.py src/dit/server/app.py tests/server/test_metrics.py
 git commit -m "feat: add Prometheus metrics middleware
 
@@ -294,7 +294,7 @@ async def test_health_data_dir_check(client: AsyncClient):
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /Users/lxs/code/datahub && uv run pytest tests/server/test_health.py -v`
+Run: `cd /Users/lxs/code/dit && uv run pytest tests/server/test_health.py -v`
 
 Expected: FAIL — current health endpoint returns `{"status": "ok"}` not `{"status": "healthy"}`.
 
@@ -343,20 +343,20 @@ Replace the existing health endpoint in `src/dit/server/app.py`:
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd /Users/lxs/code/datahub && uv run pytest tests/server/test_health.py -v`
+Run: `cd /Users/lxs/code/dit && uv run pytest tests/server/test_health.py -v`
 
 Expected: All 3 tests PASS.
 
 - [ ] **Step 5: Run full test suite**
 
-Run: `cd /Users/lxs/code/datahub && uv run pytest tests/ -x -q`
+Run: `cd /Users/lxs/code/dit && uv run pytest tests/ -x -q`
 
 **IMPORTANT**: The old health endpoint returned `{"status": "ok"}`. Check if any existing tests assert on this string. Search: `grep -r '"status": "ok"' tests/`. If found, update those tests.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /Users/lxs/code/datahub
+cd /Users/lxs/code/dit
 git add src/dit/server/app.py tests/server/test_health.py
 git commit -m "feat: enhanced health check with DB and data_dir probes
 
@@ -388,10 +388,10 @@ from httpx import AsyncClient
 
 @pytest.mark.asyncio
 async def test_request_logging_emits_json(client: AsyncClient, caplog):
-    with caplog.at_level(logging.INFO, logger="datahub.access"):
+    with caplog.at_level(logging.INFO, logger="dit.access"):
         await client.get("/health")
 
-    access_records = [r for r in caplog.records if r.name == "datahub.access"]
+    access_records = [r for r in caplog.records if r.name == "dit.access"]
     assert len(access_records) >= 1
     record = access_records[-1]
     data = json.loads(record.getMessage())
@@ -416,22 +416,22 @@ async def test_request_id_passthrough(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_logging_skips_metrics_endpoint(client: AsyncClient, caplog):
-    with caplog.at_level(logging.INFO, logger="datahub.access"):
+    with caplog.at_level(logging.INFO, logger="dit.access"):
         await client.get("/metrics")
 
-    access_records = [r for r in caplog.records if r.name == "datahub.access"]
+    access_records = [r for r in caplog.records if r.name == "dit.access"]
     metrics_logs = [r for r in access_records if "/metrics" in r.getMessage()]
     assert len(metrics_logs) == 0
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /Users/lxs/code/datahub && uv run pytest tests/server/test_logging_middleware.py -v`
+Run: `cd /Users/lxs/code/dit && uv run pytest tests/server/test_logging_middleware.py -v`
 
 - [ ] **Step 3: Create `src/dit/server/middleware/logging.py`**
 
 ```python
-"""Structured request logging middleware for datahub-core."""
+"""Structured request logging middleware for dit-core."""
 from __future__ import annotations
 
 import json
@@ -442,7 +442,7 @@ import time
 from starlette.requests import Request
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-logger = logging.getLogger("datahub.access")
+logger = logging.getLogger("dit.access")
 
 _SKIP_PATHS = {"/metrics"}
 
@@ -513,18 +513,18 @@ Add after the metrics middleware registration:
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cd /Users/lxs/code/datahub && uv run pytest tests/server/test_logging_middleware.py -v`
+Run: `cd /Users/lxs/code/dit && uv run pytest tests/server/test_logging_middleware.py -v`
 
 Expected: All 4 tests PASS.
 
 - [ ] **Step 6: Run full test suite**
 
-Run: `cd /Users/lxs/code/datahub && uv run pytest tests/ -x -q`
+Run: `cd /Users/lxs/code/dit && uv run pytest tests/ -x -q`
 
 - [ ] **Step 7: Commit**
 
 ```bash
-cd /Users/lxs/code/datahub
+cd /Users/lxs/code/dit
 git add src/dit/server/middleware/logging.py src/dit/server/app.py tests/server/test_logging_middleware.py
 git commit -m "feat: add structured request logging middleware
 

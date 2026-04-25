@@ -13,7 +13,7 @@
 ## File Structure
 
 ### New files:
-- `src/dit/core/config.py` — TOML config reader/writer for .datahub/config
+- `src/dit/core/config.py` — TOML config reader/writer for .dit/config
 - `src/dit/core/remote.py` — Sync httpx RemoteClient
 - `src/dit/core/walker.py` — Object walker + ancestor check
 - `src/dit/server/__init__.py`
@@ -120,7 +120,7 @@ dev = [
 
 ## Task 2: TOML Config Reader/Writer
 
-Create `src/dit/core/config.py` with functions to read/write `.datahub/config`.
+Create `src/dit/core/config.py` with functions to read/write `.dit/config`.
 
 - [ ] Create `src/dit/core/config.py`:
 
@@ -131,44 +131,44 @@ from pathlib import Path
 import tomli_w
 
 
-def load_config(dot_datahub: Path) -> dict:
-    """Load .datahub/config TOML, return empty dict if missing."""
-    config_path = dot_datahub / "config"
+def load_config(dot_dit: Path) -> dict:
+    """Load .dit/config TOML, return empty dict if missing."""
+    config_path = dot_dit / "config"
     if not config_path.exists():
         return {}
     return tomllib.loads(config_path.read_text(encoding="utf-8"))
 
 
-def save_config(dot_datahub: Path, config: dict) -> None:
-    """Write config dict to .datahub/config as TOML."""
-    config_path = dot_datahub / "config"
+def save_config(dot_dit: Path, config: dict) -> None:
+    """Write config dict to .dit/config as TOML."""
+    config_path = dot_dit / "config"
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_bytes(tomli_w.dumps(config).encode("utf-8"))
 
 
-def get_remote(dot_datahub: Path, name: str) -> dict | None:
+def get_remote(dot_dit: Path, name: str) -> dict | None:
     """Get remote config {url, token} or None."""
-    config = load_config(dot_datahub)
+    config = load_config(dot_dit)
     return config.get("remote", {}).get(name)
 
 
-def set_remote(dot_datahub: Path, name: str, url: str, token: str = "") -> None:
+def set_remote(dot_dit: Path, name: str, url: str, token: str = "") -> None:
     """Set remote URL and optional token."""
-    config = load_config(dot_datahub)
+    config = load_config(dot_dit)
     config.setdefault("remote", {})[name] = {"url": url, "token": token}
-    save_config(dot_datahub, config)
+    save_config(dot_dit, config)
 
 
-def remove_remote(dot_datahub: Path, name: str) -> bool:
+def remove_remote(dot_dit: Path, name: str) -> bool:
     """Remove remote, return True if existed."""
-    config = load_config(dot_datahub)
+    config = load_config(dot_dit)
     remotes = config.get("remote", {})
     if name not in remotes:
         return False
     del remotes[name]
     if not remotes:
         config.pop("remote", None)
-    save_config(dot_datahub, config)
+    save_config(dot_dit, config)
     return True
 ```
 
@@ -189,20 +189,20 @@ from dit.core.config import (
 
 
 def test_load_config_missing(tmp_path: Path) -> None:
-    dot = tmp_path / ".datahub"
+    dot = tmp_path / ".dit"
     dot.mkdir()
     assert load_config(dot) == {}
 
 
 def test_save_and_load_config(tmp_path: Path) -> None:
-    dot = tmp_path / ".datahub"
+    dot = tmp_path / ".dit"
     dot.mkdir()
     save_config(dot, {"foo": "bar"})
     assert load_config(dot) == {"foo": "bar"}
 
 
 def test_set_and_get_remote(tmp_path: Path) -> None:
-    dot = tmp_path / ".datahub"
+    dot = tmp_path / ".dit"
     dot.mkdir()
     set_remote(dot, "origin", "http://localhost:8000", "tok123")
     result = get_remote(dot, "origin")
@@ -210,13 +210,13 @@ def test_set_and_get_remote(tmp_path: Path) -> None:
 
 
 def test_get_remote_missing(tmp_path: Path) -> None:
-    dot = tmp_path / ".datahub"
+    dot = tmp_path / ".dit"
     dot.mkdir()
     assert get_remote(dot, "origin") is None
 
 
 def test_set_remote_no_token(tmp_path: Path) -> None:
-    dot = tmp_path / ".datahub"
+    dot = tmp_path / ".dit"
     dot.mkdir()
     set_remote(dot, "upstream", "http://example.com")
     result = get_remote(dot, "upstream")
@@ -224,7 +224,7 @@ def test_set_remote_no_token(tmp_path: Path) -> None:
 
 
 def test_remove_remote_existing(tmp_path: Path) -> None:
-    dot = tmp_path / ".datahub"
+    dot = tmp_path / ".dit"
     dot.mkdir()
     set_remote(dot, "origin", "http://localhost:8000", "tok")
     assert remove_remote(dot, "origin") is True
@@ -232,13 +232,13 @@ def test_remove_remote_existing(tmp_path: Path) -> None:
 
 
 def test_remove_remote_missing(tmp_path: Path) -> None:
-    dot = tmp_path / ".datahub"
+    dot = tmp_path / ".dit"
     dot.mkdir()
     assert remove_remote(dot, "origin") is False
 
 
 def test_remove_remote_leaves_others(tmp_path: Path) -> None:
-    dot = tmp_path / ".datahub"
+    dot = tmp_path / ".dit"
     dot.mkdir()
     set_remote(dot, "origin", "http://a.com", "t1")
     set_remote(dot, "upstream", "http://b.com", "t2")
@@ -248,7 +248,7 @@ def test_remove_remote_leaves_others(tmp_path: Path) -> None:
 ```
 
 - [ ] Run `uv run pytest tests/test_config.py` — all tests pass.
-- [ ] Commit: `feat: TOML config reader/writer for .datahub/config`
+- [ ] Commit: `feat: TOML config reader/writer for .dit/config`
 
 ---
 
@@ -265,8 +265,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class ServerSettings(BaseSettings):
-    database_url: str = "postgresql+asyncpg://localhost/datahub"
-    data_dir: str = "/data/datahub"
+    database_url: str = "postgresql+asyncpg://localhost/dit"
+    data_dir: str = "/data/dit"
     host: str = "0.0.0.0"
     port: int = 8000
 
@@ -285,8 +285,8 @@ from dit.server.config import ServerSettings
 
 def test_default_values() -> None:
     settings = ServerSettings()
-    assert settings.database_url == "postgresql+asyncpg://localhost/datahub"
-    assert settings.data_dir == "/data/datahub"
+    assert settings.database_url == "postgresql+asyncpg://localhost/dit"
+    assert settings.data_dir == "/data/dit"
     assert settings.host == "0.0.0.0"
     assert settings.port == 8000
 
@@ -294,11 +294,11 @@ def test_default_values() -> None:
 def test_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DIT_SERVER_PORT", "9000")
     monkeypatch.setenv("DIT_SERVER_HOST", "127.0.0.1")
-    monkeypatch.setenv("DIT_SERVER_DATA_DIR", "/tmp/datahub")
+    monkeypatch.setenv("DIT_SERVER_DATA_DIR", "/tmp/dit")
     settings = ServerSettings()
     assert settings.port == 9000
     assert settings.host == "127.0.0.1"
-    assert settings.data_dir == "/tmp/datahub"
+    assert settings.data_dir == "/tmp/dit"
 
 
 def test_database_url_override(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -346,7 +346,7 @@ class Base(DeclarativeBase):
 
 class Repo(Base):
     __tablename__ = "repos"
-    __table_args__ = {"schema": "datahub"}
+    __table_args__ = {"schema": "dit"}
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
@@ -358,10 +358,10 @@ class Repo(Base):
 
 class Ref(Base):
     __tablename__ = "refs"
-    __table_args__ = {"schema": "datahub"}
+    __table_args__ = {"schema": "dit"}
 
     repo_id: Mapped[int] = mapped_column(
-        ForeignKey("datahub.repos.id"), primary_key=True
+        ForeignKey("dit.repos.id"), primary_key=True
     )
     name: Mapped[str] = mapped_column(String(256), primary_key=True)
     target_hash: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -373,13 +373,13 @@ class Ref(Base):
 
 class Token(Base):
     __tablename__ = "tokens"
-    __table_args__ = {"schema": "datahub"}
+    __table_args__ = {"schema": "dit"}
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     label: Mapped[str] = mapped_column(String(128), nullable=False)
     repo_scope: Mapped[int | None] = mapped_column(
-        ForeignKey("datahub.repos.id"), nullable=True
+        ForeignKey("dit.repos.id"), nullable=True
     )
     permissions: Mapped[str] = mapped_column(String(32), nullable=False, default="push")
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
@@ -404,7 +404,7 @@ from dit.server.models import Base
 @pytest_asyncio.fixture
 async def engine() -> AsyncEngine:
     eng = await create_engine("sqlite+aiosqlite:///:memory:")
-    # Create datahub schema equivalent for SQLite (schema not supported, use no-schema variant)
+    # Create dit schema equivalent for SQLite (schema not supported, use no-schema variant)
     async with eng.begin() as conn:
         # SQLite doesn't support schemas; patch table args for tests
         for table in Base.metadata.tables.values():
@@ -492,7 +492,7 @@ def test_token_repr() -> None:
 
 ## Task 5: Alembic Setup
 
-Create the Alembic migration infrastructure for the `datahub` schema.
+Create the Alembic migration infrastructure for the `dit` schema.
 
 - [ ] Create `src/dit/server/alembic.ini`:
 
@@ -500,7 +500,7 @@ Create the Alembic migration infrastructure for the `datahub` schema.
 [alembic]
 script_location = %(here)s/alembic
 prepend_sys_path = .
-sqlalchemy.url = postgresql+asyncpg://localhost/datahub
+sqlalchemy.url = postgresql+asyncpg://localhost/dit
 
 [loggers]
 keys = root,sqlalchemy,alembic
@@ -563,7 +563,7 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         include_schemas=True,
-        version_table_schema="datahub",
+        version_table_schema="dit",
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -577,7 +577,7 @@ async def run_migrations_online() -> None:
                 connection=conn,
                 target_metadata=target_metadata,
                 include_schemas=True,
-                version_table_schema="datahub",
+                version_table_schema="dit",
             )
         )
         async with connection.begin():
@@ -625,7 +625,7 @@ def downgrade() -> None:
 - [ ] Create `src/dit/server/alembic/versions/001_initial.py`:
 
 ```python
-"""Initial schema: datahub.repos, datahub.refs, datahub.tokens
+"""Initial schema: dit.repos, dit.refs, dit.tokens
 
 Revision ID: 001
 Revises:
@@ -644,7 +644,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.execute("CREATE SCHEMA IF NOT EXISTS datahub")
+    op.execute("CREATE SCHEMA IF NOT EXISTS dit")
 
     op.create_table(
         "repos",
@@ -658,7 +658,7 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("name"),
-        schema="datahub",
+        schema="dit",
     )
 
     op.create_table(
@@ -672,9 +672,9 @@ def upgrade() -> None:
             server_default=sa.text("NOW()"),
             nullable=False,
         ),
-        sa.ForeignKeyConstraint(["repo_id"], ["datahub.repos.id"]),
+        sa.ForeignKeyConstraint(["repo_id"], ["dit.repos.id"]),
         sa.PrimaryKeyConstraint("repo_id", "name"),
-        schema="datahub",
+        schema="dit",
     )
 
     op.create_table(
@@ -691,23 +691,23 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=True),
-        sa.ForeignKeyConstraint(["repo_scope"], ["datahub.repos.id"]),
+        sa.ForeignKeyConstraint(["repo_scope"], ["dit.repos.id"]),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("token_hash"),
-        schema="datahub",
+        schema="dit",
     )
 
 
 def downgrade() -> None:
-    op.drop_table("tokens", schema="datahub")
-    op.drop_table("refs", schema="datahub")
-    op.drop_table("repos", schema="datahub")
-    op.execute("DROP SCHEMA IF EXISTS datahub")
+    op.drop_table("tokens", schema="dit")
+    op.drop_table("refs", schema="dit")
+    op.drop_table("repos", schema="dit")
+    op.execute("DROP SCHEMA IF EXISTS dit")
 ```
 
 - [ ] Verify files exist: `src/dit/server/alembic.ini`, `src/dit/server/alembic/env.py`, `src/dit/server/alembic/script.mako`, `src/dit/server/alembic/versions/001_initial.py`.
 - [ ] Run `uv run pytest` — existing tests still pass (alembic files have no tests).
-- [ ] Commit: `chore: alembic setup with initial datahub schema migration`
+- [ ] Commit: `chore: alembic setup with initial dit schema migration`
 
 ---
 
@@ -895,7 +895,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await engine.dispose()
 
 
-app = FastAPI(title="DataHub", lifespan=lifespan)
+app = FastAPI(title="Dit", lifespan=lifespan)
 
 
 @app.get("/health")
@@ -1046,7 +1046,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await engine.dispose()
 
 
-app = FastAPI(title="DataHub", lifespan=lifespan)
+app = FastAPI(title="Dit", lifespan=lifespan)
 app.include_router(repos_routes.router)
 
 
@@ -1758,7 +1758,7 @@ def serve(
     host: str = typer.Option("0.0.0.0", help="Host to bind"),
     port: int = typer.Option(8000, help="Port to listen on"),
 ):
-    """Start the DataHub HTTP API server."""
+    """Start the Dit HTTP API server."""
     try:
         import uvicorn  # noqa: F401
     except ImportError:
@@ -1910,7 +1910,7 @@ def test_remote_add_with_token(repo: Path, tmp_path: Path, monkeypatch: pytest.M
     assert result.exit_code == 0
     from dit.core.config import get_remote
 
-    dot = tmp_path / ".datahub"
+    dot = tmp_path / ".dit"
     cfg = get_remote(dot, "origin")
     assert cfg is not None
     assert cfg["token"] == "dit_abc123"
@@ -1940,7 +1940,7 @@ def auth_set_token(
     token: str = typer.Argument(..., help="Raw API token to store"),
     remote: str = typer.Option("origin", help="Remote name to associate the token with"),
 ):
-    """Store an API token for a remote in .datahub/config."""
+    """Store an API token for a remote in .dit/config."""
     from dit.core.config import get_remote, set_remote
 
     repo_root = find_repo_root()
@@ -1964,7 +1964,7 @@ def test_auth_set_token(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert "Token stored" in result.output
     from dit.core.config import get_remote
 
-    dot = tmp_path / ".datahub"
+    dot = tmp_path / ".dit"
     cfg = get_remote(dot, "origin")
     assert cfg is not None
     assert cfg["token"] == "dit_newsecret123"
@@ -1990,14 +1990,14 @@ def test_auth_set_token_custom_remote(
     assert result.exit_code == 0
     from dit.core.config import get_remote
 
-    dot = tmp_path / ".datahub"
+    dot = tmp_path / ".dit"
     cfg = get_remote(dot, "upstream")
     assert cfg["token"] == "dit_upstreamtok"
 ```
 
 - [ ] **Step 2:** Run `uv run pytest tests/test_cli_remote.py -v`
 - [ ] **Step 2b:** Run `uv run pytest` — full suite passes.
-- [ ] **Step 3:** Commit: `feat: CLI auth set-token command — update token for named remote in .datahub/config`
+- [ ] **Step 3:** Commit: `feat: CLI auth set-token command — update token for named remote in .dit/config`
 
 ---
 
@@ -2014,7 +2014,7 @@ import httpx
 
 
 class RemoteClient:
-    """Synchronous HTTP client for the DataHub server API."""
+    """Synchronous HTTP client for the Dit server API."""
 
     def __init__(self, base_url: str, token: str = "", repo: str = "") -> None:
         self.client = httpx.Client(
@@ -2309,7 +2309,7 @@ from dit.utils.jsonl import read_rows
 def find_jsonl_files(root: Path) -> list[Path]:
     results = []
     for p in sorted(root.rglob("*.jsonl")):
-        if ".datahub" in p.parts:
+        if ".dit" in p.parts:
             continue
         results.append(p)
     return results
@@ -2380,7 +2380,7 @@ def test_materialize_roundtrip(tmp_path: Path) -> None:
     src = tmp_path / "data.jsonl"
     _write_jsonl(src, rows)
 
-    store = ObjectStore(tmp_path / ".datahub" / "objects")
+    store = ObjectStore(tmp_path / ".dit" / "objects")
     manifest, row_data = build_manifest_for_file(src)
     for rh, data in row_data.items():
         store.write("rows", data)
@@ -2403,7 +2403,7 @@ def test_materialize_missing_row_raises(tmp_path: Path) -> None:
     src = tmp_path / "data.jsonl"
     _write_jsonl(src, rows)
 
-    store = ObjectStore(tmp_path / ".datahub" / "objects")
+    store = ObjectStore(tmp_path / ".dit" / "objects")
     manifest, _row_data = build_manifest_for_file(src)
     # Do NOT write rows to store — materialize should raise
     with pytest.raises(KeyError):
@@ -2416,7 +2416,7 @@ def test_materialize_creates_parent_dirs(tmp_path: Path) -> None:
     src = tmp_path / "data.jsonl"
     _write_jsonl(src, rows)
 
-    store = ObjectStore(tmp_path / ".datahub" / "objects")
+    store = ObjectStore(tmp_path / ".dit" / "objects")
     manifest, row_data = build_manifest_for_file(src)
     for rh, data in row_data.items():
         store.write("rows", data)
@@ -2965,7 +2965,7 @@ def test_push_creates_objects_on_server(server_app, local_repo: Path, tmp_path: 
     assert resp.status_code == 201
 
     # Configure remote in local repo — URL format: http://host/repo-name
-    dot = local_repo / ".datahub"
+    dot = local_repo / ".dit"
     set_remote(dot, "origin", "http://test/train", token="dit_admin")
 
     # Patch RemoteClient to use ASGITransport instead of real HTTP
@@ -3001,7 +3001,7 @@ def test_push_idempotent(server_app, local_repo: Path, tmp_path: Path, monkeypat
     sync_client = _make_sync_client_from_asgi(server_app)
     sync_client.post("/api/v1/repos", json={"name": "train"})
 
-    dot = local_repo / ".datahub"
+    dot = local_repo / ".dit"
     set_remote(dot, "origin", "http://test/train", token="dit_admin")
 
     import dit.core.remote as remote_mod
@@ -3038,7 +3038,7 @@ Add the `clone` command to `src/dit/cli/main.py`.
 1. Parse URL to extract server base + repo name (`http://host:port/repo-name`).
 2. Get remote `heads/main` ref.
 3. Download all commits (walk parent chain), trees, manifests.
-4. Store in local `.datahub/objects/`.
+4. Store in local `.dit/objects/`.
 5. Set up local refs (`heads/main`), `HEAD`, remote config.
 6. Download all rows referenced by manifests.
 7. Materialize all JSONL files.
@@ -3070,7 +3070,7 @@ def clone(
         raise typer.Exit(1)
     dest_dir.mkdir(parents=True, exist_ok=True)
 
-    dot = dest_dir / ".datahub"
+    dot = dest_dir / ".dit"
     dot.mkdir()
     (dot / "objects").mkdir()
     refs = RefStore(dot)
@@ -3240,7 +3240,7 @@ def _push_to_server(server_app, local_repo: Path, tmp_path: Path, monkeypatch) -
     resp = sync_client.post("/api/v1/repos", json={"name": "dataset"})
     assert resp.status_code == 201
 
-    dot = local_repo / ".datahub"
+    dot = local_repo / ".dit"
     set_remote(dot, "origin", "http://test/dataset", token="dit_admin")
 
     monkeypatch.chdir(local_repo)
@@ -3312,7 +3312,7 @@ def test_clone_sets_up_remote_config(server_app, tmp_path: Path, monkeypatch) ->
     )
 
     from dit.core.config import get_remote
-    cfg = get_remote(clone_dir / ".datahub", "origin")
+    cfg = get_remote(clone_dir / ".dit", "origin")
     assert cfg is not None
     assert "dataset" in cfg["url"]
 ```
@@ -3594,7 +3594,7 @@ def test_pull_updates_local_data(server_app, tmp_path: Path, monkeypatch) -> Non
         [{"messages": [{"role": "user", "content": "v1"}, {"role": "assistant", "content": "r1"}]}],
         "v1",
     )
-    set_remote(client_a / ".datahub", "origin", "http://test/shared", token="dit_admin")
+    set_remote(client_a / ".dit", "origin", "http://test/shared", token="dit_admin")
     monkeypatch.chdir(client_a)
     r = runner.invoke(app, ["push"], catch_exceptions=False)
     assert r.exit_code == 0, r.output
@@ -3660,7 +3660,7 @@ def test_pull_already_up_to_date(server_app, tmp_path: Path, monkeypatch) -> Non
         [{"messages": [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"}]}],
         "init",
     )
-    set_remote(src / ".datahub", "origin", "http://test/stable", token="dit_admin")
+    set_remote(src / ".dit", "origin", "http://test/stable", token="dit_admin")
     monkeypatch.chdir(src)
     runner.invoke(app, ["push"], catch_exceptions=False)
 
@@ -3843,7 +3843,7 @@ def test_full_remote_collaboration_workflow(
     _chdir_invoke(client_a, ["add", "train.jsonl"])
     _chdir_invoke(client_a, ["commit", "-m", "v1: initial training data"])
 
-    set_remote(client_a / ".datahub", "origin", SERVER_REPO_URL, token=TOKEN)
+    set_remote(client_a / ".dit", "origin", SERVER_REPO_URL, token=TOKEN)
     _chdir_invoke(client_a, ["push"])
 
     # Step 3: Client B — clone + verify v1 data
@@ -3903,7 +3903,7 @@ def test_diverged_push_rejected(server_app, tmp_path: Path, monkeypatch) -> None
     _write_jsonl(client_a / "data.jsonl", V1_ROWS)
     _chdir_invoke(client_a, ["add", "data.jsonl"])
     _chdir_invoke(client_a, ["commit", "-m", "v1"])
-    set_remote(client_a / ".datahub", "origin", "http://test/conflict-repo", token=TOKEN)
+    set_remote(client_a / ".dit", "origin", "http://test/conflict-repo", token=TOKEN)
     _chdir_invoke(client_a, ["push"])
 
     # Client B — clone + commit something independent (diverge)

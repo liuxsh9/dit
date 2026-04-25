@@ -1,6 +1,6 @@
-# DataHub 手动测试指南 00：环境搭建与部署验证
+# Dit 手动测试指南 00：环境搭建与部署验证
 
-本指南是 DataHub ("dit") 手动测试系列的第一篇，覆盖从零开始的完整部署流程，适用于**本地开发**和 **Docker 部署**两种场景。
+本指南是 Dit ("dit") 手动测试系列的第一篇，覆盖从零开始的完整部署流程，适用于**本地开发**和 **Docker 部署**两种场景。
 
 ---
 
@@ -71,7 +71,7 @@ python --version
 ### 2.1 安装核心依赖 + 服务端依赖
 
 ```bash
-cd /path/to/datahub
+cd /path/to/dit
 
 # 安装所有依赖，包含 server extra
 uv sync --extra server
@@ -93,7 +93,7 @@ Options:
   ...
 
 Commands:
-  serve    Start the DataHub HTTP API server.
+  serve    Start the Dit HTTP API server.
   ...
 ```
 
@@ -118,23 +118,23 @@ psql -U postgres
 
 ```sql
 -- 创建数据库
-CREATE DATABASE datahub;
+CREATE DATABASE dit;
 
 -- 创建专用用户（可选，推荐生产环境使用）
-CREATE USER datahub_user WITH PASSWORD 'yourpassword';
-GRANT ALL PRIVILEGES ON DATABASE datahub TO datahub_user;
+CREATE USER dit_user WITH PASSWORD 'yourpassword';
+GRANT ALL PRIVILEGES ON DATABASE dit TO dit_user;
 
 -- 连接到新建数据库
-\c datahub
+\c dit
 
--- 创建 schema（DataHub 所有表放在 datahub schema 下）
-CREATE SCHEMA IF NOT EXISTS datahub;
-GRANT ALL ON SCHEMA datahub TO datahub_user;  -- 若使用专用用户
+-- 创建 schema（Dit 所有表放在 dit schema 下）
+CREATE SCHEMA IF NOT EXISTS dit;
+GRANT ALL ON SCHEMA dit TO dit_user;  -- 若使用专用用户
 
 \q
 ```
 
-> **说明**：所有 DataHub 数据库表均使用 `datahub` schema（如 `datahub.tokens`、`datahub.repos`）。
+> **说明**：所有 Dit 数据库表均使用 `dit` schema（如 `dit.tokens`、`dit.repos`）。
 
 ### 3.2 配置环境变量
 
@@ -144,13 +144,13 @@ GRANT ALL ON SCHEMA datahub TO datahub_user;  -- 若使用专用用户
 # 示例 .env 文件（本地开发用）
 
 # 数据库连接 URL（asyncpg 格式）
-DIT_SERVER_DATABASE_URL=postgresql+asyncpg://localhost/datahub
+DIT_SERVER_DATABASE_URL=postgresql+asyncpg://localhost/dit
 
 # 若使用专用数据库用户：
-# DIT_SERVER_DATABASE_URL=postgresql+asyncpg://datahub_user:yourpassword@localhost/datahub
+# DIT_SERVER_DATABASE_URL=postgresql+asyncpg://dit_user:yourpassword@localhost/dit
 
 # 数据文件存储目录（存放 objects 等二进制对象）
-DIT_SERVER_DATA_DIR=/tmp/datahub-data
+DIT_SERVER_DATA_DIR=/tmp/dit-data
 
 # 服务监听地址和端口（默认值，可省略）
 DIT_SERVER_HOST=0.0.0.0
@@ -169,21 +169,21 @@ export $(grep -v '^#' .env | xargs)
 或直接在终端 export：
 
 ```bash
-export DIT_SERVER_DATABASE_URL="postgresql+asyncpg://localhost/datahub"
-export DIT_SERVER_DATA_DIR="/tmp/datahub-data"
+export DIT_SERVER_DATABASE_URL="postgresql+asyncpg://localhost/dit"
+export DIT_SERVER_DATA_DIR="/tmp/dit-data"
 ```
 
 ### 3.3 创建数据目录
 
 ```bash
-mkdir -p /tmp/datahub-data
+mkdir -p /tmp/dit-data
 ```
 
 > **说明**：数据目录用于存放 objects 文件（commits、trees、manifests、rows 等）。健康检查会验证此目录是否存在。
 
 ### 3.4 运行数据库迁移
 
-DataHub 使用 Alembic 管理数据库 schema。迁移脚本和配置文件位于 `src/dit/server/` 目录下。
+Dit 使用 Alembic 管理数据库 schema。迁移脚本和配置文件位于 `src/dit/server/` 目录下。
 
 ```bash
 cd src/dit/server
@@ -213,7 +213,7 @@ cd -
 验证迁移结果：
 
 ```bash
-psql -U postgres -d datahub -c "\dt datahub.*"
+psql -U postgres -d dit -c "\dt dit.*"
 ```
 
 预期输出（节选）：
@@ -221,24 +221,24 @@ psql -U postgres -d datahub -c "\dt datahub.*"
                     List of relations
   Schema  |           Name            | Type  |  Owner
 ----------+---------------------------+-------+----------
- datahub  | branch_protection         | table | ...
- datahub  | ci_checks                 | table | ...
- datahub  | data_pull_request_meta    | table | ...
- datahub  | data_reviewer_rule        | table | ...
- datahub  | pr_approval               | table | ...
- datahub  | pr_comment                | table | ...
- datahub  | refs                      | table | ...
- datahub  | repos                     | table | ...
- datahub  | tokens                    | table | ...
- datahub  | webhooks                  | table | ...
+ dit  | branch_protection         | table | ...
+ dit  | ci_checks                 | table | ...
+ dit  | data_pull_request_meta    | table | ...
+ dit  | data_reviewer_rule        | table | ...
+ dit  | pr_approval               | table | ...
+ dit  | pr_comment                | table | ...
+ dit  | refs                      | table | ...
+ dit  | repos                     | table | ...
+ dit  | tokens                    | table | ...
+ dit  | webhooks                  | table | ...
 ```
 
 验证清单：
-- [ ] 数据库 `datahub` 创建成功
-- [ ] Schema `datahub` 创建成功
+- [ ] 数据库 `dit` 创建成功
+- [ ] Schema `dit` 创建成功
 - [ ] `alembic upgrade head` 无报错完成（显示 007 号迁移）
-- [ ] `\dt datahub.*` 列出至少 `tokens`、`repos`、`refs` 等表
-- [ ] 数据目录 `/tmp/datahub-data` 存在
+- [ ] `\dt dit.*` 列出至少 `tokens`、`repos`、`refs` 等表
+- [ ] 数据目录 `/tmp/dit-data` 存在
 
 ---
 
@@ -248,8 +248,8 @@ psql -U postgres -d datahub -c "\dt datahub.*"
 
 ```bash
 # 确保环境变量已设置
-export DIT_SERVER_DATABASE_URL="postgresql+asyncpg://localhost/datahub"
-export DIT_SERVER_DATA_DIR="/tmp/datahub-data"
+export DIT_SERVER_DATABASE_URL="postgresql+asyncpg://localhost/dit"
+export DIT_SERVER_DATA_DIR="/tmp/dit-data"
 
 uv run dit serve
 ```
@@ -281,14 +281,14 @@ uv run uvicorn dit.server.app:app \
 
 ```bash
 # 后台启动并将日志写入文件
-nohup uv run dit serve > /tmp/datahub.log 2>&1 &
+nohup uv run dit serve > /tmp/dit.log 2>&1 &
 echo "PID: $!"
 ```
 
 停止服务：
 
 ```bash
-kill $(cat /tmp/datahub.pid)
+kill $(cat /tmp/dit.pid)
 # 或
 pkill -f "dit serve"
 ```
@@ -342,11 +342,11 @@ curl -s http://localhost:8000/metrics | head -30
 
 预期输出（节选，Prometheus 格式）：
 ```
-# HELP datahub_http_requests_total Total HTTP requests
-# TYPE datahub_http_requests_total counter
-datahub_http_requests_total{method="GET",path="/health",status="200"} 2.0
-# HELP datahub_http_request_duration_seconds HTTP request latency in seconds
-# TYPE datahub_http_request_duration_seconds histogram
+# HELP dit_http_requests_total Total HTTP requests
+# TYPE dit_http_requests_total counter
+dit_http_requests_total{method="GET",path="/health",status="200"} 2.0
+# HELP dit_http_request_duration_seconds HTTP request latency in seconds
+# TYPE dit_http_request_duration_seconds histogram
 ...
 ```
 
@@ -362,14 +362,14 @@ curl -o /dev/null -w "%{http_code}\n" http://localhost:8000/api/v1/repos
 - [ ] `/health` 返回 HTTP 200，`status` 为 `"healthy"`
 - [ ] `/health` 的 `database.status` 为 `"healthy"`
 - [ ] `/health` 的 `data_dir.status` 为 `"healthy"`
-- [ ] `/metrics` 返回 Prometheus 格式的文本（含 `datahub_http_requests_total`）
+- [ ] `/metrics` 返回 Prometheus 格式的文本（含 `dit_http_requests_total`）
 - [ ] 受保护端点返回 401（未认证）
 
 ---
 
 ## 6. 创建管理员令牌
 
-DataHub 使用 Bearer Token 鉴权。首个 admin 令牌需通过 **服务令牌（Service Token）** 引导创建。
+Dit 使用 Bearer Token 鉴权。首个 admin 令牌需通过 **服务令牌（Service Token）** 引导创建。
 
 ### 6.1 方法一：使用 Service Token 引导（推荐）
 
@@ -411,8 +411,8 @@ curl -s -X POST http://localhost:8000/api/v1/admin/tokens \
 TOKEN="dit_mybootstraptoken123"
 TOKEN_HASH=$(echo -n "$TOKEN" | python3 -c "import sys,hashlib; print(hashlib.sha256(sys.stdin.read().encode()).hexdigest())")
 
-psql -U postgres -d datahub -c "
-  INSERT INTO datahub.tokens (token_hash, label, permissions, role)
+psql -U postgres -d dit -c "
+  INSERT INTO dit.tokens (token_hash, label, permissions, role)
   VALUES ('$TOKEN_HASH', 'bootstrap-admin', 'admin', 'owner');
 "
 ```
@@ -468,9 +468,9 @@ curl -s -X POST http://localhost:8000/api/v1/admin/tokens \
 ### 7.1 构建镜像
 
 ```bash
-cd /path/to/datahub
+cd /path/to/dit
 
-docker build -t datahub-core:latest .
+docker build -t dit-core:latest .
 ```
 
 预期输出（节选）：
@@ -479,7 +479,7 @@ docker build -t datahub-core:latest .
 Step 1/9 : FROM python:3.12-slim
 ...
 Successfully built xxxxxxxx
-Successfully tagged datahub-core:latest
+Successfully tagged dit-core:latest
 ```
 
 ### 7.2 使用 docker-compose（推荐）
@@ -493,7 +493,7 @@ services:
   postgres:
     image: postgres:15-alpine
     environment:
-      POSTGRES_DB: datahub
+      POSTGRES_DB: dit
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
@@ -506,40 +506,40 @@ services:
       timeout: 3s
       retries: 5
 
-  datahub-migrate:
-    image: datahub-core:latest
+  dit-migrate:
+    image: dit-core:latest
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      DIT_SERVER_DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres/datahub
+      DIT_SERVER_DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres/dit
     working_dir: /app/src/dit/server
     command: >
       sh -c "pip install alembic asyncpg sqlalchemy &&
              alembic -c alembic.ini upgrade head"
     restart: "no"
 
-  datahub:
-    image: datahub-core:latest
+  dit:
+    image: dit-core:latest
     depends_on:
       postgres:
         condition: service_healthy
-      datahub-migrate:
+      dit-migrate:
         condition: service_completed_successfully
     environment:
-      DIT_SERVER_DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres/datahub
-      DIT_SERVER_DATA_DIR: /data/datahub
+      DIT_SERVER_DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres/dit
+      DIT_SERVER_DATA_DIR: /data/dit
       DIT_SERVER_HOST: 0.0.0.0
       DIT_SERVER_PORT: 8000
       DIT_SERVER_SERVICE_TOKEN: change-me-in-production
     ports:
       - "8000:8000"
     volumes:
-      - datahub_data:/data/datahub
+      - dit_data:/data/dit
 
 volumes:
   pgdata:
-  datahub_data:
+  dit_data:
 ```
 
 启动：
@@ -554,16 +554,16 @@ docker-compose up -d
 
 ```bash
 # 准备数据目录
-mkdir -p /tmp/datahub-docker-data
+mkdir -p /tmp/dit-docker-data
 
 docker run -d \
-  --name datahub-core \
+  --name dit-core \
   -p 8000:8000 \
-  -e DIT_SERVER_DATABASE_URL="postgresql+asyncpg://postgres:postgres@host.docker.internal/datahub" \
-  -e DIT_SERVER_DATA_DIR="/data/datahub" \
+  -e DIT_SERVER_DATABASE_URL="postgresql+asyncpg://postgres:postgres@host.docker.internal/dit" \
+  -e DIT_SERVER_DATA_DIR="/data/dit" \
   -e DIT_SERVER_SERVICE_TOKEN="my-secret" \
-  -v /tmp/datahub-docker-data:/data/datahub \
-  datahub-core:latest
+  -v /tmp/dit-docker-data:/data/dit \
+  dit-core:latest
 ```
 
 > **macOS/Windows**：使用 `host.docker.internal` 访问宿主机 PostgreSQL。  
@@ -576,13 +576,13 @@ docker run -d \
 sleep 15
 
 # 检查容器状态
-docker ps | grep datahub-core
+docker ps | grep dit-core
 
 # 健康检查
 curl -s http://localhost:8000/health | python3 -m json.tool
 
 # 查看日志
-docker logs datahub-core --tail 50
+docker logs dit-core --tail 50
 ```
 
 ### 7.5 在容器内运行迁移
@@ -590,7 +590,7 @@ docker logs datahub-core --tail 50
 若单独运行容器（未使用 compose 的 migrate 服务），需手动在容器内运行迁移：
 
 ```bash
-docker exec datahub-core \
+docker exec dit-core \
   sh -c "cd /app/src/dit/server && alembic -c alembic.ini upgrade head"
 ```
 
@@ -599,7 +599,7 @@ docker exec datahub-core \
 - [ ] 容器启动后 `docker ps` 显示 `STATUS` 为 `Up`
 - [ ] Docker 健康检查通过（`STATUS` 中含 `(healthy)`）
 - [ ] `curl http://localhost:8000/health` 返回 200 且 `status: healthy`
-- [ ] `docker logs datahub-core` 无致命错误
+- [ ] `docker logs dit-core` 无致命错误
 
 ---
 
@@ -616,7 +616,7 @@ could not connect to server: Connection refused
 **原因与解决**：
 1. PostgreSQL 未启动 → `brew services start postgresql@15`（macOS）或 `sudo systemctl start postgresql`（Linux）
 2. 数据库 URL 错误 → 检查 `DIT_SERVER_DATABASE_URL` 格式是否正确，用户名/密码/端口是否匹配
-3. 数据库不存在 → 确认已执行 `CREATE DATABASE datahub`
+3. 数据库不存在 → 确认已执行 `CREATE DATABASE dit`
 
 ### 问题 2：健康检查 `data_dir` 状态为 `unhealthy`
 
@@ -627,13 +627,13 @@ could not connect to server: Connection refused
 
 **原因与解决**：
 1. 目录不存在 → `mkdir -p $DIT_SERVER_DATA_DIR`
-2. 环境变量未设置 → 确认 `DIT_SERVER_DATA_DIR` 已 export，默认值为 `/data/datahub`
+2. 环境变量未设置 → 确认 `DIT_SERVER_DATA_DIR` 已 export，默认值为 `/data/dit`
 
-### 问题 3：`alembic upgrade head` 报 `schema "datahub" does not exist`
+### 问题 3：`alembic upgrade head` 报 `schema "dit" does not exist`
 
 **解决**：手动创建 schema：
 ```sql
-psql -U postgres -d datahub -c "CREATE SCHEMA IF NOT EXISTS datahub;"
+psql -U postgres -d dit -c "CREATE SCHEMA IF NOT EXISTS dit;"
 ```
 
 ### 问题 4：`server` extra 未安装，`dit serve` 提示 `Server dependencies not installed`
@@ -672,7 +672,7 @@ uv run alembic -c src/dit/server/alembic.ini upgrade head
 
 **排查**：
 ```bash
-docker logs datahub-core --tail 100
+docker logs dit-core --tail 100
 ```
 
 常见原因：
@@ -692,14 +692,14 @@ chmod 755 $DIT_SERVER_DATA_DIR
 ## 附录：完整 .env 示例
 
 ```bash
-# DataHub 服务端配置
+# Dit 服务端配置
 # 环境变量前缀：DIT_SERVER_
 
 # 数据库连接（必填）
-DIT_SERVER_DATABASE_URL=postgresql+asyncpg://localhost/datahub
+DIT_SERVER_DATABASE_URL=postgresql+asyncpg://localhost/dit
 
 # 数据文件存储目录（必填，需提前创建）
-DIT_SERVER_DATA_DIR=/tmp/datahub-data
+DIT_SERVER_DATA_DIR=/tmp/dit-data
 
 # 服务绑定地址（默认 0.0.0.0）
 DIT_SERVER_HOST=0.0.0.0

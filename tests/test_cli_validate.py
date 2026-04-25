@@ -28,7 +28,7 @@ def _init_repo_with_rows(
     os.chdir(tmp_path)
     runner.invoke(app, ["init"])
 
-    dot = tmp_path / ".datahub"
+    dot = tmp_path / ".dit"
     store = ObjectStore(dot / "objects")
     refs = RefStore(dot)
 
@@ -43,7 +43,7 @@ def _init_repo_with_rows(
             ],
         }
 
-    # Write rules file alongside repo root (where .datahub lives)
+    # Write rules file alongside repo root (where .dit lives)
     if rules_yaml is not None:
         (tmp_path / ".ditvalidate.yaml").write_text(rules_yaml)
 

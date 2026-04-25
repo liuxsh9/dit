@@ -56,7 +56,7 @@ def server_app(tmp_path):
     yield fastapi_app
     fastapi_app.dependency_overrides.clear()
     for table in Base.metadata.tables.values():
-        table.schema = "datahub"
+        table.schema = "dit"
     loop.run_until_complete(engine.dispose())
     loop.close()
 
@@ -75,8 +75,8 @@ def _patch_remote_client(monkeypatch, server_app):
                 headers={"Authorization": f"token {token}"},
             )
 
-        def _datahub_prefix(self) -> str:
-            # DataHub server uses direct paths without /datahub/ infix
+        def _dit_prefix(self) -> str:
+            # Dit server uses direct paths without /dit/ infix
             return f"{self.base_url}/api/v1/repos/{self.repo}"
 
     monkeypatch.setattr(remote_mod, "RemoteClient", PatchedRemoteClient)
@@ -111,7 +111,7 @@ def test_pull_updates_local_data(server_app, tmp_path: Path, monkeypatch) -> Non
         [{"messages": [{"role": "user", "content": "v1"}, {"role": "assistant", "content": "r1"}]}],
         "v1", monkeypatch,
     )
-    set_remote(client_a / ".datahub", "origin", "http://testserver/shared", token="dit_admin")
+    set_remote(client_a / ".dit", "origin", "http://testserver/shared", token="dit_admin")
     monkeypatch.chdir(client_a)
     r = runner.invoke(app, ["push"], catch_exceptions=False)
     assert r.exit_code == 0, r.output
@@ -167,7 +167,7 @@ def test_pull_already_up_to_date(server_app, tmp_path: Path, monkeypatch) -> Non
         [{"messages": [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"}]}],
         "init", monkeypatch,
     )
-    set_remote(src / ".datahub", "origin", "http://testserver/stable", token="dit_admin")
+    set_remote(src / ".dit", "origin", "http://testserver/stable", token="dit_admin")
     monkeypatch.chdir(src)
     runner.invoke(app, ["push"], catch_exceptions=False)
 

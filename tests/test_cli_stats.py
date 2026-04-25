@@ -24,7 +24,7 @@ def _init_repo_with_sidecar(tmp_path: Path) -> tuple[ObjectStore, RefStore, str]
     os.chdir(tmp_path)
     runner.invoke(app, ["init"])
 
-    dot = tmp_path / ".datahub"
+    dot = tmp_path / ".dit"
     store = ObjectStore(dot / "objects")
     refs = RefStore(dot)
 

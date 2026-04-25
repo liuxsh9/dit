@@ -11,7 +11,7 @@ async def test_metrics_endpoint_returns_prometheus_format(client: AsyncClient):
     assert resp.status_code == 200
     assert "text/plain" in resp.headers.get("content-type", "")
     body = resp.text
-    assert "datahub_http_requests_total" in body
+    assert "dit_http_requests_total" in body
 
 
 @pytest.mark.asyncio
@@ -21,7 +21,7 @@ async def test_metrics_counts_requests(client: AsyncClient):
 
     resp = await client.get("/metrics")
     body = resp.text
-    assert "datahub_http_requests_total" in body
+    assert "dit_http_requests_total" in body
 
 
 @pytest.mark.asyncio
@@ -30,7 +30,7 @@ async def test_metrics_records_latency(client: AsyncClient):
 
     resp = await client.get("/metrics")
     body = resp.text
-    assert "datahub_http_request_duration_seconds" in body
+    assert "dit_http_request_duration_seconds" in body
 
 
 @pytest.mark.asyncio
@@ -51,4 +51,4 @@ async def test_metrics_path_normalization(client: AsyncClient, session, tmp_path
 async def test_metrics_in_progress_gauge(client: AsyncClient):
     resp = await client.get("/metrics")
     body = resp.text
-    assert "datahub_http_requests_in_progress" in body
+    assert "dit_http_requests_in_progress" in body

@@ -90,7 +90,7 @@ class TestSidecarSummary:
 - [ ] **Step 2: Run test to verify it fails**
 
 ```bash
-cd ~/code/datahub
+cd ~/code/dit
 uv run pytest tests/test_export.py::TestSidecarSummary -v
 ```
 
@@ -722,7 +722,7 @@ def _init_repo(tmp_path: Path) -> tuple[ObjectStore, RefStore, str]:
     os.chdir(tmp_path)
     runner.invoke(app, ["init"])
 
-    dot = tmp_path / ".datahub"
+    dot = tmp_path / ".dit"
     store = ObjectStore(dot / "objects")
     refs = RefStore(dot)
 
@@ -1215,7 +1215,7 @@ git commit -m "feat: server export endpoint GET /{repo}/export/{commit}/{file_pa
 - [ ] **Step 1: Run all tests**
 
 ```bash
-cd ~/code/datahub
+cd ~/code/dit
 uv run pytest tests/ -v --timeout=30
 ```
 

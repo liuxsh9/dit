@@ -78,7 +78,7 @@ def main():
 
     # 构建 Markdown
     lines = [
-        "# DataHub (dit) 设计过程完整记录",
+        "# Dit 设计过程完整记录",
         "",
         "> 本文档由脚本从 Claude Code 会话历史中自动提取，保留了设计过程中的完整对话内容。",
         "",

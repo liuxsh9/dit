@@ -1,6 +1,6 @@
-# DataHub 手动测试指南 01：本地操作基础
+# Dit 手动测试指南 01：本地操作基础
 
-本指南覆盖 DataHub CLI（`dit`）的核心本地工作流，包括：初始化仓库、添加文件、提交、查看状态与差异、日志回溯，以及若干边界场景的验证。
+本指南覆盖 Dit CLI（`dit`）的核心本地工作流，包括：初始化仓库、添加文件、提交、查看状态与差异、日志回溯，以及若干边界场景的验证。
 
 ---
 
@@ -91,17 +91,17 @@ Initialized empty dit repository in /tmp/tmp.xxxxxxxxxx
 
 ```bash
 # 检查目录结构
-ls -la "$TEST_DIR/.datahub/"
-ls -la "$TEST_DIR/.datahub/objects/"
-ls -la "$TEST_DIR/.datahub/refs/"
+ls -la "$TEST_DIR/.dit/"
+ls -la "$TEST_DIR/.dit/objects/"
+ls -la "$TEST_DIR/.dit/refs/"
 
 # 检查 HEAD 文件内容
-cat "$TEST_DIR/.datahub/HEAD"
+cat "$TEST_DIR/.dit/HEAD"
 ```
 
 **预期目录结构：**
 ```
-.datahub/
+.dit/
 ├── HEAD            ← 内容应为 "ref:main"
 ├── objects/        ← 对象存储根目录（空）
 └── refs/
@@ -111,11 +111,11 @@ cat "$TEST_DIR/.datahub/HEAD"
 
 验证清单：
 - [ ] 输出含 "Initialized empty dit repository"
-- [ ] `.datahub/` 目录存在
-- [ ] `.datahub/HEAD` 文件存在，内容为 `ref:main`
-- [ ] `.datahub/objects/` 目录存在
-- [ ] `.datahub/refs/heads/` 目录存在
-- [ ] `.datahub/refs/tags/` 目录存在
+- [ ] `.dit/` 目录存在
+- [ ] `.dit/HEAD` 文件存在，内容为 `ref:main`
+- [ ] `.dit/objects/` 目录存在
+- [ ] `.dit/refs/heads/` 目录存在
+- [ ] `.dit/refs/tags/` 目录存在
 
 ### 幂等性验证（已初始化时再次 init）
 
@@ -131,7 +131,7 @@ Already initialized dit repository in /tmp/tmp.xxxxxxxxxx
 验证清单：
 - [ ] 第二次 `init` 退出码为 0
 - [ ] 输出含 "Already initialized" 或 "already"
-- [ ] `.datahub/HEAD` 内容未变
+- [ ] `.dit/HEAD` 内容未变
 
 ---
 
@@ -156,7 +156,7 @@ uv run dit add train.jsonl
 
 ```bash
 # 检查 staging index 文件是否创建
-cat "$TEST_DIR/.datahub/index"
+cat "$TEST_DIR/.dit/index"
 ```
 
 预期输出（格式为 JSON）：
@@ -166,10 +166,10 @@ cat "$TEST_DIR/.datahub/index"
 
 验证清单：
 - [ ] 输出含 "staged train.jsonl (3 rows)"
-- [ ] `.datahub/index` 文件存在
+- [ ] `.dit/index` 文件存在
 - [ ] `index` 内容是合法 JSON，包含 `"train.jsonl"` 键
 - [ ] `index` 中 `train.jsonl` 的 `"type"` 为 `"manifest"`
-- [ ] 对应的 manifest 对象已写入 `.datahub/objects/manifests/`（用 `ls .datahub/objects/manifests/` 可见两层子目录）
+- [ ] 对应的 manifest 对象已写入 `.dit/objects/manifests/`（用 `ls .dit/objects/manifests/` 可见两层子目录）
 
 ### 3.2 添加第二个文件
 
@@ -192,7 +192,7 @@ uv run dit add eval.jsonl
 
 ```bash
 # 清空 index（模拟重新暂存）
-echo '{}' > "$TEST_DIR/.datahub/index"
+echo '{}' > "$TEST_DIR/.dit/index"
 
 cd "$TEST_DIR"
 uv run dit add .
@@ -309,15 +309,15 @@ uv run dit commit -m "初始数据集：3条训练样本 + 2条评估样本"
 
 ```bash
 # 1. 确认 main 分支引用已写入
-cat "$TEST_DIR/.datahub/refs/heads/main"
+cat "$TEST_DIR/.dit/refs/heads/main"
 # 预期：64位十六进制哈希
 
 # 2. 确认 staging index 已清空
-cat "$TEST_DIR/.datahub/index"
+cat "$TEST_DIR/.dit/index"
 # 预期：{}
 
 # 3. 确认 objects 目录中有 commits 和 trees 子目录
-ls "$TEST_DIR/.datahub/objects/"
+ls "$TEST_DIR/.dit/objects/"
 # 预期含：commits/ manifests/ rows/ trees/
 ```
 
@@ -331,7 +331,7 @@ from dit.core.store import ObjectStore
 from dit.core.objects import deserialize_commit, deserialize_tree, deserialize_manifest
 from dit.core.refs import RefStore
 
-dot = Path(".datahub")
+dot = Path(".dit")
 store = ObjectStore(dot / "objects")
 refs = RefStore(dot)
 
@@ -366,8 +366,8 @@ Tree:    <64 位哈希>
 
 验证清单：
 - [ ] 输出含 `[main <hash>]` 和提交消息
-- [ ] `.datahub/refs/heads/main` 包含 64 位十六进制哈希
-- [ ] `.datahub/index` 内容为 `{}`（index 已清空）
+- [ ] `.dit/refs/heads/main` 包含 64 位十六进制哈希
+- [ ] `.dit/index` 内容为 `{}`（index 已清空）
 - [ ] `objects/commits/` 目录下有对象文件（3 级子目录结构：`aa/bb/<全哈希>`）
 - [ ] 上述 Python 脚本输出中 `Parents: []`（根提交无父提交）
 - [ ] 根 tree 包含 `eval.jsonl` 和 `train.jsonl`，类型均为 `manifest`
@@ -619,7 +619,7 @@ from dit.core.store import ObjectStore
 from dit.core.objects import deserialize_commit
 from dit.core.refs import RefStore
 
-dot = Path(".datahub")
+dot = Path(".dit")
 store = ObjectStore(dot / "objects")
 refs = RefStore(dot)
 
@@ -702,7 +702,7 @@ uv run dit add README.md
 - [ ] `index` 中 README.md 的 `"type"` 为 `"blob"`
 
 ```bash
-cat "$TEST_DIR/.datahub/index" | python3 -m json.tool
+cat "$TEST_DIR/.dit/index" | python3 -m json.tool
 ```
 
 验证清单（接续）：
@@ -723,7 +723,7 @@ from dit.core.store import ObjectStore
 from dit.core.objects import deserialize_commit, deserialize_tree
 from dit.core.refs import RefStore
 
-dot = Path(".datahub")
+dot = Path(".dit")
 store = ObjectStore(dot / "objects")
 refs = RefStore(dot)
 
@@ -797,7 +797,7 @@ from dit.core.objects import deserialize_commit, deserialize_tree, deserialize_m
 from dit.core.refs import RefStore
 from dit.core.tree_walker import flatten_tree
 
-dot = Path(".datahub")
+dot = Path(".dit")
 store = ObjectStore(dot / "objects")
 refs = RefStore(dot)
 
@@ -866,7 +866,7 @@ from dit.core.store import ObjectStore
 from dit.core.objects import deserialize_commit, deserialize_tree
 from dit.core.refs import RefStore
 
-dot = Path(".datahub")
+dot = Path(".dit")
 store = ObjectStore(dot / "objects")
 refs = RefStore(dot)
 
@@ -955,7 +955,7 @@ echo "退出码: $?"
 ```
 
 预期行为：
-- 输出 `fatal: not a dit repository`（会向上遍历父目录，均未找到 `.datahub/`）
+- 输出 `fatal: not a dit repository`（会向上遍历父目录，均未找到 `.dit/`）
 - 退出码非 0
 
 验证清单：
@@ -971,10 +971,10 @@ cd "$TEST_DIR"
 
 ## 附录：对象存储结构说明
 
-提交完成后，`.datahub/objects/` 目录结构遵循三级分片（取哈希前 2 位 + 后 2 位 + 完整哈希）：
+提交完成后，`.dit/objects/` 目录结构遵循三级分片（取哈希前 2 位 + 后 2 位 + 完整哈希）：
 
 ```
-.datahub/objects/
+.dit/objects/
 ├── commits/
 │   └── a1/          ← 哈希前两位
 │       └── b2/      ← 哈希第三四位
@@ -989,7 +989,7 @@ cd "$TEST_DIR"
 - 所有对象使用 **SHA-256 内容哈希**命名，相同内容只存储一次（内容寻址）
 - 所有对象在写入前使用 **zstd 压缩**，空间效率高
 - 写入采用原子操作（先写 `tmp/`，再 `os.replace`），不会产生部分写入的损坏文件
-- `index` 文件（`.datahub/index`）是纯 JSON 格式，暂存后读取直接可见
+- `index` 文件（`.dit/index`）是纯 JSON 格式，暂存后读取直接可见
 
 ---
 

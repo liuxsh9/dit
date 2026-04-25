@@ -15,7 +15,7 @@ The primary use cases are:
 
 - **Local inspection**: `dit stats` gives a quick token/row summary for the whole repo or a specific file/directory.
 - **Cross-ref comparison**: `dit stats --compare` shows how row counts and token budgets changed between two commits.
-- **Web UI panel**: The DataHub file view gains an aggregated totals row and a language distribution summary.
+- **Web UI panel**: The Dit file view gains an aggregated totals row and a language distribution summary.
 
 ---
 
@@ -284,7 +284,7 @@ Register the router in `src/dit/server/app.py` alongside `meta_router` and `expo
 
 ### 4.1 Gateway route
 
-Add one route to the `datahub` group in `routers/api/v1/api.go`:
+Add one route to the `dit` group in `routers/api/v1/api.go`:
 
 ```go
 m.Get("/stats/{commit}", repo.DatahubGetStats)
@@ -292,7 +292,7 @@ m.Get("/stats/{commit}", repo.DatahubGetStats)
 
 This is a GET with an optional `path` query param, so no body reading is needed.
 
-### 4.2 Handler in `routers/api/v1/repo/datahub.go`
+### 4.2 Handler in `routers/api/v1/repo/dit.go`
 
 ```go
 func DatahubGetStats(ctx *context.APIContext) {
@@ -301,12 +301,12 @@ func DatahubGetStats(ctx *context.APIContext) {
         if p := ctx.FormString("path"); p != "" {
             path += "?path=" + url.QueryEscape(p)
         }
-        return datahub.DefaultClient().GetStats(ctx, ctx.Repo.Repository.Name, ctx.Params(":commit"), ctx.FormString("path"))
+        return dit.DefaultClient().GetStats(ctx, ctx.Repo.Repository.Name, ctx.Params(":commit"), ctx.FormString("path"))
     })
 }
 ```
 
-### 4.3 Client method in `modules/datahub/client.go`
+### 4.3 Client method in `modules/dit/client.go`
 
 ```go
 func (c *Client) GetStats(ctx context.Context, repoName, commitHash, pathFilter string) ([]byte, int, error) {
@@ -441,7 +441,7 @@ methods: {
     this.statsLoading = true;
     this.statsError = null;
     try {
-      this.repoStats = await datahubFetch(
+      this.repoStats = await ditFetch(
         this.owner, this.repo,
         `/stats/${this.commitHash}`,
       );

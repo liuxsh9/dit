@@ -3,11 +3,11 @@ from typing import Optional
 
 
 class RefStore:
-    def __init__(self, dot_datahub: Path):
-        self.dot = dot_datahub
-        self.head_file = dot_datahub / "HEAD"
-        self.refs_dir = dot_datahub / "refs" / "heads"
-        self.tags_dir = dot_datahub / "refs" / "tags"
+    def __init__(self, dot_dit: Path):
+        self.dot = dot_dit
+        self.head_file = dot_dit / "HEAD"
+        self.refs_dir = dot_dit / "refs" / "heads"
+        self.tags_dir = dot_dit / "refs" / "tags"
 
     def init(self) -> None:
         self.refs_dir.mkdir(parents=True, exist_ok=True)

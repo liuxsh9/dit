@@ -19,9 +19,9 @@ class TestFindJsonlFiles:
         rel_paths = sorted(str(f.relative_to(tmp_repo)) for f in files)
         assert rel_paths == ["a.jsonl", "sub/c.jsonl"]
 
-    def test_ignores_datahub_dir(self, tmp_repo: Path):
-        (tmp_repo / ".datahub").mkdir()
-        (tmp_repo / ".datahub" / "internal.jsonl").write_text('{"z":1}\n')
+    def test_ignores_dit_dir(self, tmp_repo: Path):
+        (tmp_repo / ".dit").mkdir()
+        (tmp_repo / ".dit" / "internal.jsonl").write_text('{"z":1}\n')
         (tmp_repo / "real.jsonl").write_text('{"w":1}\n')
         files = find_jsonl_files(tmp_repo)
         assert len(files) == 1
@@ -66,7 +66,7 @@ def test_materialize_roundtrip(tmp_path: Path) -> None:
     src = tmp_path / "data.jsonl"
     _write_jsonl(src, rows)
 
-    store = ObjectStore(tmp_path / ".datahub" / "objects")
+    store = ObjectStore(tmp_path / ".dit" / "objects")
     manifest, row_data = build_manifest_for_file(src)
     for rh, data in row_data.items():
         store.write("rows", data)
@@ -87,7 +87,7 @@ def test_materialize_missing_row_raises(tmp_path: Path) -> None:
     src = tmp_path / "data.jsonl"
     _write_jsonl(src, rows)
 
-    store = ObjectStore(tmp_path / ".datahub" / "objects")
+    store = ObjectStore(tmp_path / ".dit" / "objects")
     manifest, _row_data = build_manifest_for_file(src)
     with pytest.raises(KeyError):
         materialize_file(tmp_path / "clone", "data.jsonl", manifest, store)
@@ -98,7 +98,7 @@ def test_materialize_creates_parent_dirs(tmp_path: Path) -> None:
     src = tmp_path / "data.jsonl"
     _write_jsonl(src, rows)
 
-    store = ObjectStore(tmp_path / ".datahub" / "objects")
+    store = ObjectStore(tmp_path / ".dit" / "objects")
     manifest, row_data = build_manifest_for_file(src)
     for rh, data in row_data.items():
         store.write("rows", data)

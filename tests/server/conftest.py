@@ -22,7 +22,7 @@ async def engine():
     yield eng
     # Reset schemas for other test sessions
     for table in Base.metadata.tables.values():
-        table.schema = "datahub"
+        table.schema = "dit"
     await eng.dispose()
 
 

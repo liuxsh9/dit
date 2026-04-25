@@ -65,7 +65,7 @@ def test_remote_add_with_token(repo: Path, tmp_path: Path, monkeypatch: pytest.M
     assert result.exit_code == 0
     from dit.core.config import get_remote
 
-    dot = tmp_path / ".datahub"
+    dot = tmp_path / ".dit"
     cfg = get_remote(dot, "origin")
     assert cfg is not None
     assert cfg["token"] == "dit_abc123"
@@ -80,7 +80,7 @@ def test_auth_set_token(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert "Token stored" in result.output
     from dit.core.config import get_remote
 
-    dot = tmp_path / ".datahub"
+    dot = tmp_path / ".dit"
     cfg = get_remote(dot, "origin")
     assert cfg is not None
     assert cfg["token"] == "dit_newsecret123"
@@ -106,6 +106,6 @@ def test_auth_set_token_custom_remote(
     assert result.exit_code == 0
     from dit.core.config import get_remote
 
-    dot = tmp_path / ".datahub"
+    dot = tmp_path / ".dit"
     cfg = get_remote(dot, "upstream")
     assert cfg["token"] == "dit_upstreamtok"

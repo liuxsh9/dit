@@ -1,4 +1,4 @@
-# DataHub (dit) — SFT 训练数据版本控制系统设计文档
+# Dit (dit) — SFT 训练数据版本控制系统设计文档
 
 ## 1. 总体定位
 
@@ -54,7 +54,7 @@
 
 ```
 Git:         blob  →  tree  →  commit  →  ref
-DataHub:     row   →  manifest  →  tree  →  commit  →  ref
+Dit:     row   →  manifest  →  tree  →  commit  →  ref
 ```
 
 ### 2.2 关键设计决定
@@ -72,7 +72,7 @@ DataHub:     row   →  manifest  →  tree  →  commit  →  ref
 ### 3.1 服务端（10T 服务器）
 
 ```
-/data/datahub/
+/data/dit/
 ├── repos/
 │   └── <repo-name>/
 │       ├── objects/
@@ -94,7 +94,7 @@ Row 对象用两级目录分片（`hash[0:2]/hash[2:4]/`），百万行级别下
 
 ```
 ~/data/my-sft-repo/
-├── .datahub/
+├── .dit/
 │   ├── config              # remote URL、user info
 │   ├── HEAD                # 当前 branch ref
 │   ├── refs/
@@ -121,7 +121,7 @@ Row 对象用两级目录分片（`hash[0:2]/hash[2:4]/`），百万行级别下
 
 ### 3.4 传输协议
 
-CLI ↔ 服务端通过 HTTP API（datahub-core FastAPI）。
+CLI ↔ 服务端通过 HTTP API（dit-core FastAPI）。
 
 ```
 GET  /api/v1/repos/{repo}/refs/{branch}           → commit hash
@@ -309,21 +309,21 @@ dit tag <name> --export <target>        # 打 tag 同时触发导出
 dit CLI ─────┤
              ▼
        ┌─ nginx (:443) ─────────────────────┐
-       │  /api/v1/*  → datahub-core (:8000)  │
+       │  /api/v1/*  → dit-core (:8000)  │
        │  /*         → forgejo (:3000)        │
        └──┬──────────────────┬───────────────┘
           ▼                  ▼
-   datahub-core         forgejo (fork)
+   dit-core         forgejo (fork)
    (Python FastAPI)     (Go 单二进制)
           │                  │
           ▼                  ▼
-     /data/datahub/     PostgreSQL (:5432)
+     /data/dit/     PostgreSQL (:5432)
      repos/objects/     (共用实例，不同 schema)
 ```
 
 ### 5.2 职责分工
 
-- **datahub-core**（Python FastAPI）：对象存储读写、行级 diff/merge/blame、搜索、统计、导出。= "数据层"。无状态，可横向扩展。
+- **dit-core**（Python FastAPI）：对象存储读写、行级 diff/merge/blame、搜索、统计、导出。= "数据层"。无状态，可横向扩展。
 - **datahub-gateway**（Forgejo fork）：用户/权限/PR 生命周期/通知/Webhook/Actions。= "协作层"。
 - **PostgreSQL**：所有可变、事务性状态（refs、PR、元数据、审计）。
 - **文件系统**：不可变 content-addressed 对象。
@@ -519,7 +519,7 @@ dit meta migrate --from-ref HEAD~1 --by-query-fp
 **改造替换**：
 - 仓库主页：git 文件树 → 数据集树（显示行数、token、最近变更）
 - 文件查看：JSONL 分页渲染、messages 数组可折叠、语法高亮
-- Diff 视图：调 datahub-core diff API，行级变更 + query 刷新识别
+- Diff 视图：调 dit-core diff API，行级变更 + query 刷新识别
 - Blame 视图：行级 blame
 - Commit 视图：文件级摘要 + 可展开行级变更
 
@@ -542,7 +542,7 @@ dit meta migrate --from-ref HEAD~1 --by-query-fp
 ### 9.3 改造策略
 
 1. 新增"数据仓库"类型（`repo.type`），与原 git 仓库共存
-2. `type=data` 时走新模板，调 datahub-core API
+2. `type=data` 时走新模板，调 dit-core API
 3. PR 复用现有表，新增 `data_pr_meta` 副表
 4. Diff 渲染用 Vue 3 独立打包，挂在特定路由
 
@@ -609,7 +609,7 @@ PR 创建/更新 → webhook → CI bridge 打包增量到 S3 → 调质检 API 
 
 | 层 | 技术 | 理由 |
 |---|---|---|
-| datahub-core | Python 3.12+ / FastAPI / Uvicorn | 团队熟悉，async IO |
+| dit-core | Python 3.12+ / FastAPI / Uvicorn | 团队熟悉，async IO |
 | CLI (dit) | Python / Typer / httpx | 同语言，uv 分发 |
 | Web | Forgejo fork (Go / Go template / Vue 3) | 复用 80% 协作功能 |
 | 数据库 | PostgreSQL 16 | refs、元数据、审计、PR |
@@ -632,7 +632,7 @@ PR 创建/更新 → webhook → CI bridge 打包增量到 S3 → 调质检 API 
 - 本地对象存储读写
 - CLI 基础命令
 - JSON canonical 化 + sha256 行指纹
-- 本地 `.datahub/` 工作区管理
+- 本地 `.dit/` 工作区管理
 - 单元测试覆盖核心模型
 
 交付：`uv tool install dit`，本地管理 JSONL 版本。

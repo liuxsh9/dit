@@ -1,6 +1,6 @@
-# DataHub 手动测试指南 07：元数据与 Sidecar
+# Dit 手动测试指南 07：元数据与 Sidecar
 
-本指南覆盖 DataHub Sidecar 元数据的完整工作流：计算元数据、查看聚合统计、对比两个提交之间的差异。每个操作均提供 CLI（`dit` 命令）和 REST API（`curl`）两种测试路径。
+本指南覆盖 Dit Sidecar 元数据的完整工作流：计算元数据、查看聚合统计、对比两个提交之间的差异。每个操作均提供 CLI（`dit` 命令）和 REST API（`curl`）两种测试路径。
 
 **Sidecar 简介**：Sidecar 是与 manifest 并存的附属对象，按行存储 `char_count`（字符数）、`token_estimate`（估算 token 数，`= char_count // 4`）、`field_count`（顶层字段数）、`lang`（语言：`en` / `zh` / `ru` / `ar` / `null`）五个字段。Sidecar 的哈希随 tree entry 一起存储，实现内容寻址。
 
@@ -35,8 +35,8 @@ dit init
 ```
 
 验证清单：
-- [ ] 输出包含 `Initialized empty DataHub repository`
-- [ ] `.datahub/` 目录已创建
+- [ ] 输出包含 `Initialized empty Dit repository`
+- [ ] `.dit/` 目录已创建
 
 ### 1.2 写入单轮英文样本
 
@@ -917,7 +917,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 
 ### 10.3 非 JSONL 文件（文本类型）
 
-DataHub 将 blob 文件（非 manifest 类型）存入 tree 但不会为其计算 sidecar，`meta show` 会报错。
+Dit 将 blob 文件（非 manifest 类型）存入 tree 但不会为其计算 sidecar，`meta show` 会报错。
 
 ```bash
 # 添加一个纯文本文件

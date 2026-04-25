@@ -4,7 +4,7 @@
 
 **Goal:** Implement branch management, three-way merge, cherry-pick, tag, server merge API, and webhook skeleton for the dit version control system.
 
-**Architecture:** Phase 2 adds branching/merging on top of Phase 0+1's content-addressed object model. Core merge logic lives in `dit.core.merge` and `dit.core.merge_base`, shared by CLI and server. Conflict state is stored in `.datahub/` files (MERGE_HEAD, CHERRY_PICK_HEAD, conflicts.json). Server gets merge-preview/merge APIs and webhook skeleton.
+**Architecture:** Phase 2 adds branching/merging on top of Phase 0+1's content-addressed object model. Core merge logic lives in `dit.core.merge` and `dit.core.merge_base`, shared by CLI and server. Conflict state is stored in `.dit/` files (MERGE_HEAD, CHERRY_PICK_HEAD, conflicts.json). Server gets merge-preview/merge APIs and webhook skeleton.
 
 **Tech Stack:** Python 3.12, typer (CLI), FastAPI (server), SQLAlchemy 2.0 async, httpx (webhook POST), pyzstd (object store), pytest + pytest-asyncio (tests)
 
@@ -60,7 +60,7 @@ from dit.core.refs import RefStore
 
 class TestDeleteBranch:
     def test_delete_existing_branch(self, tmp_path: Path):
-        dot = tmp_path / ".datahub"
+        dot = tmp_path / ".dit"
         refs = RefStore(dot)
         refs.init()
         refs.set_branch("feature", "a" * 64)
@@ -68,13 +68,13 @@ class TestDeleteBranch:
         assert refs.get_branch("feature") is None
 
     def test_delete_nonexistent_branch(self, tmp_path: Path):
-        dot = tmp_path / ".datahub"
+        dot = tmp_path / ".dit"
         refs = RefStore(dot)
         refs.init()
         assert refs.delete_branch("nope") is False
 
     def test_delete_branch_does_not_affect_others(self, tmp_path: Path):
-        dot = tmp_path / ".datahub"
+        dot = tmp_path / ".dit"
         refs = RefStore(dot)
         refs.init()
         refs.set_branch("keep", "a" * 64)
@@ -85,20 +85,20 @@ class TestDeleteBranch:
 
 class TestTags:
     def test_set_and_get_tag(self, tmp_path: Path):
-        dot = tmp_path / ".datahub"
+        dot = tmp_path / ".dit"
         refs = RefStore(dot)
         refs.init()
         refs.set_tag("v1.0", "a" * 64)
         assert refs.get_tag("v1.0") == "a" * 64
 
     def test_get_nonexistent_tag(self, tmp_path: Path):
-        dot = tmp_path / ".datahub"
+        dot = tmp_path / ".dit"
         refs = RefStore(dot)
         refs.init()
         assert refs.get_tag("nope") is None
 
     def test_delete_tag(self, tmp_path: Path):
-        dot = tmp_path / ".datahub"
+        dot = tmp_path / ".dit"
         refs = RefStore(dot)
         refs.init()
         refs.set_tag("v1.0", "a" * 64)
@@ -106,13 +106,13 @@ class TestTags:
         assert refs.get_tag("v1.0") is None
 
     def test_delete_nonexistent_tag(self, tmp_path: Path):
-        dot = tmp_path / ".datahub"
+        dot = tmp_path / ".dit"
         refs = RefStore(dot)
         refs.init()
         assert refs.delete_tag("nope") is False
 
     def test_list_tags(self, tmp_path: Path):
-        dot = tmp_path / ".datahub"
+        dot = tmp_path / ".dit"
         refs = RefStore(dot)
         refs.init()
         refs.set_tag("v1.0", "a" * 64)
@@ -121,7 +121,7 @@ class TestTags:
         assert tags == {"v1.0": "a" * 64, "v2.0": "b" * 64}
 
     def test_list_tags_empty(self, tmp_path: Path):
-        dot = tmp_path / ".datahub"
+        dot = tmp_path / ".dit"
         refs = RefStore(dot)
         refs.init()
         assert refs.list_tags() == {}
@@ -138,7 +138,7 @@ Add to `src/dit/core/refs.py` — the `__init__` method needs `tags_dir`, and ad
 
 ```python
 # In __init__, add after self.refs_dir line:
-        self.tags_dir = dot_datahub / "refs" / "tags"
+        self.tags_dir = dot_dit / "refs" / "tags"
 
 # In init(), add after self.refs_dir.mkdir():
         self.tags_dir.mkdir(parents=True, exist_ok=True)
@@ -1181,14 +1181,14 @@ class TestCheckout:
         runner.invoke(app, ["branch", "feature"], catch_exceptions=False)
         result = runner.invoke(app, ["checkout", "feature"], catch_exceptions=False)
         assert result.exit_code == 0
-        head = (tmp_path / ".datahub" / "HEAD").read_text().strip()
+        head = (tmp_path / ".dit" / "HEAD").read_text().strip()
         assert head == "ref:feature"
 
     def test_checkout_creates_new_branch(self, tmp_path):
         _init_and_commit(tmp_path)
         result = runner.invoke(app, ["checkout", "-b", "feature"], catch_exceptions=False)
         assert result.exit_code == 0
-        head = (tmp_path / ".datahub" / "HEAD").read_text().strip()
+        head = (tmp_path / ".dit" / "HEAD").read_text().strip()
         assert head == "ref:feature"
 
     def test_checkout_nonexistent_branch_fails(self, tmp_path):
@@ -1239,7 +1239,7 @@ class TestSwitch:
         runner.invoke(app, ["branch", "feature"], catch_exceptions=False)
         result = runner.invoke(app, ["switch", "feature"], catch_exceptions=False)
         assert result.exit_code == 0
-        head = (tmp_path / ".datahub" / "HEAD").read_text().strip()
+        head = (tmp_path / ".dit" / "HEAD").read_text().strip()
         assert head == "ref:feature"
 
     def test_switch_nonexistent_fails(self, tmp_path):
@@ -1511,12 +1511,12 @@ class TestMergeFastForward:
         )
         runner.invoke(app, ["add", "."], catch_exceptions=False)
         runner.invoke(app, ["commit", "-m", "feature change"], catch_exceptions=False)
-        feature_hash = (tmp_path / ".datahub" / "refs" / "heads" / "feature").read_text().strip()
+        feature_hash = (tmp_path / ".dit" / "refs" / "heads" / "feature").read_text().strip()
         runner.invoke(app, ["checkout", "main"], catch_exceptions=False)
         result = runner.invoke(app, ["merge", "feature"], catch_exceptions=False)
         assert result.exit_code == 0
         assert "fast-forward" in result.output.lower()
-        main_hash = (tmp_path / ".datahub" / "refs" / "heads" / "main").read_text().strip()
+        main_hash = (tmp_path / ".dit" / "refs" / "heads" / "main").read_text().strip()
         assert main_hash == feature_hash
 
     def test_already_up_to_date(self, tmp_path):
@@ -1551,7 +1551,7 @@ class TestMergeThreeWay:
         from dit.core.store import ObjectStore
         from dit.core.objects import deserialize_commit
         from dit.core.refs import RefStore
-        dot = tmp_path / ".datahub"
+        dot = tmp_path / ".dit"
         store = ObjectStore(dot / "objects")
         refs = RefStore(dot)
         head_hash = refs.resolve_head()
@@ -1827,9 +1827,9 @@ class TestMergeConflict:
         result = runner.invoke(app, ["merge", "feature"])
         assert result.exit_code != 0
         assert "conflict" in result.output.lower()
-        assert (tmp_path / ".datahub" / "MERGE_HEAD").exists()
-        assert (tmp_path / ".datahub" / "MERGE_MSG").exists()
-        assert (tmp_path / ".datahub" / "conflicts.json").exists()
+        assert (tmp_path / ".dit" / "MERGE_HEAD").exists()
+        assert (tmp_path / ".dit" / "MERGE_MSG").exists()
+        assert (tmp_path / ".dit" / "conflicts.json").exists()
 
     def test_merge_abort(self, tmp_path):
         """Abort restores working directory."""
@@ -1849,7 +1849,7 @@ class TestMergeConflict:
         runner.invoke(app, ["merge", "feature"])
         result = runner.invoke(app, ["merge", "--abort"], catch_exceptions=False)
         assert result.exit_code == 0
-        assert not (tmp_path / ".datahub" / "MERGE_HEAD").exists()
+        assert not (tmp_path / ".dit" / "MERGE_HEAD").exists()
         content = (tmp_path / "data.jsonl").read_text()
         assert "main" in content
 
@@ -1876,12 +1876,12 @@ class TestMergeConflict:
         runner.invoke(app, ["add", "."], catch_exceptions=False)
         result = runner.invoke(app, ["merge", "--continue"], catch_exceptions=False)
         assert result.exit_code == 0
-        assert not (tmp_path / ".datahub" / "MERGE_HEAD").exists()
+        assert not (tmp_path / ".dit" / "MERGE_HEAD").exists()
         # Verify merge commit has two parents
         from dit.core.store import ObjectStore
         from dit.core.objects import deserialize_commit
         from dit.core.refs import RefStore
-        dot = tmp_path / ".datahub"
+        dot = tmp_path / ".dit"
         store = ObjectStore(dot / "objects")
         refs = RefStore(dot)
         head_hash = refs.resolve_head()
@@ -1954,7 +1954,7 @@ class TestCherryPick:
         )
         runner.invoke(app, ["add", "."], catch_exceptions=False)
         runner.invoke(app, ["commit", "-m", "add feature file"], catch_exceptions=False)
-        feature_hash = (tmp_path / ".datahub" / "refs" / "heads" / "feature").read_text().strip()
+        feature_hash = (tmp_path / ".dit" / "refs" / "heads" / "feature").read_text().strip()
         runner.invoke(app, ["checkout", "main"], catch_exceptions=False)
         result = runner.invoke(app, ["cherry-pick", feature_hash], catch_exceptions=False)
         assert result.exit_code == 0
@@ -1963,7 +1963,7 @@ class TestCherryPick:
         from dit.core.store import ObjectStore
         from dit.core.objects import deserialize_commit
         from dit.core.refs import RefStore
-        dot = tmp_path / ".datahub"
+        dot = tmp_path / ".dit"
         store = ObjectStore(dot / "objects")
         refs = RefStore(dot)
         head_hash = refs.resolve_head()
@@ -1980,7 +1980,7 @@ class TestCherryPick:
         )
         runner.invoke(app, ["add", "."], catch_exceptions=False)
         runner.invoke(app, ["commit", "-m", "feature change"], catch_exceptions=False)
-        feature_hash = (tmp_path / ".datahub" / "refs" / "heads" / "feature").read_text().strip()
+        feature_hash = (tmp_path / ".dit" / "refs" / "heads" / "feature").read_text().strip()
         runner.invoke(app, ["checkout", "main"], catch_exceptions=False)
         (tmp_path / "data.jsonl").write_text(
             json.dumps({"messages": [{"role": "user", "content": "hello"}, {"role": "assistant", "content": "main"}]}) + "\n"
@@ -1989,8 +1989,8 @@ class TestCherryPick:
         runner.invoke(app, ["commit", "-m", "main change"], catch_exceptions=False)
         result = runner.invoke(app, ["cherry-pick", feature_hash])
         assert result.exit_code != 0
-        assert (tmp_path / ".datahub" / "CHERRY_PICK_HEAD").exists()
-        assert not (tmp_path / ".datahub" / "MERGE_HEAD").exists()
+        assert (tmp_path / ".dit" / "CHERRY_PICK_HEAD").exists()
+        assert not (tmp_path / ".dit" / "MERGE_HEAD").exists()
 
     def test_cherry_pick_continue(self, tmp_path):
         """Resolve cherry-pick conflict and continue."""
@@ -2001,7 +2001,7 @@ class TestCherryPick:
         )
         runner.invoke(app, ["add", "."], catch_exceptions=False)
         runner.invoke(app, ["commit", "-m", "feature change"], catch_exceptions=False)
-        feature_hash = (tmp_path / ".datahub" / "refs" / "heads" / "feature").read_text().strip()
+        feature_hash = (tmp_path / ".dit" / "refs" / "heads" / "feature").read_text().strip()
         runner.invoke(app, ["checkout", "main"], catch_exceptions=False)
         (tmp_path / "data.jsonl").write_text(
             json.dumps({"messages": [{"role": "user", "content": "hello"}, {"role": "assistant", "content": "main"}]}) + "\n"
@@ -2015,11 +2015,11 @@ class TestCherryPick:
         runner.invoke(app, ["add", "."], catch_exceptions=False)
         result = runner.invoke(app, ["cherry-pick", "--continue"], catch_exceptions=False)
         assert result.exit_code == 0
-        assert not (tmp_path / ".datahub" / "CHERRY_PICK_HEAD").exists()
+        assert not (tmp_path / ".dit" / "CHERRY_PICK_HEAD").exists()
         from dit.core.store import ObjectStore
         from dit.core.objects import deserialize_commit
         from dit.core.refs import RefStore
-        dot = tmp_path / ".datahub"
+        dot = tmp_path / ".dit"
         store = ObjectStore(dot / "objects")
         refs = RefStore(dot)
         head_hash = refs.resolve_head()
@@ -2034,7 +2034,7 @@ class TestCherryPick:
         )
         runner.invoke(app, ["add", "."], catch_exceptions=False)
         runner.invoke(app, ["commit", "-m", "feature change"], catch_exceptions=False)
-        feature_hash = (tmp_path / ".datahub" / "refs" / "heads" / "feature").read_text().strip()
+        feature_hash = (tmp_path / ".dit" / "refs" / "heads" / "feature").read_text().strip()
         runner.invoke(app, ["checkout", "main"], catch_exceptions=False)
         (tmp_path / "data.jsonl").write_text(
             json.dumps({"messages": [{"role": "user", "content": "hello"}, {"role": "assistant", "content": "main"}]}) + "\n"
@@ -2044,7 +2044,7 @@ class TestCherryPick:
         runner.invoke(app, ["cherry-pick", feature_hash])
         result = runner.invoke(app, ["cherry-pick", "--abort"], catch_exceptions=False)
         assert result.exit_code == 0
-        assert not (tmp_path / ".datahub" / "CHERRY_PICK_HEAD").exists()
+        assert not (tmp_path / ".dit" / "CHERRY_PICK_HEAD").exists()
         content = (tmp_path / "data.jsonl").read_text()
         assert "main" in content
 
@@ -2057,11 +2057,11 @@ class TestCherryPick:
         """Cannot cherry-pick while merge is in progress."""
         _init_and_commit(tmp_path)
         # Create MERGE_HEAD manually to simulate in-progress merge
-        (tmp_path / ".datahub" / "MERGE_HEAD").write_text("a" * 64 + "\n")
+        (tmp_path / ".dit" / "MERGE_HEAD").write_text("a" * 64 + "\n")
         result = runner.invoke(app, ["cherry-pick", "b" * 64])
         assert result.exit_code != 0
         assert "merge" in result.output.lower()
-        (tmp_path / ".datahub" / "MERGE_HEAD").unlink()
+        (tmp_path / ".dit" / "MERGE_HEAD").unlink()
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -2288,7 +2288,7 @@ class TestTag:
         _init_and_commit(tmp_path)
         result = runner.invoke(app, ["tag", "v1.0"], catch_exceptions=False)
         assert result.exit_code == 0
-        assert (tmp_path / ".datahub" / "refs" / "tags" / "v1.0").exists()
+        assert (tmp_path / ".dit" / "refs" / "tags" / "v1.0").exists()
 
     def test_list_tags(self, tmp_path):
         _init_and_commit(tmp_path)
@@ -2310,7 +2310,7 @@ class TestTag:
         runner.invoke(app, ["tag", "v1.0"], catch_exceptions=False)
         result = runner.invoke(app, ["tag", "-d", "v1.0"], catch_exceptions=False)
         assert result.exit_code == 0
-        assert not (tmp_path / ".datahub" / "refs" / "tags" / "v1.0").exists()
+        assert not (tmp_path / ".dit" / "refs" / "tags" / "v1.0").exists()
 
     def test_create_existing_tag_fails(self, tmp_path):
         _init_and_commit(tmp_path)
@@ -2405,10 +2405,10 @@ Add to `src/dit/server/models.py`:
 ```python
 class Webhook(Base):
     __tablename__ = "webhooks"
-    __table_args__ = {"schema": "datahub"}
+    __table_args__ = {"schema": "dit"}
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    repo_id: Mapped[int] = mapped_column(ForeignKey("datahub.repos.id"), nullable=False)
+    repo_id: Mapped[int] = mapped_column(ForeignKey("dit.repos.id"), nullable=False)
     url: Mapped[str] = mapped_column(String(512), nullable=False)
     secret: Mapped[str] = mapped_column(String(128), nullable=False, default="")
     events: Mapped[str] = mapped_column(String(256), nullable=False)
@@ -2441,18 +2441,18 @@ def upgrade() -> None:
     op.create_table(
         "webhooks",
         sa.Column("id", sa.Integer, primary_key=True),
-        sa.Column("repo_id", sa.Integer, sa.ForeignKey("datahub.repos.id"), nullable=False),
+        sa.Column("repo_id", sa.Integer, sa.ForeignKey("dit.repos.id"), nullable=False),
         sa.Column("url", sa.String(512), nullable=False),
         sa.Column("secret", sa.String(128), nullable=False, server_default=""),
         sa.Column("events", sa.String(256), nullable=False),
         sa.Column("active", sa.Boolean, server_default=sa.text("true")),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        schema="datahub",
+        schema="dit",
     )
 
 
 def downgrade() -> None:
-    op.drop_table("webhooks", schema="datahub")
+    op.drop_table("webhooks", schema="dit")
 ```
 
 - [ ] **Step 3: Verify model works with existing conftest**
@@ -2710,7 +2710,7 @@ class TestFireWebhooks:
             assert call_args[0][0] == "https://example.com/hook"
             body = call_args[1]["content"]
             headers = call_args[1]["headers"]
-            assert "X-DataHub-Signature" in headers
+            assert "X-Dit-Signature" in headers
 
     async def test_fire_skips_inactive(self, session):
         from dit.server.models import Repo, Webhook
@@ -2839,8 +2839,8 @@ async def fire_webhook_payloads(
                     content=body,
                     headers={
                         "Content-Type": "application/json",
-                        "X-DataHub-Signature": signature,
-                        "X-DataHub-Event": event.value,
+                        "X-Dit-Signature": signature,
+                        "X-Dit-Event": event.value,
                     },
                 )
             except Exception:
@@ -3452,7 +3452,7 @@ class TestFullMergeWorkflow:
         assert (tmp_path / "main-extra.jsonl").exists()
 
         # Verify merge commit
-        dot = tmp_path / ".datahub"
+        dot = tmp_path / ".dit"
         store = ObjectStore(dot / "objects")
         refs = RefStore(dot)
         head_hash = refs.resolve_head()

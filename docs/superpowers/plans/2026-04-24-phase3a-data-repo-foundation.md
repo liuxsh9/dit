@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Extend datahub-core with blob support, nested trees, new APIs (tree/manifest/log), enhanced diff, atomic CAS, service token auth, and CLI proxy adaptation — the Python foundation for Phase 3 Web UI.
+**Goal:** Extend dit-core with blob support, nested trees, new APIs (tree/manifest/log), enhanced diff, atomic CAS, service token auth, and CLI proxy adaptation — the Python foundation for Phase 3 Web UI.
 
-**Architecture:** The datahub-core FastAPI server gains six new or fixed capabilities without breaking any existing Phase 0-2 CLI behavior. Atomic CAS fixes a race condition in refs and merge routes. Nested tree support refactors how `dit add`/`dit commit` build Tree objects (subdirectory → sub-Tree) while remaining backward-compatible with existing flat-tree repos. New read-only API endpoints (tree, manifest, log, enhanced diff) expose structured data to the Forgejo proxy layer. Service token middleware threads into the existing `require_permission` dependency chain via a short-circuit check before database token lookup.
+**Architecture:** The dit-core FastAPI server gains six new or fixed capabilities without breaking any existing Phase 0-2 CLI behavior. Atomic CAS fixes a race condition in refs and merge routes. Nested tree support refactors how `dit add`/`dit commit` build Tree objects (subdirectory → sub-Tree) while remaining backward-compatible with existing flat-tree repos. New read-only API endpoints (tree, manifest, log, enhanced diff) expose structured data to the Forgejo proxy layer. Service token middleware threads into the existing `require_permission` dependency chain via a short-circuit check before database token lookup.
 
 **Tech Stack:** Python 3.12, FastAPI, SQLAlchemy 2.0 async, typer (CLI), httpx, pyzstd, pytest + pytest-asyncio
 
@@ -178,7 +178,7 @@ Expected: all previously passing tests pass, new concurrent test passes.
 - [ ] **1.6** Commit:
 
 ```bash
-cd /Users/lxs/code/datahub && git add src/dit/server/routes/refs.py src/dit/server/routes/merge.py tests/server/test_routes_refs.py && git commit -m "fix: atomic CAS ref update via single UPDATE WHERE rowcount check"
+cd /Users/lxs/code/dit && git add src/dit/server/routes/refs.py src/dit/server/routes/merge.py tests/server/test_routes_refs.py && git commit -m "fix: atomic CAS ref update via single UPDATE WHERE rowcount check"
 ```
 
 ---
@@ -270,7 +270,7 @@ Expected: 4 passed.
 # src/dit/core/workspace.py — add after find_jsonl_files()
 
 def find_all_files(root: Path) -> tuple[list[Path], list[Path]]:
-    """Return (jsonl_files, blob_files) under root, excluding .datahub/.
+    """Return (jsonl_files, blob_files) under root, excluding .dit/.
 
     jsonl_files: all *.jsonl paths
     blob_files: all other regular files
@@ -278,7 +278,7 @@ def find_all_files(root: Path) -> tuple[list[Path], list[Path]]:
     jsonl: list[Path] = []
     blobs: list[Path] = []
     for p in sorted(root.rglob("*")):
-        if ".datahub" in p.parts:
+        if ".dit" in p.parts:
             continue
         if not p.is_file():
             continue
@@ -305,7 +305,7 @@ Expected: all pass.
 - [ ] **2.7** Commit:
 
 ```bash
-cd /Users/lxs/code/datahub && git add src/dit/core/objects.py src/dit/core/workspace.py tests/test_objects.py && git commit -m "feat: blob type support — serialize_blob/deserialize_blob + find_all_files"
+cd /Users/lxs/code/dit && git add src/dit/core/objects.py src/dit/core/workspace.py tests/test_objects.py && git commit -m "feat: blob type support — serialize_blob/deserialize_blob + find_all_files"
 ```
 
 ---
@@ -709,7 +709,7 @@ Expected: 7 passed.
 - [ ] **3.9** Commit:
 
 ```bash
-cd /Users/lxs/code/datahub && git add src/dit/core/tree_builder.py src/dit/core/tree_walker.py tests/test_tree_builder.py tests/test_tree_walker.py && git commit -m "feat: nested tree builder and walker — build_nested_tree, flatten_tree, resolve_path"
+cd /Users/lxs/code/dit && git add src/dit/core/tree_builder.py src/dit/core/tree_walker.py tests/test_tree_builder.py tests/test_tree_walker.py && git commit -m "feat: nested tree builder and walker — build_nested_tree, flatten_tree, resolve_path"
 ```
 
 ---
@@ -757,7 +757,7 @@ class TestNestedTreeCommit:
         result = runner.invoke(app, ["commit", "-m", "nested commit"])
         assert result.exit_code == 0
 
-        dot = tmp_path / ".datahub"
+        dot = tmp_path / ".dit"
         store = ObjectStore(dot / "objects")
         refs = RefStore(dot)
         commit_hash = refs.resolve_head()
@@ -794,7 +794,7 @@ class TestNestedTreeCommit:
         result = runner.invoke(app, ["commit", "-m", "with readme"])
         assert result.exit_code == 0
 
-        dot = tmp_path / ".datahub"
+        dot = tmp_path / ".dit"
         store = ObjectStore(dot / "objects")
         refs = RefStore(dot)
         commit_hash = refs.resolve_head()
@@ -866,7 +866,7 @@ def add(paths: list[str] = typer.Argument(..., help="Files or directories to sta
 - [ ] **4.4** The `StagingIndex` must support an `obj_type` parameter. Check `src/dit/core/index.py` and update it:
 
 ```bash
-cat /Users/lxs/code/datahub/src/dit/core/index.py
+cat /Users/lxs/code/dit/src/dit/core/index.py
 ```
 
 - [ ] **4.5** Read the current index implementation and update `stage()` to accept and store `obj_type`. The index file is a simple JSON map; extend values to `{"hash": ..., "type": ...}` while reading back old format (plain string hash) for backward compatibility:
@@ -981,7 +981,7 @@ uv run pytest tests/test_cli.py tests/test_index.py -v
 - [ ] **4.9** Commit:
 
 ```bash
-cd /Users/lxs/code/datahub && git add src/dit/core/index.py src/dit/cli/main.py tests/test_cli.py && git commit -m "feat: nested tree commit — dit add/commit build nested Trees, blob support in index"
+cd /Users/lxs/code/dit && git add src/dit/core/index.py src/dit/cli/main.py tests/test_cli.py && git commit -m "feat: nested tree commit — dit add/commit build nested Trees, blob support in index"
 ```
 
 ---
@@ -1280,7 +1280,7 @@ uv run pytest tests/ -v --ignore=tests/server -x
 - [ ] **5.9** Commit:
 
 ```bash
-cd /Users/lxs/code/datahub && git add src/dit/cli/main.py && git commit -m "feat: update diff/status/materialize to use flatten_tree for nested tree support"
+cd /Users/lxs/code/dit && git add src/dit/cli/main.py && git commit -m "feat: update diff/status/materialize to use flatten_tree for nested tree support"
 ```
 
 ---
@@ -1457,7 +1457,7 @@ Expected: 5 passed.
 - [ ] **6.6** Commit:
 
 ```bash
-cd /Users/lxs/code/datahub && git add src/dit/server/routes/tree.py src/dit/server/app.py tests/server/test_routes_tree.py && git commit -m "feat: GET /v1/repos/{repo}/tree/{commit}/{path} — nested tree API endpoint"
+cd /Users/lxs/code/dit && git add src/dit/server/routes/tree.py src/dit/server/app.py tests/server/test_routes_tree.py && git commit -m "feat: GET /v1/repos/{repo}/tree/{commit}/{path} — nested tree API endpoint"
 ```
 
 ---
@@ -1677,7 +1677,7 @@ Expected: 5 passed.
 - [ ] **7.6** Commit:
 
 ```bash
-cd /Users/lxs/code/datahub && git add src/dit/server/routes/manifest_api.py src/dit/server/app.py tests/server/test_routes_manifest.py && git commit -m "feat: GET /v1/repos/{repo}/manifest/{commit}/{path} — paginated manifest API"
+cd /Users/lxs/code/dit && git add src/dit/server/routes/manifest_api.py src/dit/server/app.py tests/server/test_routes_manifest.py && git commit -m "feat: GET /v1/repos/{repo}/manifest/{commit}/{path} — paginated manifest API"
 ```
 
 ---
@@ -1904,7 +1904,7 @@ Expected: 6 passed.
 - [ ] **8.6** Commit:
 
 ```bash
-cd /Users/lxs/code/datahub && git add src/dit/server/routes/log.py src/dit/server/app.py tests/server/test_routes_log.py && git commit -m "feat: GET /v1/repos/{repo}/log — paginated commit history API"
+cd /Users/lxs/code/dit && git add src/dit/server/routes/log.py src/dit/server/app.py tests/server/test_routes_log.py && git commit -m "feat: GET /v1/repos/{repo}/log — paginated commit history API"
 ```
 
 ---
@@ -2217,7 +2217,7 @@ Expected: 4 passed.
 - [ ] **9.6** Commit:
 
 ```bash
-cd /Users/lxs/code/datahub && git add src/dit/server/routes/diff_api.py src/dit/server/app.py tests/server/test_routes_diff_api.py && git commit -m "feat: POST /v1/repos/{repo}/diff — enhanced diff API with per-file row content"
+cd /Users/lxs/code/dit && git add src/dit/server/routes/diff_api.py src/dit/server/app.py tests/server/test_routes_diff_api.py && git commit -m "feat: POST /v1/repos/{repo}/diff — enhanced diff API with per-file row content"
 ```
 
 ---
@@ -2258,7 +2258,7 @@ async def service_token_engine():
         await conn.run_sync(Base.metadata.create_all)
     yield eng
     for table in Base.metadata.tables.values():
-        table.schema = "datahub"
+        table.schema = "dit"
     await eng.dispose()
 
 
@@ -2350,7 +2350,7 @@ class TestServiceTokenAuth:
             )
             assert resp.status_code == 401
         for table in Base.metadata.tables.values():
-            table.schema = "datahub"
+            table.schema = "dit"
         await eng.dispose()
 ```
 
@@ -2368,11 +2368,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class ServerSettings(BaseSettings):
-    database_url: str = "postgresql+asyncpg://localhost/datahub"
-    data_dir: str = "/data/datahub"
+    database_url: str = "postgresql+asyncpg://localhost/dit"
+    data_dir: str = "/data/dit"
     host: str = "0.0.0.0"
     port: int = 8000
-    service_token: str = ""  # Shared secret for Forgejo → datahub-core calls
+    service_token: str = ""  # Shared secret for Forgejo → dit-core calls
 
     model_config = SettingsConfigDict(env_prefix="DIT_SERVER_")
 ```
@@ -2481,7 +2481,7 @@ uv run pytest tests/server/ -v
 - [ ] **10.7** Commit:
 
 ```bash
-cd /Users/lxs/code/datahub && git add src/dit/server/auth.py src/dit/server/config.py tests/server/test_auth_service_token.py && git commit -m "feat: service token auth — X-Service-Token header bypasses Bearer check with constant-time compare"
+cd /Users/lxs/code/dit && git add src/dit/server/auth.py src/dit/server/config.py tests/server/test_auth_service_token.py && git commit -m "feat: service token auth — X-Service-Token header bypasses Bearer check with constant-time compare"
 ```
 
 ---
@@ -2521,7 +2521,7 @@ class TestAuthLogin:
         assert result.exit_code == 0, result.output
         assert "Logged in" in result.output or "credentials saved" in result.output.lower()
 
-        creds_path = tmp_path / ".datahub" / "credentials"
+        creds_path = tmp_path / ".dit" / "credentials"
         assert creds_path.exists()
         data = json.loads(creds_path.read_text())
         assert data["url"] == "http://forgejo:3000"
@@ -2535,7 +2535,7 @@ class TestAuthLogin:
         runner.invoke(app, ["auth", "login", "--url", "http://forgejo:3000", "--token", "old"])
         runner.invoke(app, ["auth", "login", "--url", "http://forgejo:3000", "--token", "new"])
 
-        creds_path = tmp_path / ".datahub" / "credentials"
+        creds_path = tmp_path / ".dit" / "credentials"
         data = json.loads(creds_path.read_text())
         assert data["token"] == "new"
 ```
@@ -2556,7 +2556,7 @@ class TestRemoteClientProxyURL:
             repo="alice/mydata",
         )
         assert rc._refs_url("heads", "main") == (
-            "http://forgejo:3000/api/v1/repos/alice/mydata/datahub/refs/heads/main"
+            "http://forgejo:3000/api/v1/repos/alice/mydata/dit/refs/heads/main"
         )
 
     def test_auth_header_is_token_format(self):
@@ -2575,7 +2575,7 @@ class TestRemoteClientProxyURL:
             repo="owner/repo",
         )
         assert rc._objects_url("rows", "a" * 64) == (
-            f"http://forgejo:3000/api/v1/repos/owner/repo/datahub/objects/rows/{'a' * 64}"
+            f"http://forgejo:3000/api/v1/repos/owner/repo/dit/objects/rows/{'a' * 64}"
         )
 ```
 
@@ -2595,11 +2595,11 @@ import httpx
 
 
 class RemoteClient:
-    """Synchronous HTTP client for the DataHub server API via Forgejo proxy.
+    """Synchronous HTTP client for the Dit server API via Forgejo proxy.
 
     URL format: base_url is the Forgejo root (e.g. http://forgejo:3000).
     repo is the owner/repo path (e.g. "alice/mydata").
-    All DataHub API calls go through /api/v1/repos/{owner}/{repo}/datahub/*.
+    All Dit API calls go through /api/v1/repos/{owner}/{repo}/dit/*.
     Auth uses Forgejo API token format: Authorization: token <token>.
     """
 
@@ -2610,14 +2610,14 @@ class RemoteClient:
             headers={"Authorization": f"token {token}"},
         )
 
-    def _datahub_prefix(self) -> str:
-        return f"{self.base_url}/api/v1/repos/{self.repo}/datahub"
+    def _dit_prefix(self) -> str:
+        return f"{self.base_url}/api/v1/repos/{self.repo}/dit"
 
     def _refs_url(self, ref_type: str, name: str) -> str:
-        return f"{self._datahub_prefix()}/refs/{ref_type}/{name}"
+        return f"{self._dit_prefix()}/refs/{ref_type}/{name}"
 
     def _objects_url(self, obj_type: str, hash_hex: str) -> str:
-        return f"{self._datahub_prefix()}/objects/{obj_type}/{hash_hex}"
+        return f"{self._dit_prefix()}/objects/{obj_type}/{hash_hex}"
 
     def create_repo(self, name: str) -> dict:
         response = self.client.post(
@@ -2639,7 +2639,7 @@ class RemoteClient:
         return response.json()["target_hash"]
 
     def list_refs(self) -> list[dict]:
-        response = self.client.get(f"{self._datahub_prefix()}/refs")
+        response = self.client.get(f"{self._dit_prefix()}/refs")
         response.raise_for_status()
         return response.json()
 
@@ -2669,7 +2669,7 @@ class RemoteClient:
 
     def batch_exists(self, obj_type: str, hashes: list[str]) -> dict[str, bool]:
         response = self.client.post(
-            f"{self._datahub_prefix()}/objects/batch-exists",
+            f"{self._dit_prefix()}/objects/batch-exists",
             json={"obj_type": obj_type, "hashes": hashes},
         )
         response.raise_for_status()
@@ -2686,15 +2686,15 @@ def auth_login(
     url: str = typer.Option(..., help="Forgejo base URL, e.g. http://forgejo:3000"),
     token: str = typer.Option(..., help="Forgejo API token"),
 ):
-    """Store Forgejo credentials in .datahub/credentials."""
+    """Store Forgejo credentials in .dit/credentials."""
     import json as _json
 
-    # Try to find repo root; if not in a repo, store in ~/.datahub/credentials
+    # Try to find repo root; if not in a repo, store in ~/.dit/credentials
     try:
         repo_root = find_repo_root()
         creds_path = get_dot(repo_root) / "credentials"
     except SystemExit:
-        home_dot = Path.home() / ".datahub"
+        home_dot = Path.home() / ".dit"
         home_dot.mkdir(parents=True, exist_ok=True)
         creds_path = home_dot / "credentials"
 
@@ -2787,7 +2787,7 @@ Expected: all tests pass (new and existing).
 - [ ] **11.10** Commit:
 
 ```bash
-cd /Users/lxs/code/datahub && git add src/dit/core/remote.py src/dit/cli/main.py tests/test_cli_auth.py tests/test_cli_remote_proxy.py && git commit -m "feat: CLI adaptation — Forgejo proxy URLs, token auth format, dit auth login command"
+cd /Users/lxs/code/dit && git add src/dit/core/remote.py src/dit/cli/main.py tests/test_cli_auth.py tests/test_cli_remote_proxy.py && git commit -m "feat: CLI adaptation — Forgejo proxy URLs, token auth format, dit auth login command"
 ```
 
 ---
@@ -2809,7 +2809,7 @@ with zero failures.
 - [ ] **12.2** Confirm all new files are tracked:
 
 ```bash
-cd /Users/lxs/code/datahub && git status
+cd /Users/lxs/code/dit && git status
 ```
 
 Expected: `nothing to commit, working tree clean` (all new files committed in prior steps).
@@ -2817,7 +2817,7 @@ Expected: `nothing to commit, working tree clean` (all new files committed in pr
 - [ ] **12.3** Confirm the API surface is registered:
 
 ```bash
-cd /Users/lxs/code/datahub && uv run python -c "
+cd /Users/lxs/code/dit && uv run python -c "
 from dit.server.app import create_app
 app = create_app()
 routes = [(r.methods, r.path) for r in app.routes if hasattr(r, 'methods')]

@@ -21,8 +21,8 @@
 | Modify | `src/dit/server/app.py` | Register blame_router |
 | Modify | `src/dit/cli/main.py` | Add `dit blame` command |
 | Create | `tests/test_cli_blame.py` | CLI blame command tests |
-| Modify | `~/code/datahub-gateway/modules/datahub/client.go` | Add `GetBlame()` method |
-| Modify | `~/code/datahub-gateway/routers/api/v1/repo/datahub.go` | Add `DatahubGetBlame` handler |
+| Modify | `~/code/datahub-gateway/modules/dit/client.go` | Add `GetBlame()` method |
+| Modify | `~/code/datahub-gateway/routers/api/v1/repo/dit.go` | Add `DatahubGetBlame` handler |
 | Modify | `~/code/datahub-gateway/routers/api/v1/api.go` | Register blame route |
 | Modify | `~/code/datahub-gateway/web_src/js/components/DataRepoHome.vue` | Blame panel in file detail view |
 
@@ -290,7 +290,7 @@ class TestRowHistory:
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd ~/code/datahub && uv run pytest tests/test_blame.py -v`
+Run: `cd ~/code/dit && uv run pytest tests/test_blame.py -v`
 Expected: `ModuleNotFoundError: No module named 'dit.core.blame'`
 
 - [ ] **Step 3: Implement `blame_file()` and `row_history()`**
@@ -587,13 +587,13 @@ def row_history(
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd ~/code/datahub && uv run pytest tests/test_blame.py -v`
+Run: `cd ~/code/dit && uv run pytest tests/test_blame.py -v`
 Expected: All tests PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd ~/code/datahub
+cd ~/code/dit
 git add src/dit/core/blame.py tests/test_blame.py
 git commit -m "feat: add core blame module with blame_file() and row_history()"
 ```
@@ -859,7 +859,7 @@ class TestBlameEndpoint:
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd ~/code/datahub && uv run pytest tests/server/test_routes_blame.py -v`
+Run: `cd ~/code/dit && uv run pytest tests/server/test_routes_blame.py -v`
 Expected: ImportError or 404 (route not registered)
 
 - [ ] **Step 3: Implement the blame API route**
@@ -926,18 +926,18 @@ app.include_router(blame_router)
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cd ~/code/datahub && uv run pytest tests/server/test_routes_blame.py -v`
+Run: `cd ~/code/dit && uv run pytest tests/server/test_routes_blame.py -v`
 Expected: All tests PASS
 
 - [ ] **Step 6: Run full test suite**
 
-Run: `cd ~/code/datahub && uv run pytest tests/ -v`
+Run: `cd ~/code/dit && uv run pytest tests/ -v`
 Expected: All tests PASS (no regressions)
 
 - [ ] **Step 7: Commit**
 
 ```bash
-cd ~/code/datahub
+cd ~/code/dit
 git add src/dit/server/routes/blame_api.py src/dit/server/app.py tests/server/test_routes_blame.py
 git commit -m "feat: add blame API endpoint (GET /repos/{repo}/blame/{commit}/{path})"
 ```
@@ -975,7 +975,7 @@ runner = CliRunner()
 
 
 def _init_repo(tmp_path: Path):
-    dot = tmp_path / ".datahub"
+    dot = tmp_path / ".dit"
     dot.mkdir()
     (dot / "objects").mkdir()
     RefStore(dot).init()
@@ -1131,7 +1131,7 @@ class TestBlameCommand:
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd ~/code/datahub && uv run pytest tests/test_cli_blame.py -v`
+Run: `cd ~/code/dit && uv run pytest tests/test_cli_blame.py -v`
 Expected: `No such command 'blame'`
 
 - [ ] **Step 3: Implement the `dit blame` command in `main.py`**
@@ -1245,18 +1245,18 @@ def blame(
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd ~/code/datahub && uv run pytest tests/test_cli_blame.py -v`
+Run: `cd ~/code/dit && uv run pytest tests/test_cli_blame.py -v`
 Expected: All tests PASS
 
 - [ ] **Step 5: Run full test suite**
 
-Run: `cd ~/code/datahub && uv run pytest tests/ -v`
+Run: `cd ~/code/dit && uv run pytest tests/ -v`
 Expected: All tests PASS
 
 - [ ] **Step 6: Commit**
 
 ```bash
-cd ~/code/datahub
+cd ~/code/dit
 git add src/dit/cli/main.py tests/test_cli_blame.py
 git commit -m "feat: add 'dit blame' CLI command with table/json output and row history"
 ```
@@ -1266,13 +1266,13 @@ git commit -m "feat: add 'dit blame' CLI command with table/json output and row 
 ### Task 4: Gateway proxy route + client method
 
 **Files:**
-- Modify: `~/code/datahub-gateway/modules/datahub/client.go`
-- Modify: `~/code/datahub-gateway/routers/api/v1/repo/datahub.go`
+- Modify: `~/code/datahub-gateway/modules/dit/client.go`
+- Modify: `~/code/datahub-gateway/routers/api/v1/repo/dit.go`
 - Modify: `~/code/datahub-gateway/routers/api/v1/api.go`
 
 - [ ] **Step 1: Add `GetBlame` method to `client.go`**
 
-In `~/code/datahub-gateway/modules/datahub/client.go`, add:
+In `~/code/datahub-gateway/modules/dit/client.go`, add:
 
 ```go
 func (c *Client) GetBlame(ctx context.Context, repoName, commitHash, filePath, row string) ([]byte, int, error) {
@@ -1284,23 +1284,23 @@ func (c *Client) GetBlame(ctx context.Context, repoName, commitHash, filePath, r
 }
 ```
 
-- [ ] **Step 2: Add handler to `datahub.go`**
+- [ ] **Step 2: Add handler to `dit.go`**
 
-In `~/code/datahub-gateway/routers/api/v1/repo/datahub.go`, add:
+In `~/code/datahub-gateway/routers/api/v1/repo/dit.go`, add:
 
 ```go
 func DatahubGetBlame(ctx *context.APIContext) {
 	commitHash := ctx.Params(":commit")
 	filePath := ctx.Params("*")
 	row := ctx.FormString("row")
-	data, status, err := datahub.DefaultClient().GetBlame(ctx, ctx.Repo.Repository.Name, commitHash, filePath, row)
+	data, status, err := dit.DefaultClient().GetBlame(ctx, ctx.Repo.Repository.Name, commitHash, filePath, row)
 	proxyDatahubResponse(ctx, data, status, err)
 }
 ```
 
 - [ ] **Step 3: Register route in `api.go`**
 
-In `~/code/datahub-gateway/routers/api/v1/api.go`, add to the datahub routes group:
+In `~/code/datahub-gateway/routers/api/v1/api.go`, add to the dit routes group:
 
 ```go
 m.Get("/blame/:commit/*", repo.DatahubGetBlame)
@@ -1315,8 +1315,8 @@ Expected: Build succeeds
 
 ```bash
 cd ~/code/datahub-gateway
-git add modules/datahub/client.go routers/api/v1/repo/datahub.go routers/api/v1/api.go
-git commit -m "feat: add blame proxy route to datahub gateway"
+git add modules/dit/client.go routers/api/v1/repo/dit.go routers/api/v1/api.go
+git commit -m "feat: add blame proxy route to dit gateway"
 ```
 
 ---
@@ -1349,7 +1349,7 @@ async loadBlame(filePath) {
   this.blameData = null;
   this.rowHistoryData = null;
   try {
-    this.blameData = await datahubFetch(
+    this.blameData = await ditFetch(
       this.owner, this.repo,
       `/blame/${this.commitHash}/${filePath}`,
     );
@@ -1368,7 +1368,7 @@ closeBlame() {
 async loadRowHistory(rowIndex) {
   this.rowHistoryLoading = true;
   try {
-    this.rowHistoryData = await datahubFetch(
+    this.rowHistoryData = await ditFetch(
       this.owner, this.repo,
       `/blame/${this.commitHash}/${this.blameFile}?row=${rowIndex}`,
     );
@@ -1509,7 +1509,7 @@ git commit -m "feat: add blame panel with row history in data repo home view"
 
 - [ ] **Step 1: Run Python full test suite**
 
-Run: `cd ~/code/datahub && uv run pytest tests/ -v`
+Run: `cd ~/code/dit && uv run pytest tests/ -v`
 Expected: All tests PASS
 
 - [ ] **Step 2: Run Go build**

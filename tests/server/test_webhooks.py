@@ -38,7 +38,7 @@ class TestFireWebhooks:
             assert call_args[0][0] == "https://example.com/hook"
             body = call_args[1]["content"]
             headers = call_args[1]["headers"]
-            assert "X-DataHub-Signature" in headers
+            assert "X-Dit-Signature" in headers
 
     async def test_fire_skips_inactive(self, session):
         from dit.server.models import Repo, Webhook

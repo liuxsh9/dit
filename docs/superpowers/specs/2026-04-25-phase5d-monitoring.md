@@ -9,7 +9,7 @@
 
 ## Overview
 
-Add production observability to datahub-core: Prometheus-compatible metrics, an enhanced health endpoint, and structured request logging. This enables dashboarding, alerting, and troubleshooting in production deployments.
+Add production observability to dit-core: Prometheus-compatible metrics, an enhanced health endpoint, and structured request logging. This enables dashboarding, alerting, and troubleshooting in production deployments.
 
 Three components:
 
@@ -29,20 +29,20 @@ ASGI middleware that instruments every request with three Prometheus metrics:
 from prometheus_client import Counter, Histogram, Gauge
 
 REQUEST_COUNT = Counter(
-    "datahub_http_requests_total",
+    "dit_http_requests_total",
     "Total HTTP requests",
     ["method", "path", "status"],
 )
 
 REQUEST_LATENCY = Histogram(
-    "datahub_http_request_duration_seconds",
+    "dit_http_request_duration_seconds",
     "HTTP request latency in seconds",
     ["method", "path"],
     buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0],
 )
 
 REQUESTS_IN_PROGRESS = Gauge(
-    "datahub_http_requests_in_progress",
+    "dit_http_requests_in_progress",
     "Number of HTTP requests currently being processed",
     ["method"],
 )
@@ -165,7 +165,7 @@ Add `prometheus-client` to `pyproject.toml` server extras.
 
 ### 4.3 Gateway proxy
 
-No gateway proxy needed. The `/metrics` endpoint is for Prometheus scraping directly from datahub-core. The gateway has its own metrics infrastructure (Forgejo/Prometheus built-in).
+No gateway proxy needed. The `/metrics` endpoint is for Prometheus scraping directly from dit-core. The gateway has its own metrics infrastructure (Forgejo/Prometheus built-in).
 
 ---
 

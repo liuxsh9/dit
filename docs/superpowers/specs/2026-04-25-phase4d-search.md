@@ -301,7 +301,7 @@ Register the router in `src/dit/server/app.py` alongside `meta_router`, `export_
 
 ### 4.1 Gateway route
 
-Add one route to the `datahub` group in `routers/api/v1/api.go`:
+Add one route to the `dit` group in `routers/api/v1/api.go`:
 
 ```go
 m.Post("/search", repo.DatahubSearch)
@@ -309,7 +309,7 @@ m.Post("/search", repo.DatahubSearch)
 
 This is a POST passthrough — no URL parameters need extraction.
 
-### 4.2 Handler in `routers/api/v1/repo/datahub.go`
+### 4.2 Handler in `routers/api/v1/repo/dit.go`
 
 ```go
 func DatahubSearch(ctx *context.APIContext) {
@@ -318,12 +318,12 @@ func DatahubSearch(ctx *context.APIContext) {
         ctx.Error(http.StatusBadRequest, "read body", err)
         return
     }
-    data, status, err := datahub.DefaultClient().Search(ctx, ctx.Repo.Repository.Name, body)
+    data, status, err := dit.DefaultClient().Search(ctx, ctx.Repo.Repository.Name, body)
     proxyResponse(ctx, data, status, err)
 }
 ```
 
-### 4.3 Client method in `modules/datahub/client.go`
+### 4.3 Client method in `modules/dit/client.go`
 
 ```go
 func (c *Client) Search(ctx context.Context, repoName string, body []byte) ([]byte, int, error) {
@@ -419,7 +419,7 @@ async submitSearch() {
   this.searchError = null;
   this.searchResults = null;
   try {
-    this.searchResults = await datahubFetch(
+    this.searchResults = await ditFetch(
       this.owner, this.repo,
       '/search',
       {

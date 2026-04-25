@@ -56,7 +56,7 @@ def server_app(tmp_path):
     yield fastapi_app
     fastapi_app.dependency_overrides.clear()
     for table in Base.metadata.tables.values():
-        table.schema = "datahub"
+        table.schema = "dit"
     loop.run_until_complete(engine.dispose())
     loop.close()
 
@@ -75,8 +75,8 @@ def _patch_remote_client(monkeypatch, server_app):
                 headers={"Authorization": f"token {token}"},
             )
 
-        def _datahub_prefix(self) -> str:
-            # DataHub server uses direct paths without /datahub/ infix
+        def _dit_prefix(self) -> str:
+            # Dit server uses direct paths without /dit/ infix
             return f"{self.base_url}/api/v1/repos/{self.repo}"
 
     monkeypatch.setattr(remote_mod, "RemoteClient", PatchedRemoteClient)
@@ -88,7 +88,7 @@ def _push_to_server(server_app, src_dir: Path, monkeypatch) -> None:
     resp = sync_client.post("/api/v1/repos", json={"name": "dataset"})
     assert resp.status_code == 201
 
-    dot = src_dir / ".datahub"
+    dot = src_dir / ".dit"
     set_remote(dot, "origin", "http://testserver/dataset", token="dit_admin")
 
     monkeypatch.chdir(src_dir)
@@ -156,6 +156,6 @@ def test_clone_sets_up_remote_config(server_app, tmp_path: Path, monkeypatch) ->
     )
 
     from dit.core.config import get_remote
-    cfg = get_remote(clone_dir / ".datahub", "origin")
+    cfg = get_remote(clone_dir / ".dit", "origin")
     assert cfg is not None
     assert "dataset" in cfg["url"]

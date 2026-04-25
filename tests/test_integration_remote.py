@@ -67,7 +67,7 @@ def server_app(tmp_path):
     yield fastapi_app
     fastapi_app.dependency_overrides.clear()
     for table in Base.metadata.tables.values():
-        table.schema = "datahub"
+        table.schema = "dit"
     loop.run_until_complete(engine.dispose())
     loop.close()
 
@@ -86,8 +86,8 @@ def _patch_remote_client(monkeypatch, server_app) -> None:
                 headers={"Authorization": f"token {token}"},
             )
 
-        def _datahub_prefix(self) -> str:
-            # DataHub server uses direct paths without /datahub/ infix
+        def _dit_prefix(self) -> str:
+            # Dit server uses direct paths without /dit/ infix
             return f"{self.base_url}/api/v1/repos/{self.repo}"
 
     monkeypatch.setattr(remote_mod, "RemoteClient", PatchedRemoteClient)
@@ -143,7 +143,7 @@ def test_full_remote_collaboration_workflow(
     _chdir_invoke(monkeypatch, client_a, ["add", "train.jsonl"])
     _chdir_invoke(monkeypatch, client_a, ["commit", "-m", "v1: initial training data"])
 
-    set_remote(client_a / ".datahub", "origin", SERVER_REPO_URL, token=TOKEN)
+    set_remote(client_a / ".dit", "origin", SERVER_REPO_URL, token=TOKEN)
     _chdir_invoke(monkeypatch, client_a, ["push"])
 
     # Step 3: Client B — clone + verify v1 data
@@ -200,7 +200,7 @@ def test_diverged_push_rejected(server_app, tmp_path: Path, monkeypatch) -> None
     _write_jsonl(client_a / "data.jsonl", V1_ROWS)
     _chdir_invoke(monkeypatch, client_a, ["add", "data.jsonl"])
     _chdir_invoke(monkeypatch, client_a, ["commit", "-m", "v1"])
-    set_remote(client_a / ".datahub", "origin", "http://testserver/conflict-repo", token=TOKEN)
+    set_remote(client_a / ".dit", "origin", "http://testserver/conflict-repo", token=TOKEN)
     _chdir_invoke(monkeypatch, client_a, ["push"])
 
     # Client B — clone

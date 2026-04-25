@@ -65,7 +65,7 @@ def _make_commit(
 
 def test_branch_delete_then_gc(tmp_path: Path) -> None:
     """Objects reachable only from a deleted branch are swept after grace period."""
-    dot = tmp_path / ".datahub"
+    dot = tmp_path / ".dit"
     objects_root = tmp_path / "objects"
 
     refs = RefStore(dot)
@@ -104,7 +104,7 @@ def test_branch_delete_then_gc(tmp_path: Path) -> None:
 
 def test_staging_index_protects_uncommitted(tmp_path: Path) -> None:
     """Objects staged in the index are NOT deleted even when no commits exist."""
-    dot = tmp_path / ".datahub"
+    dot = tmp_path / ".dit"
     objects_root = tmp_path / "objects"
     store = ObjectStore(objects_root)
 

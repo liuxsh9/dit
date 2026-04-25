@@ -487,7 +487,7 @@ min_row_chars: 20
 EOF
 ```
 
-- [ ] 文件已创建于仓库根目录（与 `.datahub/` 同级）
+- [ ] 文件已创建于仓库根目录（与 `.dit/` 同级）
 
 ### 5.2 规则文件无需提交即可生效（CLI 直接读取工作目录）
 
@@ -1067,7 +1067,7 @@ print('empty checks OK')
 
 ## 11. 验证规则详解：.ditvalidate.yaml 语法
 
-`.ditvalidate.yaml` 位于仓库根目录（与 `.datahub/` 同级）。CLI 读取工作目录中的文件；API 读取已提交树中的 blob。
+`.ditvalidate.yaml` 位于仓库根目录（与 `.dit/` 同级）。CLI 读取工作目录中的文件；API 读取已提交树中的 blob。
 
 ### 11.1 完整语法示例
 

@@ -8,7 +8,7 @@
 
 ## Overview
 
-This sub-project adds the Go-side plumbing to Forgejo: a new `IsDataRepo` boolean flag, config section, HTTP proxy client, and 13 API routes that forward to datahub-core.
+This sub-project adds the Go-side plumbing to Forgejo: a new `IsDataRepo` boolean flag, config section, HTTP proxy client, and 13 API routes that forward to dit-core.
 
 ---
 
@@ -44,8 +44,8 @@ Inside the DB transaction, after the mirror early-return (line ~253):
 
 ```go
 if opts.IsDataRepo {
-    if err := datahub.DefaultClient().CreateRepo(ctx, repo.Name); err != nil {
-        return fmt.Errorf("datahub create repo: %w", err)
+    if err := dit.DefaultClient().CreateRepo(ctx, repo.Name); err != nil {
+        return fmt.Errorf("dit create repo: %w", err)
     }
     return nil
 }
@@ -59,8 +59,8 @@ Add before filesystem removal:
 
 ```go
 if repo.IsDataRepo {
-    if err := datahub.DefaultClient().DeleteRepo(ctx, repo.Name); err != nil {
-        log.Error("Failed to delete datahub-core repo %s: %v", repo.Name, err)
+    if err := dit.DefaultClient().DeleteRepo(ctx, repo.Name); err != nil {
+        log.Error("Failed to delete dit-core repo %s: %v", repo.Name, err)
     }
 }
 ```
@@ -80,14 +80,14 @@ CREATE INDEX idx_repository_is_data_repo ON repository(is_data_repo);
 
 ---
 
-## 2. Config Module — `[datahub]` Section
+## 2. Config Module — `[dit]` Section
 
-### 2.1 `modules/setting/datahub.go`
+### 2.1 `modules/setting/dit.go`
 
 ```go
 package setting
 
-var DataHub = struct {
+var Dit = struct {
     Enabled      bool   `ini:"ENABLED"`
     CoreURL      string `ini:"CORE_URL"`
     ServiceToken string `ini:"SERVICE_TOKEN"`
@@ -98,7 +98,7 @@ var DataHub = struct {
 }
 
 func loadDatahubFrom(rootCfg ConfigProvider) {
-    mustMapSetting(rootCfg, "datahub", &DataHub)
+    mustMapSetting(rootCfg, "dit", &Dit)
 }
 ```
 
@@ -109,15 +109,15 @@ Add `loadDatahubFrom(rootCfg)` in `modules/setting/setting.go` `LoadCommonSettin
 ### 2.3 `app.ini` example
 
 ```ini
-[datahub]
+[dit]
 ENABLED = true
-CORE_URL = http://datahub-core:8000
+CORE_URL = http://dit-core:8000
 SERVICE_TOKEN = your-secret-token
 ```
 
 ---
 
-## 3. Proxy Client — `modules/datahub/client.go`
+## 3. Proxy Client — `modules/dit/client.go`
 
 ### 3.1 Client struct
 
@@ -131,7 +131,7 @@ type Client struct {
 func DefaultClient() *Client
 ```
 
-Singleton initialized from `setting.DataHub` values. Auth: `Authorization: Bearer {serviceToken}` header.
+Singleton initialized from `setting.Dit` values. Auth: `Authorization: Bearer {serviceToken}` header.
 
 ### 3.2 Methods
 
@@ -157,14 +157,14 @@ All accept `repoName string` as first arg. Most return `([]byte, int, error)` fo
 
 ---
 
-## 4. API Routes — `routers/api/v1/repo/datahub.go`
+## 4. API Routes — `routers/api/v1/repo/dit.go`
 
 ### 4.1 Route registration (`routers/api/v1/api.go`)
 
 Inside the existing `/{username}/{reponame}` group:
 
 ```go
-m.Group("/datahub", func() {
+m.Group("/dit", func() {
     m.Get("/refs", repo.DatahubListRefs)
     m.Get("/refs/{ref_type}/{name}", repo.DatahubGetRef)
     m.Post("/refs/{ref_type}/{name}", repo.DatahubUpdateRef)
@@ -187,7 +187,7 @@ m.Group("/datahub", func() {
 - `repoAssignment()` resolves the repo and checks basic access
 - Each handler checks `ctx.Repo.Repository.IsDataRepo` — returns 404 if false
 - **Never use `context.ReferencesGitRepo()`** — opens git dir, crashes for data repos
-- Forgejo repo-level permissions (read/write/admin) mapped to datahub-core roles in proxy layer
+- Forgejo repo-level permissions (read/write/admin) mapped to dit-core roles in proxy layer
 
 ### 4.3 Handler pattern
 
@@ -197,9 +197,9 @@ func DatahubListRefs(ctx *context.APIContext) {
         ctx.NotFound()
         return
     }
-    data, status, err := datahub.DefaultClient().ListRefs(ctx, ctx.Repo.Repository.Name)
+    data, status, err := dit.DefaultClient().ListRefs(ctx, ctx.Repo.Repository.Name)
     if err != nil {
-        ctx.Error(http.StatusBadGateway, "datahub proxy", err)
+        ctx.Error(http.StatusBadGateway, "dit proxy", err)
         return
     }
     ctx.Resp.Header().Set("Content-Type", "application/json")
@@ -235,4 +235,4 @@ Show a "dataset" icon/badge next to data repos in list views (org, user, explore
 | Deletion | Fail-open | Don't block Forgejo cleanup on external service |
 | Creation rollback | Inside DB transaction | Consistent with mirror pattern |
 | `IsEmpty` | Always `true` for data repos | Prevents git-opening middleware crash |
-| `ReferencesGitRepo` | Never on datahub routes | No git directory exists |
+| `ReferencesGitRepo` | Never on dit routes | No git directory exists |

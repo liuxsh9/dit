@@ -4,7 +4,7 @@ import httpx
 
 
 class RemoteClient:
-    """Synchronous HTTP client for the DataHub server API via Forgejo proxy."""
+    """Synchronous HTTP client for the Dit server API via Forgejo proxy."""
 
     def __init__(self, base_url: str, token: str = "", repo: str = "") -> None:
         self.base_url = base_url.rstrip("/")
@@ -14,14 +14,14 @@ class RemoteClient:
             trust_env=False,
         )
 
-    def _datahub_prefix(self) -> str:
-        return f"{self.base_url}/api/v1/repos/{self.repo}/datahub"
+    def _dit_prefix(self) -> str:
+        return f"{self.base_url}/api/v1/repos/{self.repo}/dit"
 
     def _refs_url(self, ref_type: str, name: str) -> str:
-        return f"{self._datahub_prefix()}/refs/{ref_type}/{name}"
+        return f"{self._dit_prefix()}/refs/{ref_type}/{name}"
 
     def _objects_url(self, obj_type: str, hash_hex: str) -> str:
-        return f"{self._datahub_prefix()}/objects/{obj_type}/{hash_hex}"
+        return f"{self._dit_prefix()}/objects/{obj_type}/{hash_hex}"
 
     def create_repo(self, name: str) -> dict:
         response = self.client.post(
@@ -43,7 +43,7 @@ class RemoteClient:
         return response.json()["target_hash"]
 
     def list_refs(self) -> list[dict]:
-        response = self.client.get(f"{self._datahub_prefix()}/refs")
+        response = self.client.get(f"{self._dit_prefix()}/refs")
         response.raise_for_status()
         return response.json()
 
@@ -73,7 +73,7 @@ class RemoteClient:
 
     def batch_exists(self, obj_type: str, hashes: list[str]) -> dict[str, bool]:
         response = self.client.post(
-            f"{self._datahub_prefix()}/objects/batch-exists",
+            f"{self._dit_prefix()}/objects/batch-exists",
             json={"obj_type": obj_type, "hashes": hashes},
         )
         response.raise_for_status()

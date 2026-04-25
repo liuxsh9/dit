@@ -54,7 +54,7 @@ class TreeEntry:
 Sidecar objects live under a new subdirectory:
 
 ```
-.datahub/objects/sidecars/<hash[:2]>/<hash[2:4]>/<hash>    (zstd compressed)
+.dit/objects/sidecars/<hash[:2]>/<hash[2:4]>/<hash>    (zstd compressed)
 ```
 
 Follows the existing 3-level sharding scheme used by all other object types.
@@ -258,18 +258,18 @@ Response: {"files": [{"path": "...", "old_stats": {...}, "new_stats": {...}, "de
 
 ## 6. Gateway Proxy + Web UI
 
-### 6.1 Gateway routes (`routers/api/v1/repo/datahub.go`)
+### 6.1 Gateway routes (`routers/api/v1/repo/dit.go`)
 
-Add 4 new proxy routes to the existing datahub group:
+Add 4 new proxy routes to the existing dit group:
 
 | Method | Path | Handler |
 |--------|------|---------|
-| POST | `/datahub/meta/compute` | DatahubMetaCompute |
-| GET | `/datahub/meta/{commit}/{path}` | DatahubMetaGet |
-| GET | `/datahub/meta/{commit}/{path}/summary` | DatahubMetaSummary |
-| GET | `/datahub/meta/diff/{old}/{new}` | DatahubMetaDiff |
+| POST | `/dit/meta/compute` | DatahubMetaCompute |
+| GET | `/dit/meta/{commit}/{path}` | DatahubMetaGet |
+| GET | `/dit/meta/{commit}/{path}/summary` | DatahubMetaSummary |
+| GET | `/dit/meta/diff/{old}/{new}` | DatahubMetaDiff |
 
-### 6.2 Gateway client (`modules/datahub/client.go`)
+### 6.2 Gateway client (`modules/dit/client.go`)
 
 Add 4 methods: `MetaCompute`, `MetaGet`, `MetaSummary`, `MetaDiff`.
 

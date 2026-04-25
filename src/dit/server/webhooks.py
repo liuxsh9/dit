@@ -61,8 +61,8 @@ async def fire_webhook_payloads(
                     content=body,
                     headers={
                         "Content-Type": "application/json",
-                        "X-DataHub-Signature": signature,
-                        "X-DataHub-Event": event.value,
+                        "X-Dit-Signature": signature,
+                        "X-Dit-Event": event.value,
                     },
                 )
             except Exception:

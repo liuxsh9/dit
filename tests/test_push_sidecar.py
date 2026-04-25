@@ -20,7 +20,7 @@ runner = CliRunner()
 class TestPushUploadOrder:
     def _build_repo_with_sidecar(self, tmp_path: Path):
         """Create a repo dir with one committed manifest + sidecar, return dot path."""
-        dot = tmp_path / ".datahub"
+        dot = tmp_path / ".dit"
         dot.mkdir()
         (dot / "objects").mkdir()
         refs = RefStore(dot)

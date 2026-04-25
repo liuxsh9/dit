@@ -9,7 +9,7 @@ class TestRemoteClientProxyURL:
             repo="alice/mydata",
         )
         assert rc._refs_url("heads", "main") == (
-            "http://forgejo:3000/api/v1/repos/alice/mydata/datahub/refs/heads/main"
+            "http://forgejo:3000/api/v1/repos/alice/mydata/dit/refs/heads/main"
         )
 
     def test_auth_header_is_token_format(self):
@@ -27,5 +27,5 @@ class TestRemoteClientProxyURL:
             repo="owner/repo",
         )
         assert rc._objects_url("rows", "a" * 64) == (
-            f"http://forgejo:3000/api/v1/repos/owner/repo/datahub/objects/rows/{'a' * 64}"
+            f"http://forgejo:3000/api/v1/repos/owner/repo/dit/objects/rows/{'a' * 64}"
         )

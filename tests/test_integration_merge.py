@@ -55,7 +55,7 @@ class TestFullMergeWorkflow:
         assert (tmp_path / "main-extra.jsonl").exists()
 
         # Verify merge commit
-        dot = tmp_path / ".datahub"
+        dot = tmp_path / ".dit"
         store = ObjectStore(dot / "objects")
         refs = RefStore(dot)
         head_hash = refs.resolve_head()

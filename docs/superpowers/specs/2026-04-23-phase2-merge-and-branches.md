@@ -1,6 +1,6 @@
 # Phase 2: 合并与分支管理 — 设计文档
 
-> 基于 [总体设计](2026-04-22-datahub-design.md) 的 Phase 2 细化设计。PR 流程推迟到 Phase 3（随 Forgejo 一起实现）。
+> 基于 [总体设计](2026-04-22-dit-design.md) 的 Phase 2 细化设计。PR 流程推迟到 Phase 3（随 Forgejo 一起实现）。
 
 ---
 
@@ -47,7 +47,7 @@ merge 依赖分支管理，必须先有 `dit branch`、`dit checkout -b`、`dit 
 
 **决定：CLI 手动解决。**
 
-冲突写入 `.datahub/MERGE_HEAD`（记录来源 commit）和 `.datahub/MERGE_MSG`（预填 merge message），冲突行写入 `.datahub/conflicts.json`（结构化数据）。用户手动编辑 JSONL 文件选边，然后 `dit add` + `dit merge --continue` 完成。不做 TUI mergetool（Phase 5 可做）。
+冲突写入 `.dit/MERGE_HEAD`（记录来源 commit）和 `.dit/MERGE_MSG`（预填 merge message），冲突行写入 `.dit/conflicts.json`（结构化数据）。用户手动编辑 JSONL 文件选边，然后 `dit add` + `dit merge --continue` 完成。不做 TUI mergetool（Phase 5 可做）。
 
 ### Q4: merge-base 算法
 
@@ -105,7 +105,7 @@ tag 本质上是轻量级 ref（指向 commit hash 的只读引用），实现�
 - `dit tag -d <name>` — 删除 tag
 - `dit tag` — 列出所有 tag
 
-存储在 `.datahub/refs/tags/<name>`，与 branch 同构但不可变。服务端已有 refs 路由，tag 只需在 ref name 中区分 `heads/` 和 `tags/` 前缀。
+存储在 `.dit/refs/tags/<name>`，与 branch 同构但不可变。服务端已有 refs 路由，tag 只需在 ref name 中区分 `heads/` 和 `tags/` 前缀。
 
 ---
 
@@ -314,7 +314,7 @@ def merge_manifests(
 
 ### 6.1 冲突状态文件
 
-合并产生冲突时，写入以下文件到 `.datahub/`：
+合并产生冲突时，写入以下文件到 `.dit/`：
 
 | 文件 | 内容 |
 |---|---|
@@ -357,7 +357,7 @@ def merge_manifests(
 
 用户解决冲突流程：
 1. `dit merge feature-branch` → 输出冲突文件列表
-2. 查看 `.datahub/conflicts.json` 了解冲突详情
+2. 查看 `.dit/conflicts.json` 了解冲突详情
 3. 手动编辑 JSONL 文件（替换/删除冲突行）
 4. `dit add <files>` 标记解决
 5. `dit merge --continue` 完成合并（创建 merge commit）
@@ -545,7 +545,7 @@ POST /api/v1/repos/{repo}/merge
 
 ### 10.1 存储
 
-Tag 存储在 `.datahub/refs/tags/<name>`，文件内容为 commit hash。与 branch 结构完全一致，仅路径前缀不同。
+Tag 存储在 `.dit/refs/tags/<name>`，文件内容为 commit hash。与 branch 结构完全一致，仅路径前缀不同。
 
 ### 10.2 RefStore 扩展
 
@@ -557,7 +557,7 @@ def delete_tag(self, name: str) -> bool
 def list_tags(self) -> dict[str, str]
 ```
 
-tags_dir = `.datahub/refs/tags/`
+tags_dir = `.dit/refs/tags/`
 
 ### 10.3 CLI
 
@@ -590,7 +590,7 @@ class WebhookEvent(str, Enum):
 ```python
 class Webhook(Base):
     __tablename__ = "webhooks"
-    __table_args__ = {"schema": "datahub"}
+    __table_args__ = {"schema": "dit"}
 
     id: int                    # PK
     repo_id: int               # FK -> repos.id
@@ -627,7 +627,7 @@ DELETE /api/v1/repos/{repo}/webhooks/{id}   # 删除 webhook
 }
 ```
 
-发送方式：异步 POST（fire-and-forget），带 HMAC-SHA256 签名 header `X-DataHub-Signature`。
+发送方式：异步 POST（fire-and-forget），带 HMAC-SHA256 签名 header `X-Dit-Signature`。
 
 发送失败不重试，事件可能丢失。这是骨架级实现，Phase 3 Forgejo 上线后将被 Forgejo 的 Webhook 系统替代（Forgejo 自带重试、delivery log 等完整功能）。Phase 2 的 webhook 仅用于验证事件模型和内部测试。
 

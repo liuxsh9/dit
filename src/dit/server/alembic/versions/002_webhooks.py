@@ -19,15 +19,15 @@ def upgrade() -> None:
     op.create_table(
         "webhooks",
         sa.Column("id", sa.Integer, primary_key=True),
-        sa.Column("repo_id", sa.Integer, sa.ForeignKey("datahub.repos.id"), nullable=False),
+        sa.Column("repo_id", sa.Integer, sa.ForeignKey("dit.repos.id"), nullable=False),
         sa.Column("url", sa.String(512), nullable=False),
         sa.Column("secret", sa.String(128), nullable=False, server_default=""),
         sa.Column("events", sa.String(256), nullable=False),
         sa.Column("active", sa.Boolean, server_default=sa.text("true")),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        schema="datahub",
+        schema="dit",
     )
 
 
 def downgrade() -> None:
-    op.drop_table("webhooks", schema="datahub")
+    op.drop_table("webhooks", schema="dit")

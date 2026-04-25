@@ -33,7 +33,7 @@ def find_repo_root() -> Path:
     cwd = Path.cwd()
     p = cwd
     while True:
-        if (p / ".datahub").is_dir():
+        if (p / ".dit").is_dir():
             return p
         if p.parent == p:
             break
@@ -43,7 +43,7 @@ def find_repo_root() -> Path:
 
 
 def get_dot(repo_root: Path) -> Path:
-    return repo_root / ".datahub"
+    return repo_root / ".dit"
 
 
 @app.callback(invoke_without_command=True)
@@ -64,7 +64,7 @@ def version():
 def init():
     """Initialize a new dit repository in the current directory."""
     cwd = Path.cwd()
-    dot = cwd / ".datahub"
+    dot = cwd / ".dit"
     if dot.exists():
         typer.echo(f"Already initialized dit repository in {cwd}")
         return
@@ -880,7 +880,7 @@ def serve(
     host: Optional[str] = typer.Option(None, help="Host to bind"),
     port: Optional[int] = typer.Option(None, help="Port to listen on"),
 ):
-    """Start the DataHub HTTP API server."""
+    """Start the Dit HTTP API server."""
     try:
         import uvicorn  # noqa: F401
     except ImportError:
@@ -961,7 +961,7 @@ def auth_set_token(
     token: str = typer.Argument(..., help="Raw API token to store"),
     remote: str = typer.Option("origin", help="Remote name to associate the token with"),
 ):
-    """Store an API token for a remote in .datahub/config."""
+    """Store an API token for a remote in .dit/config."""
     from dit.core.config import get_remote, set_remote
 
     repo_root = find_repo_root()
@@ -979,14 +979,14 @@ def auth_login(
     url: str = typer.Option(..., help="Forgejo base URL, e.g. http://forgejo:3000"),
     token: str = typer.Option(..., help="Forgejo API token"),
 ):
-    """Store Forgejo credentials in .datahub/credentials."""
+    """Store Forgejo credentials in .dit/credentials."""
     import json as _json
 
     try:
         repo_root = find_repo_root()
         creds_path = get_dot(repo_root) / "credentials"
     except SystemExit:
-        home_dot = Path.home() / ".datahub"
+        home_dot = Path.home() / ".dit"
         home_dot.mkdir(parents=True, exist_ok=True)
         creds_path = home_dot / "credentials"
 
@@ -1411,7 +1411,7 @@ def clone(
         raise typer.Exit(1)
     dest_dir.mkdir(parents=True, exist_ok=True)
 
-    dot = dest_dir / ".datahub"
+    dot = dest_dir / ".dit"
     dot.mkdir()
     (dot / "objects").mkdir()
     refs = RefStore(dot)

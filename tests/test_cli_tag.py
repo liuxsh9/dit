@@ -25,7 +25,7 @@ class TestTag:
         _init_and_commit(tmp_path)
         result = runner.invoke(app, ["tag", "v1.0"], catch_exceptions=False)
         assert result.exit_code == 0
-        assert (tmp_path / ".datahub" / "refs" / "tags" / "v1.0").exists()
+        assert (tmp_path / ".dit" / "refs" / "tags" / "v1.0").exists()
 
     def test_list_tags(self, tmp_path):
         _init_and_commit(tmp_path)
@@ -47,7 +47,7 @@ class TestTag:
         runner.invoke(app, ["tag", "v1.0"], catch_exceptions=False)
         result = runner.invoke(app, ["tag", "-d", "v1.0"], catch_exceptions=False)
         assert result.exit_code == 0
-        assert not (tmp_path / ".datahub" / "refs" / "tags" / "v1.0").exists()
+        assert not (tmp_path / ".dit" / "refs" / "tags" / "v1.0").exists()
 
     def test_create_existing_tag_fails(self, tmp_path):
         _init_and_commit(tmp_path)

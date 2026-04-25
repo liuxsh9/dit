@@ -1,6 +1,6 @@
-# DataHub 手动测试指南 03：远程协作
+# Dit 手动测试指南 03：远程协作
 
-本指南覆盖 DataHub 的远程仓库操作，包括：远程配置管理、首次推送、克隆、拉取更新、分支推送、令牌认证，以及若干边界场景验证。
+本指南覆盖 Dit 的远程仓库操作，包括：远程配置管理、首次推送、克隆、拉取更新、分支推送、令牌认证，以及若干边界场景验证。
 
 **前置条件**：
 - 已完成 **指南 00**（服务端在 `localhost:8000` 正常运行，Admin 令牌 `dit_admin_token` 已备好）
@@ -141,7 +141,7 @@ uv run dit remote list
 ### 2.6 检查配置文件内容
 
 ```bash
-cat "$WORK_DIR/repo-a/.datahub/config"
+cat "$WORK_DIR/repo-a/.dit/config"
 ```
 
 验证清单：
@@ -252,14 +252,14 @@ uv run dit clone http://localhost:8000/sft-demo repo-b --token "$ADMIN_TOKEN"
 
 ```bash
 ls -la "$WORK_DIR/repo-b/"
-ls -la "$WORK_DIR/repo-b/.datahub/"
-cat "$WORK_DIR/repo-b/.datahub/config"
+ls -la "$WORK_DIR/repo-b/.dit/"
+cat "$WORK_DIR/repo-b/.dit/config"
 ```
 
 验证清单：
 - [ ] `repo-b/train.jsonl` 存在
-- [ ] `repo-b/.datahub/` 目录存在，含 `objects/`、`HEAD` 等文件
-- [ ] `.datahub/config` 中 `[remote.origin]` 的 URL 为 `http://localhost:8000/sft-demo`
+- [ ] `repo-b/.dit/` 目录存在，含 `objects/`、`HEAD` 等文件
+- [ ] `.dit/config` 中 `[remote.origin]` 的 URL 为 `http://localhost:8000/sft-demo`
 
 ### 5.3 验证克隆内容与原始内容一致
 
@@ -517,7 +517,7 @@ uv run dit auth login --url http://localhost:8000 --token "$ADMIN_TOKEN"
 验证清单：
 - [ ] 输出 `Credentials saved to ...`
 - [ ] 输出 `Logged in to http://localhost:8000`
-- [ ] 凭据文件存在于 `.datahub/credentials`（或 `~/.datahub/credentials` 如果不在仓库目录内）
+- [ ] 凭据文件存在于 `.dit/credentials`（或 `~/.dit/credentials` 如果不在仓库目录内）
 
 ---
 
@@ -672,7 +672,7 @@ echo "清理完成"
 | `dit pull [--remote <r>] [--branch <b>]` | 下载 + 快进合并 + 物化工作目录 |
 | `dit clone <url> [dest] [--token <tok>] [--branch <b>]` | 克隆远程仓库到新目录 |
 
-**远程配置存储位置**：`.datahub/config`（TOML 格式，`[remote.<name>]` 段落）
+**远程配置存储位置**：`.dit/config`（TOML 格式，`[remote.<name>]` 段落）
 
 **push/pull 协议要点**：
 - push 使用 CAS（Compare-And-Swap）更新 ref，并发推送时后者会被拒绝

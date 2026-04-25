@@ -81,7 +81,7 @@ class TestCloneSidecar:
 
         assert result.exit_code == 0, result.output
 
-        local_store = ObjectStore(dest / ".datahub" / "objects")
+        local_store = ObjectStore(dest / ".dit" / "objects")
         assert local_store.read("sidecars", sc_hash) is not None, \
             "Sidecar object should have been downloaded during clone"
 
@@ -110,7 +110,7 @@ class TestCloneSidecar:
             )
 
         assert result.exit_code == 0, result.output
-        local_store = ObjectStore(dest / ".datahub" / "objects")
+        local_store = ObjectStore(dest / ".dit" / "objects")
         assert local_store.read("sidecars", sc_hash) is None
 
 

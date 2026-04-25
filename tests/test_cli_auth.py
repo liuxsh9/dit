@@ -19,7 +19,7 @@ class TestAuthLogin:
         assert result.exit_code == 0, result.output
         assert "Logged in" in result.output or "credentials saved" in result.output.lower()
 
-        creds_path = tmp_path / ".datahub" / "credentials"
+        creds_path = tmp_path / ".dit" / "credentials"
         assert creds_path.exists()
         data = json.loads(creds_path.read_text())
         assert data["url"] == "http://forgejo:3000"
@@ -33,6 +33,6 @@ class TestAuthLogin:
         runner.invoke(app, ["auth", "login", "--url", "http://forgejo:3000", "--token", "old"])
         runner.invoke(app, ["auth", "login", "--url", "http://forgejo:3000", "--token", "new"])
 
-        creds_path = tmp_path / ".datahub" / "credentials"
+        creds_path = tmp_path / ".dit" / "credentials"
         data = json.loads(creds_path.read_text())
         assert data["token"] == "new"

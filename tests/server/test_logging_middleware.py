@@ -8,10 +8,10 @@ from httpx import AsyncClient
 
 @pytest.mark.asyncio
 async def test_request_logging_emits_json(client: AsyncClient, caplog):
-    with caplog.at_level(logging.INFO, logger="datahub.access"):
+    with caplog.at_level(logging.INFO, logger="dit.access"):
         await client.get("/health")
 
-    access_records = [r for r in caplog.records if r.name == "datahub.access"]
+    access_records = [r for r in caplog.records if r.name == "dit.access"]
     assert len(access_records) >= 1
     record = access_records[-1]
     data = json.loads(record.getMessage())
@@ -36,9 +36,9 @@ async def test_request_id_passthrough(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_logging_skips_metrics_endpoint(client: AsyncClient, caplog):
-    with caplog.at_level(logging.INFO, logger="datahub.access"):
+    with caplog.at_level(logging.INFO, logger="dit.access"):
         await client.get("/metrics")
 
-    access_records = [r for r in caplog.records if r.name == "datahub.access"]
+    access_records = [r for r in caplog.records if r.name == "dit.access"]
     metrics_logs = [r for r in access_records if "/metrics" in r.getMessage()]
     assert len(metrics_logs) == 0

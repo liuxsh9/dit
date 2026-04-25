@@ -16,9 +16,9 @@ def upgrade() -> None:
         sa.Column("id", sa.BigInteger(), primary_key=True),
         sa.Column("repo_id", sa.BigInteger(), nullable=False),
         sa.Column("pattern", sa.String(256), nullable=False),
-        sa.Column("reviewer_token_id", sa.BigInteger(), sa.ForeignKey("datahub.tokens.id"), nullable=True),
-        schema="datahub",
+        sa.Column("reviewer_token_id", sa.BigInteger(), sa.ForeignKey("dit.tokens.id"), nullable=True),
+        schema="dit",
     )
 
 def downgrade() -> None:
-    op.drop_table("data_reviewer_rule", schema="datahub")
+    op.drop_table("data_reviewer_rule", schema="dit")

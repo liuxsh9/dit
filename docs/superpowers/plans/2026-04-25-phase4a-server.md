@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Add CLI meta commands, server meta API endpoints, and push/pull sidecar sync to datahub.
+**Goal:** Add CLI meta commands, server meta API endpoints, and push/pull sidecar sync to dit.
 
 **Architecture:** CLI uses typer subcommand group; server adds 4 new routes; push/pull includes sidecars in sync.
 
@@ -117,7 +117,7 @@ class TestMeta:
         )
         runner.invoke(app, ["add", "."])
         runner.invoke(app, ["commit", "-m", "initial data"])
-        return tmp_path / ".datahub"
+        return tmp_path / ".dit"
 
     def test_meta_compute_all(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
@@ -180,7 +180,7 @@ class TestMeta:
 - [ ] **1.2** Run to confirm failure (meta group does not exist yet):
 
 ```bash
-cd /Users/lxs/code/datahub && uv run pytest tests/test_cli.py::TestMeta -v 2>&1 | head -30
+cd /Users/lxs/code/dit && uv run pytest tests/test_cli.py::TestMeta -v 2>&1 | head -30
 ```
 
 Expected: `NoSuchCommand` or `AttributeError` — `meta` not registered.
@@ -288,7 +288,7 @@ def meta_compute(
 - [ ] **1.4** Run the meta compute tests:
 
 ```bash
-cd /Users/lxs/code/datahub && uv run pytest tests/test_cli.py::TestMeta::test_meta_compute_all tests/test_cli.py::TestMeta::test_meta_compute_single_file tests/test_cli.py::TestMeta::test_meta_compute_idempotent tests/test_cli.py::TestMeta::test_meta_compute_no_commits -v
+cd /Users/lxs/code/dit && uv run pytest tests/test_cli.py::TestMeta::test_meta_compute_all tests/test_cli.py::TestMeta::test_meta_compute_single_file tests/test_cli.py::TestMeta::test_meta_compute_idempotent tests/test_cli.py::TestMeta::test_meta_compute_no_commits -v
 ```
 
 Expected: 4 passed.
@@ -298,7 +298,7 @@ Expected: 4 passed.
   must be updated to unpack 3 values):
 
 ```bash
-cd /Users/lxs/code/datahub && uv run pytest tests/test_cli.py -v 2>&1 | tail -30
+cd /Users/lxs/code/dit && uv run pytest tests/test_cli.py -v 2>&1 | tail -30
 ```
 
 If any tests fail with `ValueError: too many values to unpack`, update those callers in
@@ -313,7 +313,7 @@ obj_type, obj_hash, sidecar_hash = flat[path]
 Search for all callsites:
 
 ```bash
-grep -n "obj_type, obj_hash" /Users/lxs/code/datahub/src/dit/cli/main.py
+grep -n "obj_type, obj_hash" /Users/lxs/code/dit/src/dit/cli/main.py
 ```
 
 **Explicit callsites that MUST be updated** (grep will find these, but do not miss them):
@@ -380,7 +380,7 @@ head_manifests = {k: v for k, (t, v, _sc) in flat.items() if t == "manifest"}
 - [ ] **1.6** Commit:
 
 ```bash
-cd /Users/lxs/code/datahub && git add src/dit/cli/main.py tests/test_cli.py && git commit -m "feat: dit meta compute — CLI subcommand group + sidecar computation and commit"
+cd /Users/lxs/code/dit && git add src/dit/cli/main.py tests/test_cli.py && git commit -m "feat: dit meta compute — CLI subcommand group + sidecar computation and commit"
 ```
 
 ---
@@ -444,7 +444,7 @@ cd /Users/lxs/code/datahub && git add src/dit/cli/main.py tests/test_cli.py && g
 - [ ] **2.2** Run to confirm failure:
 
 ```bash
-cd /Users/lxs/code/datahub && uv run pytest tests/test_cli.py::TestMeta::test_meta_show_table tests/test_cli.py::TestMeta::test_meta_show_json -v 2>&1 | head -20
+cd /Users/lxs/code/dit && uv run pytest tests/test_cli.py::TestMeta::test_meta_show_table tests/test_cli.py::TestMeta::test_meta_show_json -v 2>&1 | head -20
 ```
 
 - [ ] **2.3** Add the `meta show` command to `src/dit/cli/main.py` (inside the `meta_app` block):
@@ -550,7 +550,7 @@ def meta_show(
 - [ ] **2.4** Run the show tests:
 
 ```bash
-cd /Users/lxs/code/datahub && uv run pytest tests/test_cli.py::TestMeta::test_meta_show_table tests/test_cli.py::TestMeta::test_meta_show_json tests/test_cli.py::TestMeta::test_meta_show_no_sidecar tests/test_cli.py::TestMeta::test_meta_show_file_not_in_tree -v
+cd /Users/lxs/code/dit && uv run pytest tests/test_cli.py::TestMeta::test_meta_show_table tests/test_cli.py::TestMeta::test_meta_show_json tests/test_cli.py::TestMeta::test_meta_show_no_sidecar tests/test_cli.py::TestMeta::test_meta_show_file_not_in_tree -v
 ```
 
 Expected: 4 passed.
@@ -558,7 +558,7 @@ Expected: 4 passed.
 - [ ] **2.5** Commit:
 
 ```bash
-cd /Users/lxs/code/datahub && git add src/dit/cli/main.py tests/test_cli.py && git commit -m "feat: dit meta show — table and JSON sidecar display"
+cd /Users/lxs/code/dit && git add src/dit/cli/main.py tests/test_cli.py && git commit -m "feat: dit meta show — table and JSON sidecar display"
 ```
 
 ---
@@ -588,7 +588,7 @@ cd /Users/lxs/code/datahub && git add src/dit/cli/main.py tests/test_cli.py && g
         runner.invoke(app, ["commit", "-m", "v1"])
         runner.invoke(app, ["meta", "compute"])
 
-        dot = tmp_path / ".datahub"
+        dot = tmp_path / ".dit"
         refs = RefStore(dot)
         commit1_hash = refs.resolve_head()
 
@@ -638,7 +638,7 @@ cd /Users/lxs/code/datahub && git add src/dit/cli/main.py tests/test_cli.py && g
 - [ ] **3.2** Run to confirm failure:
 
 ```bash
-cd /Users/lxs/code/datahub && uv run pytest tests/test_cli.py::TestMeta::test_meta_diff_shows_changes -v 2>&1 | head -20
+cd /Users/lxs/code/dit && uv run pytest tests/test_cli.py::TestMeta::test_meta_diff_shows_changes -v 2>&1 | head -20
 ```
 
 - [ ] **3.3** Add the `meta diff` command to `src/dit/cli/main.py`:
@@ -730,7 +730,7 @@ def meta_diff(
 - [ ] **3.4** Run meta diff tests:
 
 ```bash
-cd /Users/lxs/code/datahub && uv run pytest tests/test_cli.py::TestMeta::test_meta_diff_shows_changes tests/test_cli.py::TestMeta::test_meta_diff_with_file_filter tests/test_cli.py::TestMeta::test_meta_diff_invalid_commit -v
+cd /Users/lxs/code/dit && uv run pytest tests/test_cli.py::TestMeta::test_meta_diff_shows_changes tests/test_cli.py::TestMeta::test_meta_diff_with_file_filter tests/test_cli.py::TestMeta::test_meta_diff_invalid_commit -v
 ```
 
 Expected: 3 passed.
@@ -738,7 +738,7 @@ Expected: 3 passed.
 - [ ] **3.5** Run the full TestMeta suite:
 
 ```bash
-cd /Users/lxs/code/datahub && uv run pytest tests/test_cli.py::TestMeta -v
+cd /Users/lxs/code/dit && uv run pytest tests/test_cli.py::TestMeta -v
 ```
 
 Expected: all pass.
@@ -746,7 +746,7 @@ Expected: all pass.
 - [ ] **3.6** Commit:
 
 ```bash
-cd /Users/lxs/code/datahub && git add src/dit/cli/main.py tests/test_cli.py && git commit -m "feat: dit meta diff — compare sidecar stats between two commits"
+cd /Users/lxs/code/dit && git add src/dit/cli/main.py tests/test_cli.py && git commit -m "feat: dit meta diff — compare sidecar stats between two commits"
 ```
 
 ---
@@ -1142,7 +1142,7 @@ class TestMetaDiff:
 - [ ] **4.2** Run to confirm failure:
 
 ```bash
-cd /Users/lxs/code/datahub && uv run pytest tests/server/test_routes_meta.py -v 2>&1 | head -30
+cd /Users/lxs/code/dit && uv run pytest tests/server/test_routes_meta.py -v 2>&1 | head -30
 ```
 
 Expected: `404` on all endpoints — router not registered yet.
@@ -1510,7 +1510,7 @@ async def meta_get(
 - [ ] **4.5** Run the meta server tests:
 
 ```bash
-cd /Users/lxs/code/datahub && uv run pytest tests/server/test_routes_meta.py -v
+cd /Users/lxs/code/dit && uv run pytest tests/server/test_routes_meta.py -v
 ```
 
 Expected: all tests pass.
@@ -1534,13 +1534,13 @@ Expected: all tests pass.
 - [ ] **4.6** Run full server test suite to confirm no regressions:
 
 ```bash
-cd /Users/lxs/code/datahub && uv run pytest tests/server/ -v 2>&1 | tail -20
+cd /Users/lxs/code/dit && uv run pytest tests/server/ -v 2>&1 | tail -20
 ```
 
 - [ ] **4.7** Commit:
 
 ```bash
-cd /Users/lxs/code/datahub && git add src/dit/server/routes/meta_api.py src/dit/server/app.py tests/server/test_routes_meta.py && git commit -m "feat: server meta API — compute, get, summary, diff endpoints"
+cd /Users/lxs/code/dit && git add src/dit/server/routes/meta_api.py src/dit/server/app.py tests/server/test_routes_meta.py && git commit -m "feat: server meta API — compute, get, summary, diff endpoints"
 ```
 
 ---
@@ -1579,7 +1579,7 @@ runner = CliRunner()
 class TestPushUploadOrder:
     def _build_repo_with_sidecar(self, tmp_path: Path):
         """Create a repo dir with one committed manifest + sidecar, return dot path."""
-        dot = tmp_path / ".datahub"
+        dot = tmp_path / ".dit"
         dot.mkdir()
         (dot / "objects").mkdir()
         refs = RefStore(dot)
@@ -1684,7 +1684,7 @@ class TestPushUploadOrder:
 - [ ] **5.2** Run to confirm failure (upload_order doesn't include "sidecars" yet):
 
 ```bash
-cd /Users/lxs/code/datahub && uv run pytest tests/test_push_sidecar.py -v 2>&1 | tail -20
+cd /Users/lxs/code/dit && uv run pytest tests/test_push_sidecar.py -v 2>&1 | tail -20
 ```
 
 - [ ] **5.3** Update the `push` command in `src/dit/cli/main.py`. Find the
@@ -1700,7 +1700,7 @@ cd /Users/lxs/code/datahub && uv run pytest tests/test_push_sidecar.py -v 2>&1 |
 - [ ] **5.4** Run push tests:
 
 ```bash
-cd /Users/lxs/code/datahub && uv run pytest tests/test_push_sidecar.py -v
+cd /Users/lxs/code/dit && uv run pytest tests/test_push_sidecar.py -v
 ```
 
 Expected: 2 passed.
@@ -1708,13 +1708,13 @@ Expected: 2 passed.
 - [ ] **5.5** Confirm existing push/pull tests still pass:
 
 ```bash
-cd /Users/lxs/code/datahub && uv run pytest tests/ -k "push or pull or remote" -v
+cd /Users/lxs/code/dit && uv run pytest tests/ -k "push or pull or remote" -v
 ```
 
 - [ ] **5.6** Commit:
 
 ```bash
-cd /Users/lxs/code/datahub && git add src/dit/cli/main.py tests/test_push_sidecar.py && git commit -m "fix: push upload_order includes sidecars between manifests and trees"
+cd /Users/lxs/code/dit && git add src/dit/cli/main.py tests/test_push_sidecar.py && git commit -m "fix: push upload_order includes sidecars between manifests and trees"
 ```
 
 ---
@@ -1817,7 +1817,7 @@ class TestCloneSidecar:
 
         assert result.exit_code == 0, result.output
 
-        local_store = ObjectStore(dest / ".datahub" / "objects")
+        local_store = ObjectStore(dest / ".dit" / "objects")
         assert local_store.read("sidecars", sc_hash) is not None, \
             "Sidecar object should have been downloaded during clone"
 
@@ -1848,7 +1848,7 @@ class TestCloneSidecar:
 
         # Must succeed even though sidecar is missing
         assert result.exit_code == 0, result.output
-        local_store = ObjectStore(dest / ".datahub" / "objects")
+        local_store = ObjectStore(dest / ".dit" / "objects")
         # Sidecar is missing — that's OK
         assert local_store.read("sidecars", sc_hash) is None
 
@@ -1895,7 +1895,7 @@ class TestFetchObjectsSince:
 - [ ] **6.2** Run to confirm failure:
 
 ```bash
-cd /Users/lxs/code/datahub && uv run pytest tests/test_clone_sidecar.py -v 2>&1 | tail -30
+cd /Users/lxs/code/dit && uv run pytest tests/test_clone_sidecar.py -v 2>&1 | tail -30
 ```
 
 Expected: `test_clone_downloads_sidecar` fails — sidecar not fetched.
@@ -2049,7 +2049,7 @@ def _fetch_tree_objects(
 - [ ] **6.5** Run the clone sidecar tests:
 
 ```bash
-cd /Users/lxs/code/datahub && uv run pytest tests/test_clone_sidecar.py -v
+cd /Users/lxs/code/dit && uv run pytest tests/test_clone_sidecar.py -v
 ```
 
 Expected: 4 passed.
@@ -2057,7 +2057,7 @@ Expected: 4 passed.
 - [ ] **6.6** Run the full test suite to verify no regressions:
 
 ```bash
-cd /Users/lxs/code/datahub && uv run pytest tests/ -v 2>&1 | tail -30
+cd /Users/lxs/code/dit && uv run pytest tests/ -v 2>&1 | tail -30
 ```
 
 Expected: all tests pass.
@@ -2065,7 +2065,7 @@ Expected: all tests pass.
 - [ ] **6.7** Commit:
 
 ```bash
-cd /Users/lxs/code/datahub && git add src/dit/cli/main.py tests/test_clone_sidecar.py && git commit -m "feat: clone and fetch_objects_since download sidecar objects (non-fatal if missing)"
+cd /Users/lxs/code/dit && git add src/dit/cli/main.py tests/test_clone_sidecar.py && git commit -m "feat: clone and fetch_objects_since download sidecar objects (non-fatal if missing)"
 ```
 
 ---
@@ -2075,7 +2075,7 @@ cd /Users/lxs/code/datahub && git add src/dit/cli/main.py tests/test_clone_sidec
 - [ ] **7.1** Run the complete test suite one final time:
 
 ```bash
-cd /Users/lxs/code/datahub && uv run pytest tests/ -v 2>&1 | tail -30
+cd /Users/lxs/code/dit && uv run pytest tests/ -v 2>&1 | tail -30
 ```
 
 Expected: all tests pass, zero failures.
@@ -2083,7 +2083,7 @@ Expected: all tests pass, zero failures.
 - [ ] **7.2** Confirm all new server routes are registered:
 
 ```bash
-cd /Users/lxs/code/datahub && uv run python -c "
+cd /Users/lxs/code/dit && uv run python -c "
 from dit.server.app import create_app
 app = create_app()
 meta_routes = [(list(r.methods)[0] if hasattr(r, 'methods') else '?', r.path)
@@ -2104,7 +2104,7 @@ GET /api/v1/repos/{repo}/meta/{commit_hash}/{file_path}/summary
 - [ ] **7.3** Confirm `dit meta` subcommand group appears in CLI help:
 
 ```bash
-cd /Users/lxs/code/datahub && uv run dit meta --help
+cd /Users/lxs/code/dit && uv run dit meta --help
 ```
 
 Expected: shows `compute`, `show`, `diff` subcommands.
@@ -2112,7 +2112,7 @@ Expected: shows `compute`, `show`, `diff` subcommands.
 - [ ] **7.4** Confirm push upload order:
 
 ```bash
-grep -n "upload_order" /Users/lxs/code/datahub/src/dit/cli/main.py
+grep -n "upload_order" /Users/lxs/code/dit/src/dit/cli/main.py
 ```
 
 Expected: `["rows", "manifests", "sidecars", "trees", "commits"]`.
@@ -2120,7 +2120,7 @@ Expected: `["rows", "manifests", "sidecars", "trees", "commits"]`.
 - [ ] **7.5** Confirm no uncommitted changes:
 
 ```bash
-cd /Users/lxs/code/datahub && git status
+cd /Users/lxs/code/dit && git status
 ```
 
 Expected: `nothing to commit, working tree clean`.

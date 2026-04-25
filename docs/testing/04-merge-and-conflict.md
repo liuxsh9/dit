@@ -1,6 +1,6 @@
-# DataHub 手动测试指南 04：合并与冲突解决
+# Dit 手动测试指南 04：合并与冲突解决
 
-本指南覆盖 DataHub CLI（`dit`）的合并工作流，包括：快进合并、三方合并、冲突检测与解决、中止合并、Cherry-pick，以及文件级冲突和边界场景。
+本指南覆盖 Dit CLI（`dit`）的合并工作流，包括：快进合并、三方合并、冲突检测与解决、中止合并、Cherry-pick，以及文件级冲突和边界场景。
 
 > **前置要求**：已完成指南 01（本地操作）和指南 02（分支与标签）的测试，熟悉 `dit init / add / commit / branch / checkout` 的基本用法。
 
@@ -120,7 +120,7 @@ uv run dit log --oneline
 **检查 main 指针是否已移动到 feature 哈希：**
 
 ```bash
-cat "$MERGE_TEST/.datahub/refs/heads/main"
+cat "$MERGE_TEST/.dit/refs/heads/main"
 # 应与 $FEATURE_HASH 相同
 ```
 
@@ -208,7 +208,7 @@ ls "$THREEWAY_DIR"
 - [ ] 输出包含 `Merge made`（而非 `Fast-forward`）
 - [ ] 工作目录同时存在 `base.jsonl`、`feature.jsonl`、`main-extra.jsonl`
 - [ ] `uv run dit log --oneline` 最新一条是合并提交，消息含 `Merge branch`
-- [ ] `.datahub/MERGE_HEAD` 文件**不存在**（合并已完成，状态文件已清理）
+- [ ] `.dit/MERGE_HEAD` 文件**不存在**（合并已完成，状态文件已清理）
 
 **验证合并提交有两个父节点：**
 
@@ -217,7 +217,7 @@ uv run dit log --oneline
 # 复制顶部 merge commit 的 hash（前 8 位），下面替换 <MERGE_HASH>
 ```
 
-> dit 的 `log` 命令目前不直接显示父节点列表；验证父节点数量可通过查看 `.datahub/objects/commits/` 下对应文件的内容，或运行集成测试。日常手动验证看 `Merge made` 即可。
+> dit 的 `log` 命令目前不直接显示父节点列表；验证父节点数量可通过查看 `.dit/objects/commits/` 下对应文件的内容，或运行集成测试。日常手动验证看 `Merge made` 即可。
 
 ---
 
@@ -290,21 +290,21 @@ Resolve conflicts, then: dit add <files> && dit merge --continue
 
 ### 4.3 验证冲突状态文件
 
-冲突发生后，dit 在 `.datahub/` 目录写入以下状态文件：
+冲突发生后，dit 在 `.dit/` 目录写入以下状态文件：
 
 ```bash
-ls "$CONFLICT_DIR/.datahub/"
+ls "$CONFLICT_DIR/.dit/"
 ```
 
 验证清单：
-- [ ] `.datahub/MERGE_HEAD` 存在，内容为 feature 分支的提交哈希
-- [ ] `.datahub/MERGE_MSG` 存在，内容为默认合并消息
-- [ ] `.datahub/conflicts.json` 存在
+- [ ] `.dit/MERGE_HEAD` 存在，内容为 feature 分支的提交哈希
+- [ ] `.dit/MERGE_MSG` 存在，内容为默认合并消息
+- [ ] `.dit/conflicts.json` 存在
 
 **查看 conflicts.json 内容：**
 
 ```bash
-cat "$CONFLICT_DIR/.datahub/conflicts.json"
+cat "$CONFLICT_DIR/.dit/conflicts.json"
 ```
 
 预期结构：
@@ -378,15 +378,15 @@ uv run dit merge --continue
 ### 5.5 验证合并完成
 
 ```bash
-ls "$CONFLICT_DIR/.datahub/"
+ls "$CONFLICT_DIR/.dit/"
 uv run dit log --oneline
 cat "$CONFLICT_DIR/data.jsonl"
 ```
 
 验证清单：
-- [ ] `.datahub/MERGE_HEAD` 已删除
-- [ ] `.datahub/MERGE_MSG` 已删除
-- [ ] `.datahub/conflicts.json` 已删除
+- [ ] `.dit/MERGE_HEAD` 已删除
+- [ ] `.dit/MERGE_MSG` 已删除
+- [ ] `.dit/conflicts.json` 已删除
 - [ ] `uv run dit log` 最新提交为合并提交（含 `Merge branch`）
 - [ ] `data.jsonl` 包含解决后的内容（含 `终止条件` 或你手动写入的内容）
 
@@ -469,15 +469,15 @@ Merge aborted.
 ### 6.4 验证状态已恢复
 
 ```bash
-ls "$ABORT_DIR/.datahub/"
+ls "$ABORT_DIR/.dit/"
 cat "$ABORT_DIR/data.jsonl"
 uv run dit status
 ```
 
 验证清单：
-- [ ] `.datahub/MERGE_HEAD` 已删除
-- [ ] `.datahub/MERGE_MSG` 已删除
-- [ ] `.datahub/conflicts.json` 已删除
+- [ ] `.dit/MERGE_HEAD` 已删除
+- [ ] `.dit/MERGE_MSG` 已删除
+- [ ] `.dit/conflicts.json` 已删除
 - [ ] `data.jsonl` 内容回到 main 分支的版本（含 `main版`）
 - [ ] `uv run dit status` 显示工作目录干净
 
@@ -589,10 +589,10 @@ uv run dit log --oneline
 **确认 cherry-pick 状态文件已清理：**
 
 ```bash
-ls "$CP_DIR/.datahub/"
+ls "$CP_DIR/.dit/"
 ```
 
-- [ ] `.datahub/CHERRY_PICK_HEAD` 不存在
+- [ ] `.dit/CHERRY_PICK_HEAD` 不存在
 
 ---
 
@@ -656,13 +656,13 @@ Resolve conflicts, then: dit add <files> && dit cherry-pick --continue
 ```
 
 验证清单：
-- [ ] `.datahub/CHERRY_PICK_HEAD` 存在（内容为目标提交哈希）
-- [ ] `.datahub/MERGE_HEAD` **不存在**（cherry-pick 使用独立状态文件）
-- [ ] `.datahub/conflicts.json` 存在
+- [ ] `.dit/CHERRY_PICK_HEAD` 存在（内容为目标提交哈希）
+- [ ] `.dit/MERGE_HEAD` **不存在**（cherry-pick 使用独立状态文件）
+- [ ] `.dit/conflicts.json` 存在
 
 ```bash
-ls "$CP_CONFLICT_DIR/.datahub/"
-cat "$CP_CONFLICT_DIR/.datahub/conflicts.json"
+ls "$CP_CONFLICT_DIR/.dit/"
+cat "$CP_CONFLICT_DIR/.dit/conflicts.json"
 ```
 
 ### 8.3 解决冲突并继续
@@ -682,7 +682,7 @@ uv run dit cherry-pick --continue
 ```
 
 验证清单：
-- [ ] `.datahub/CHERRY_PICK_HEAD` 已删除
+- [ ] `.dit/CHERRY_PICK_HEAD` 已删除
 - [ ] `data.jsonl` 包含解决后的内容
 - [ ] `uv run dit log` 最新提交含 `cherry-pick`
 
@@ -719,7 +719,7 @@ uv run dit commit -m "main: virtual memory"
 uv run dit cherry-pick "$VM_PICK_HASH"
 ```
 
-- [ ] 触发冲突，`.datahub/CHERRY_PICK_HEAD` 存在
+- [ ] 触发冲突，`.dit/CHERRY_PICK_HEAD` 存在
 
 ```bash
 uv run dit cherry-pick --abort
@@ -733,13 +733,13 @@ Cherry-pick aborted.
 
 ```bash
 cat "$CP_ABORT_DIR/data.jsonl"
-ls "$CP_ABORT_DIR/.datahub/"
+ls "$CP_ABORT_DIR/.dit/"
 ```
 
 验证清单：
 - [ ] 输出 `Cherry-pick aborted.`
 - [ ] `data.jsonl` 内容恢复为 main 分支版本（含 `main`）
-- [ ] `.datahub/CHERRY_PICK_HEAD` 已删除
+- [ ] `.dit/CHERRY_PICK_HEAD` 已删除
 
 ---
 
@@ -886,8 +886,8 @@ CONFLICT: 1 file(s) have conflicts.
 
 验证清单：
 - [ ] 冲突类型为 `both_added`
-- [ ] `.datahub/MERGE_HEAD` 存在
-- [ ] `.datahub/conflicts.json` 中 `conflict_type` 为 `both_added`
+- [ ] `.dit/MERGE_HEAD` 存在
+- [ ] `.dit/conflicts.json` 中 `conflict_type` 为 `both_added`
 
 **解决 both_added 冲突（选择合并后的内容）：**
 
@@ -899,7 +899,7 @@ uv run dit add new-topic.jsonl
 uv run dit merge --continue
 ```
 
-- [ ] 合并成功，`.datahub/MERGE_HEAD` 已删除
+- [ ] 合并成功，`.dit/MERGE_HEAD` 已删除
 
 ### 9.4 场景四：modify/delete 冲突（一侧删除文件，另一侧修改文件）
 
@@ -948,10 +948,10 @@ CONFLICT: 1 file(s) have conflicts.
 
 验证清单：
 - [ ] 冲突类型为 `modify_delete`
-- [ ] `.datahub/conflicts.json` 内容确认冲突类型
+- [ ] `.dit/conflicts.json` 内容确认冲突类型
 
 ```bash
-cat "$MOD_DEL_DIR/.datahub/conflicts.json"
+cat "$MOD_DEL_DIR/.dit/conflicts.json"
 ```
 
 **中止此合并（不解决，直接放弃）：**
@@ -1092,7 +1092,7 @@ uv run dit add data.jsonl
 uv run dit commit -m "base"
 
 # 手动写入 MERGE_HEAD 模拟合并进行中
-echo "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" > "$MUTEX_DIR/.datahub/MERGE_HEAD"
+echo "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" > "$MUTEX_DIR/.dit/MERGE_HEAD"
 
 uv run dit cherry-pick bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 ```
@@ -1103,7 +1103,7 @@ uv run dit cherry-pick bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 
 ```bash
 # 清理手动写入的状态文件
-rm "$MUTEX_DIR/.datahub/MERGE_HEAD"
+rm "$MUTEX_DIR/.dit/MERGE_HEAD"
 ```
 
 ---
@@ -1114,8 +1114,8 @@ rm "$MUTEX_DIR/.datahub/MERGE_HEAD"
 |------|------|------------|
 | 快进合并 | `dit merge <branch>` | 输出 `Fast-forward`，无新合并提交 |
 | 三方合并 | `dit merge <branch>` | 输出 `Merge made`，新提交有 2 个父节点 |
-| 冲突合并 | `dit merge <branch>` | 退出码非 0，`.datahub/MERGE_HEAD` 存在 |
-| 解决冲突 | `dit add <file> && dit merge --continue` | `.datahub/MERGE_HEAD` 删除，新提交有 2 个父节点 |
+| 冲突合并 | `dit merge <branch>` | 退出码非 0，`.dit/MERGE_HEAD` 存在 |
+| 解决冲突 | `dit add <file> && dit merge --continue` | `.dit/MERGE_HEAD` 删除，新提交有 2 个父节点 |
 | 中止合并 | `dit merge --abort` | 工作目录恢复，状态文件清理 |
 | Cherry-pick | `dit cherry-pick <hash>` | 新提交只有 1 个父节点，消息含 `cherry-pick` |
 | Cherry-pick 冲突 | 冲突后 `dit cherry-pick --continue/--abort` | 使用 `CHERRY_PICK_HEAD`（非 `MERGE_HEAD`） |

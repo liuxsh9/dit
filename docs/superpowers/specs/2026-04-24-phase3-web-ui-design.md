@@ -5,7 +5,7 @@
 
 ## 1. 目标
 
-在 Forgejo 上实现 DataHub 的 Web 界面：创建/浏览数据仓库、PR 审查、行级评论、权限管理、通知集成。Forgejo 已有完整的协作基础设施（用户/组织/PR/通知），Phase 3 的核心是**在现有框架内做有限改造**——新增 `IsDataRepo` 布尔标志（非 type 枚举），替换对应模板调 datahub-core API。
+在 Forgejo 上实现 Dit 的 Web 界面：创建/浏览数据仓库、PR 审查、行级评论、权限管理、通知集成。Forgejo 已有完整的协作基础设施（用户/组织/PR/通知），Phase 3 的核心是**在现有框架内做有限改造**——新增 `IsDataRepo` 布尔标志（非 type 枚举），替换对应模板调 dit-core API。
 
 ## ⚠️ 重要修正 (2026-04-24)
 
@@ -21,7 +21,7 @@
 | **3E: Vue Frontend** | [phase3e-vue-frontend.md](2026-04-24-phase3e-vue-frontend.md) | ✅ Reviewed |
 | **3F: Deployment** | [phase3f-deployment.md](2026-04-24-phase3f-deployment.md) | ✅ Reviewed |
 
-## 已完成的 Phase 3 子项目 (datahub-core 侧)
+## 已完成的 Phase 3 子项目 (dit-core 侧)
 
 | Sub-project | 状态 |
 |-------------|------|
@@ -36,7 +36,7 @@
 ## 2. 前置依赖
 
 - Phase 0 (本地 dit CLI)、Phase 1 (远程协作)、Phase 2 (合并与分支) 已完成
-- datahub-core FastAPI 服务已有：objects/refs CAS/merge/merge-preview/webhooks/tokens 路由
+- dit-core FastAPI 服务已有：objects/refs CAS/merge/merge-preview/webhooks/tokens 路由
 - dit CLI 已有：init/add/commit/log/diff/status/branch/checkout/merge/cherry-pick/tag/push/clone/fetch/pull
 
 ## 3. 整体架构
@@ -52,13 +52,13 @@
                     │  ├─ OAuth2/API token/SSH    (内置)    │
                     │  ├─ PR 生命周期/评论        (内置+扩展)│
                     │  ├─ 通知/邮件/Webhook       (内置)    │
-                    │  ├─ /api/v1/repos/.../datahub/*       │
-                    │  │  (代理路由 → datahub-core)         │
+                    │  ├─ /api/v1/repos/.../dit/*       │
+                    │  │  (代理路由 → dit-core)         │
                     │  └─ data repo 模板 (新增)             │
                     └────────────┬──────────────────────────┘
                                  │ HTTP (内网)
                     ┌────────────▼──────────────────────────┐
-                    │      datahub-core (Python FastAPI)     │
+                    │      dit-core (Python FastAPI)     │
                     │  ┌─ 对象存储 (rows/manifests/trees)    │
                     │  ├─ Refs CAS                           │
                     │  ├─ Diff / Merge / Blame                │
@@ -68,7 +68,7 @@
                                  │
                     ┌────────────▼────────┐
                     │   PostgreSQL         │
-                    │   datahub schema     │
+                    │   dit schema     │
                     │   forgejo schema     │
                     └─────────────────────┘
                     ┌─────────────────────┐
@@ -80,19 +80,19 @@
 
 ### 3.2 关键架构决策
 
-1. **datahub-core 退化为内部服务**：不再对外暴露端口。所有外部请求经 Forgejo 代理，统一认证。Phase 0-2 的 token 体系保留为服务间认证（Forgejo → datahub-core 用内部 service token）。
+1. **dit-core 退化为内部服务**：不再对外暴露端口。所有外部请求经 Forgejo 代理，统一认证。Phase 0-2 的 token 体系保留为服务间认证（Forgejo → dit-core 用内部 service token）。
 
-2. **共享 PostgreSQL 实例，不同 schema**：Forgejo 用自己的 schema，datahub-core 用 `datahub` schema。PR 表在 Forgejo 侧，通过 `repo_id` 关联。
+2. **共享 PostgreSQL 实例，不同 schema**：Forgejo 用自己的 schema，dit-core 用 `dit` schema。PR 表在 Forgejo 侧，通过 `repo_id` 关联。
 
 3. **Forgejo `repo.type` 扩展**：新增 `type=data` 枚举值。`type=data` 时：
    - 不创建 bare git repo
-   - 文件浏览/diff/commit 走 datahub-core API
-   - PR merge 走 datahub-core merge API
+   - 文件浏览/diff/commit 走 dit-core API
+   - PR merge 走 dit-core merge API
    - 其余（Issue、Wiki、Discussion）保持不变
 
-4. **CLI 走 Forgejo 代理**：`dit push/clone/fetch` 改调 Forgejo 代理路由，统一认证入口。datahub-core 不再直接面向用户。
+4. **CLI 走 Forgejo 代理**：`dit push/clone/fetch` 改调 Forgejo 代理路由，统一认证入口。dit-core 不再直接面向用户。
 
-7. **CAS ref 更新原子性**：datahub-core 现有的 CAS ref 更新使用 SELECT → UPDATE 非原子操作，Phase 3 引入并发 merge 后竞态风险增大。3A 子项目中必须修复为 `UPDATE refs SET target_hash = :new WHERE repo_id = :repo AND name = :ref AND target_hash = :old`（单条 UPDATE 原子检查），affected rows = 0 时返回 409 CAS conflict。
+7. **CAS ref 更新原子性**：dit-core 现有的 CAS ref 更新使用 SELECT → UPDATE 非原子操作，Phase 3 引入并发 merge 后竞态风险增大。3A 子项目中必须修复为 `UPDATE refs SET target_hash = :new WHERE repo_id = :repo AND name = :ref AND target_hash = :old`（单条 UPDATE 原子检查），affected rows = 0 时返回 409 CAS conflict。
 
 5. **PR 评论存 Forgejo 侧**：复用 Forgejo 已有 Comment 模型，扩展字段支持行级定位（`row_hash` + `field_path`），免费获得通知/邮件/webhook 集成。
 
@@ -100,21 +100,21 @@
 
 ### 3.3 通信方式
 
-Forgejo (Go) → datahub-core (Python) 通过 HTTP API 调用。Forgejo 代理层职责：
+Forgejo (Go) → dit-core (Python) 通过 HTTP API 调用。Forgejo 代理层职责：
 
 1. 认证校验（Forgejo token → 权限检查）
 2. 附加内部 service token header
-3. 转发请求到 datahub-core
+3. 转发请求到 dit-core
 4. 透传响应
 
-Service token 为预共享密钥，通过环境变量 `DATAHUB_SERVICE_TOKEN` 配置，Forgejo 和 datahub-core 启动时加载。
+Service token 为预共享密钥，通过环境变量 `DIT_SERVICE_TOKEN` 配置，Forgejo 和 dit-core 启动时加载。
 
 Forgejo 代理层附加的请求头：
 - `X-Service-Token: <shared-secret>` — 服务间认证
 - `X-Datahub-User: <username>` — 当前操作的 Forgejo 用户名
 - `X-Datahub-User-Email: <email>` — 用户邮箱
 
-datahub-core 据此填写 commit/merge commit 的 author 字段（`author: "zhangsan <zhangsan@example.com>"`）。当 `X-Service-Token` 存在但 `X-Datahub-User` 缺失时，author 设为 `system <noreply@datahub>`。
+dit-core 据此填写 commit/merge commit 的 author 字段（`author: "zhangsan <zhangsan@example.com>"`）。当 `X-Service-Token` 存在但 `X-Datahub-User` 缺失时，author 设为 `system <noreply@dit>`。
 
 ---
 
@@ -139,50 +139,50 @@ datahub-core 据此填写 commit/merge commit 的 author 字段（`author: "zhan
 #### repo.type 扩展
 
 - `models/repo/type.go` 新增 `RepositoryTypeData` 枚举值
-- 创建 data repo 时跳过 `git init --bare`，改为调 datahub-core `POST /repos` 初始化
+- 创建 data repo 时跳过 `git init --bare`，改为调 dit-core `POST /repos` 初始化
 - 数据库 `repository` 表已有 `type` 字段（Forgejo 原生支持 mirror 等类型），直接扩展枚举
 
 #### 代理路由 (Proxy Routes)
 
-新增路由组 `/api/v1/repos/{owner}/{repo}/datahub/*`，约 10 个 endpoint 一一代理到 datahub-core：
+新增路由组 `/api/v1/repos/{owner}/{repo}/dit/*`，约 10 个 endpoint 一一代理到 dit-core：
 
-| Forgejo 代理路由 | datahub-core 目标 | 用途 |
+| Forgejo 代理路由 | dit-core 目标 | 用途 |
 |---|---|---|
-| `POST .../datahub/objects/{type}/{hash}` | `POST /v1/repos/{repo}/objects/{type}/{hash}` | push 上传对象 |
-| `GET .../datahub/objects/{type}/{hash}` | `GET /v1/repos/{repo}/objects/{type}/{hash}` | 读取对象 |
-| `POST .../datahub/objects/batch-exists` | `POST /v1/repos/{repo}/objects/batch-exists` | 批量检查 |
-| `GET .../datahub/refs` | `GET /v1/repos/{repo}/refs` | 列出引用 |
-| `GET .../datahub/refs/{type}/{name}` | `GET /v1/repos/{repo}/refs/{type}/{name}` | 读取引用 |
-| `POST .../datahub/refs/{type}/{name}` | `POST /v1/repos/{repo}/refs/{type}/{name}` | CAS 更新引用 |
-| `DELETE .../datahub/refs/{type}/{name}` | `DELETE /v1/repos/{repo}/refs/{type}/{name}` | 删除引用 |
-| `GET .../datahub/tree/{commit}/{path}` | `GET /v1/repos/{repo}/tree/{commit}/{path}` | 目录树 |
-| `GET .../datahub/manifest/{commit}/{path}` | `GET /v1/repos/{repo}/manifest/{commit}/{path}` | 文件内容 |
-| `GET .../datahub/log` | `GET /v1/repos/{repo}/log` | 提交历史 |
-| `POST .../datahub/diff` | `POST /v1/repos/{repo}/diff` | Diff 计算 |
-| `POST .../datahub/merge-preview` | `POST /v1/repos/{repo}/merge-preview` | 合并预览 |
-| `POST .../datahub/merge` | `POST /v1/repos/{repo}/merge` | 执行合并 |
+| `POST .../dit/objects/{type}/{hash}` | `POST /v1/repos/{repo}/objects/{type}/{hash}` | push 上传对象 |
+| `GET .../dit/objects/{type}/{hash}` | `GET /v1/repos/{repo}/objects/{type}/{hash}` | 读取对象 |
+| `POST .../dit/objects/batch-exists` | `POST /v1/repos/{repo}/objects/batch-exists` | 批量检查 |
+| `GET .../dit/refs` | `GET /v1/repos/{repo}/refs` | 列出引用 |
+| `GET .../dit/refs/{type}/{name}` | `GET /v1/repos/{repo}/refs/{type}/{name}` | 读取引用 |
+| `POST .../dit/refs/{type}/{name}` | `POST /v1/repos/{repo}/refs/{type}/{name}` | CAS 更新引用 |
+| `DELETE .../dit/refs/{type}/{name}` | `DELETE /v1/repos/{repo}/refs/{type}/{name}` | 删除引用 |
+| `GET .../dit/tree/{commit}/{path}` | `GET /v1/repos/{repo}/tree/{commit}/{path}` | 目录树 |
+| `GET .../dit/manifest/{commit}/{path}` | `GET /v1/repos/{repo}/manifest/{commit}/{path}` | 文件内容 |
+| `GET .../dit/log` | `GET /v1/repos/{repo}/log` | 提交历史 |
+| `POST .../dit/diff` | `POST /v1/repos/{repo}/diff` | Diff 计算 |
+| `POST .../dit/merge-preview` | `POST /v1/repos/{repo}/merge-preview` | 合并预览 |
+| `POST .../dit/merge` | `POST /v1/repos/{repo}/merge` | 执行合并 |
 
 #### 内部 HTTP 客户端
 
-Go 侧封装 `DataHubClient` struct：
+Go 侧封装 `DitClient` struct：
 
 ```go
-type DataHubClient struct {
-    BaseURL      string   // e.g. "http://datahub-core:8000/api/v1"
+type DitClient struct {
+    BaseURL      string   // e.g. "http://dit-core:8000/api/v1"
     ServiceToken string   // 内部 service token
     HTTPClient   *http.Client
 }
 ```
 
-配置通过 Forgejo `app.ini` 的 `[datahub]` section：
+配置通过 Forgejo `app.ini` 的 `[dit]` section：
 
 ```ini
-[datahub]
+[dit]
 CORE_URL = http://localhost:8000/api/v1
 SERVICE_TOKEN = <shared-secret>
 ```
 
-### 5.2 datahub-core API 扩展 (Python)
+### 5.2 dit-core API 扩展 (Python)
 
 Phase 0-2 已有的 API 基本够用，需补充以下端点：
 
@@ -195,7 +195,7 @@ Phase 0-2 已有的 API 基本够用，需补充以下端点：
 
 #### Blob 类型支持
 
-当前 Tree 中的条目只有 `manifest`（JSONL 文件）和 `tree`（子目录）两种类型。Phase 3 需要新增 `blob` 类型，用于存储非 JSONL 文件（README.md、LICENSE、.datahub/config 等）：
+当前 Tree 中的条目只有 `manifest`（JSONL 文件）和 `tree`（子目录）两种类型。Phase 3 需要新增 `blob` 类型，用于存储非 JSONL 文件（README.md、LICENSE、.dit/config 等）：
 
 - Tree entry 新增 `type: "blob"`，指向一个 blob 对象（原始文件内容的 SHA-256 hash）
 - blob 对象存储在 `objects/blobs/<hash[0:2]>/<hash>` 路径下
@@ -213,7 +213,7 @@ Phase 0-2 已有的 API 基本够用，需补充以下端点：
 
 #### 内部认证中间件
 
-新增 service token 认证：请求头 `X-Service-Token` 匹配预共享密钥时跳过 Forgejo token 校验。datahub-core 同时保留现有 token 认证（向后兼容开发/测试场景）。
+新增 service token 认证：请求头 `X-Service-Token` 匹配预共享密钥时跳过 Forgejo token 校验。dit-core 同时保留现有 token 认证（向后兼容开发/测试场景）。
 
 ### 5.3 Web 前端 — 数据集主页
 
@@ -222,7 +222,7 @@ Phase 0-2 已有的 API 基本够用，需补充以下端点：
 - 顶部：repo 名称、描述、star/fork 计数（复用 Forgejo 现有组件）
 - 统计卡片：文件数、总行数、最近提交时间
 - 文件树浏览器：目录 + `.jsonl` 文件列表，显示行数
-- 分支/tag 选择器：复用 Forgejo 组件，数据源改为 datahub refs API
+- 分支/tag 选择器：复用 Forgejo 组件，数据源改为 dit refs API
 - README 渲染：data repo tree 支持非 JSONL 文件作为 blob 类型的 TreeEntry（见下方 blob 支持说明）。如果 tree 根目录有 README.md，渲染在文件列表下方
 
 #### JSONL 文件查看器
@@ -239,19 +239,19 @@ Phase 0-2 已有的 API 基本够用，需补充以下端点：
 
 - Forgejo 用 Go template 渲染页面骨架
 - `type=data` 时加载不同模板：
-  - `templates/repo/datahub/home.tmpl` — 数据集主页
-  - `templates/repo/datahub/view.tmpl` — 文件查看
-  - `templates/repo/datahub/commits.tmpl` — 提交历史
-- 文件查看器的交互部分用 Vue 3 组件，挂载到模板中的 `<div id="datahub-viewer">`
-- 数据通过 Forgejo 代理 API 获取（前端 JS → Forgejo API → datahub-core）
+  - `templates/repo/dit/home.tmpl` — 数据集主页
+  - `templates/repo/dit/view.tmpl` — 文件查看
+  - `templates/repo/dit/commits.tmpl` — 提交历史
+- 文件查看器的交互部分用 Vue 3 组件，挂载到模板中的 `<div id="dit-viewer">`
+- 数据通过 Forgejo 代理 API 获取（前端 JS → Forgejo API → dit-core）
 
 ### 5.4 dit CLI 适配
 
 - `dit remote` URL 格式改为 Forgejo 地址：`http://forgejo:3000/{owner}/{repo}`
-- `dit push/clone/fetch` 改调 Forgejo 代理路由（`/api/v1/repos/{owner}/{repo}/datahub/*`）
+- `dit push/clone/fetch` 改调 Forgejo 代理路由（`/api/v1/repos/{owner}/{repo}/dit/*`）
 - 认证改用 Forgejo API token：
   - `dit auth login <forgejo-url>` — 输入 Forgejo 用户名 + API token
-  - token 存储在 `~/.datahub/credentials`（已有机制）
+  - token 存储在 `~/.dit/credentials`（已有机制）
   - 请求头改为 `Authorization: token <forgejo-api-token>`（Forgejo 标准格式）
 
 ---
@@ -292,7 +292,7 @@ CREATE TABLE data_pull_request_meta (
 
 ### 6.2 PR 生命周期
 
-| 操作 | Forgejo 侧 | datahub-core 侧 |
+| 操作 | Forgejo 侧 | dit-core 侧 |
 |---|---|---|
 | 创建 PR | 写入 `pull_request` + `data_pull_request_meta` | 调 `POST /diff` 预计算变更统计 |
 | 查看 Diff | 前端请求 Diff 数据 | 调 `POST /diff` 实时计算 |
@@ -301,12 +301,12 @@ CREATE TABLE data_pull_request_meta (
 | 关闭 PR | 更新状态为 closed | 无操作 |
 
 PR 创建入口：
-- Web UI：Forgejo PR 创建表单，`type=data` 时后端走 datahub 流程
+- Web UI：Forgejo PR 创建表单，`type=data` 时后端走 dit 流程
 - CLI：`dit pr create <branch> --title "..."` → 调 Forgejo PR API
 
 #### PR 更新触发机制
 
-用户 `dit push` 到 feature 分支时，请求经过 Forgejo 代理路由 `POST .../datahub/refs/heads/{name}`。代理层在成功转发 CAS 更新后，执行 PR 关联检查：
+用户 `dit push` 到 feature 分支时，请求经过 Forgejo 代理路由 `POST .../dit/refs/heads/{name}`。代理层在成功转发 CAS 更新后，执行 PR 关联检查：
 
 1. 查询 `data_pull_request_meta` 中 `source_ref = 'heads/{name}'` 且 PR 状态为 open 的记录
 2. 对匹配的 PR，更新 `source_commit` 为新的 ref target
@@ -314,7 +314,7 @@ PR 创建入口：
 4. 更新 `data_pull_request_meta` 的 stats 和 is_mergeable 字段
 5. 触发 Forgejo 的 PR 更新通知
 
-### 6.3 datahub-core Diff API 扩展
+### 6.3 dit-core Diff API 扩展
 
 现有 `POST /diff` 返回基础 diff，需扩展响应格式以支持 PR 审查场景：
 
@@ -429,7 +429,7 @@ PR 的 "Files changed" 标签页：
 #### Vue 3 组件结构
 
 ```
-web_src/js/components/datahub/
+web_src/js/components/dit/
 ├── DiffView.vue           # 顶层 diff 容器
 ├── DiffFileSummary.vue    # 文件列表中的单文件摘要行
 ├── DiffFileDetail.vue     # 单文件的三段折叠 diff
@@ -440,7 +440,7 @@ web_src/js/components/datahub/
 ├── RowComment.vue         # 行级评论线程
 └── shared/
     ├── Pagination.vue     # 分页加载控件
-    └── api.ts             # datahub API 调用封装
+    └── api.ts             # dit API 调用封装
 ```
 
 ### 6.5 行级评论
@@ -490,7 +490,7 @@ Forgejo 后端: 权限检查（是否有 push/maintainer 权限）
 Forgejo 后端: 检查分支保护规则（review 数、CI 状态）
         │
         ▼
-Forgejo → datahub-core: POST /merge
+Forgejo → dit-core: POST /merge
         { source_ref, target_ref, message, author }
         │
         ├─ 成功 → 返回 merge_commit hash
@@ -515,9 +515,9 @@ Forgejo → datahub-core: POST /merge
 
 ### 7.1 权限模型映射
 
-DataHub 的 6 级角色映射到 Forgejo 的 Team/Collaboration 权限体系：
+Dit 的 6 级角色映射到 Forgejo 的 Team/Collaboration 权限体系：
 
-| DataHub 角色 | Forgejo 映射 | 实现方式 |
+| Dit 角色 | Forgejo 映射 | 实现方式 |
 |---|---|---|
 | **Owner** | Repository Owner | Forgejo 内置 |
 | **Admin** | Team with Admin access | Forgejo 内置 |
@@ -556,7 +556,7 @@ Forgejo 原生有 Owner / Admin / Write / Read 四级。需要扩展的部分：
 
 | 保护规则 | Forgejo 已有 | 需要适配 |
 |---|---|---|
-| 必须通过 PR 合入 | 是 | 合并时调 datahub-core 而非 git merge |
+| 必须通过 PR 合入 | 是 | 合并时调 dit-core 而非 git merge |
 | 需要 N 个 approve | 是 | 复用 |
 | 必须通过 CI（status check） | 是 | 复用 |
 | 特定 reviewer 必审 | 部分（CODEOWNERS） | 扩展：按文件路径模式配置必审人 |
@@ -606,11 +606,11 @@ PR 创建/更新时，Forgejo 后端根据 diff 涉及的文件路径匹配规�
 
 ### 7.4 Webhook 集成
 
-Phase 2 的 webhook 骨架（datahub-core 侧）将被 Forgejo 内置 webhook 替代：
+Phase 2 的 webhook 骨架（dit-core 侧）将被 Forgejo 内置 webhook 替代：
 
 - Forgejo 原生 webhook 支持：push、PR 创建/合并/关闭、comment、release 等事件
 - `type=data` 的 repo 触发的 webhook 事件与 git repo 一致
-- datahub-core 侧的 webhook 表和路由可在 Phase 3 完成后标记为 deprecated
+- dit-core 侧的 webhook 表和路由可在 Phase 3 完成后标记为 deprecated
 
 ---
 
@@ -618,7 +618,7 @@ Phase 2 的 webhook 骨架（datahub-core 侧）将被 Forgejo 内置 webhook �
 
 ### 8.1 Vue 3 集成方式
 
-Forgejo 前端混合使用 Go template + Vue 3（Fomantic UI）。DataHub 的前端组件策略：
+Forgejo 前端混合使用 Go template + Vue 3（Fomantic UI）。Dit 的前端组件策略：
 
 - 页面骨架（header、sidebar、footer）复用 Go template
 - 数据展示区域用 Vue 3 SFC（Single File Components）
@@ -628,7 +628,7 @@ Forgejo 前端混合使用 Go template + Vue 3（Fomantic UI）。DataHub 的前
 ### 8.2 新增模板文件
 
 ```
-templates/repo/datahub/
+templates/repo/dit/
 ├── home.tmpl              # 数据集主页
 ├── view.tmpl              # JSONL 文件查看
 ├── commits.tmpl           # 提交历史
@@ -639,7 +639,7 @@ templates/repo/datahub/
 ### 8.3 新增 Vue 组件
 
 ```
-web_src/js/components/datahub/
+web_src/js/components/dit/
 ├── DatasetHome.vue             # 数据集主页（统计卡片 + 文件树）
 ├── FileTree.vue                # 文件树浏览器
 ├── JsonlViewer.vue             # JSONL 文件查看器
@@ -651,11 +651,11 @@ web_src/js/components/datahub/
 ├── DiffRow.vue                 # 单行变更渲染
 ├── DiffRowRefreshed.vue        # 刷新行 old/new 并排
 ├── RowComment.vue              # 行级评论线程
-├── BranchSelector.vue          # 分支/tag 选择器（调用 /api/v1/repos/{owner}/{repo}/datahub/refs 获取分支列表，UI 复用 Forgejo 下拉组件样式）
+├── BranchSelector.vue          # 分支/tag 选择器（调用 /api/v1/repos/{owner}/{repo}/dit/refs 获取分支列表，UI 复用 Forgejo 下拉组件样式）
 ├── ConflictResolver.vue        # 冲突解决 UI
 └── shared/
     ├── Pagination.vue          # 分页控件
-    ├── api.ts                  # datahub 代理 API 封装
+    ├── api.ts                  # dit 代理 API 封装
     └── types.ts                # TypeScript 类型定义
 ```
 
@@ -672,24 +672,24 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - DATAHUB__CORE_URL=http://datahub-core:8000/api/v1
-      - DATAHUB__SERVICE_TOKEN=${SERVICE_TOKEN}
+      - DIT__CORE_URL=http://dit-core:8000/api/v1
+      - DIT__SERVICE_TOKEN=${SERVICE_TOKEN}
     volumes:
       - forgejo-data:/data
     depends_on:
       - postgres
-      - datahub-core
+      - dit-core
 
-  datahub-core:
-    image: datahub-core:latest
+  dit-core:
+    image: dit-core:latest
     expose:
       - "8000"                        # 只内网可达，不对外
     environment:
       - DATABASE_URL=postgresql+asyncpg://...
-      - DATA_DIR=/data/datahub
+      - DATA_DIR=/data/dit
       - SERVICE_TOKEN=${SERVICE_TOKEN}
     volumes:
-      - datahub-objects:/data/datahub
+      - dit-objects:/data/dit
 
   postgres:
     image: postgres:16
@@ -702,7 +702,7 @@ services:
 - Fork Forgejo 源码到独立 repo（如 `datahub-gateway`）
 - Go 1.22+ / Node.js 20+ / Python 3.12+
 - `make watch` 启动 Forgejo 开发服务器（hot reload Go templates + Vue）
-- datahub-core 用 `uv run uvicorn` 启动
+- dit-core 用 `uv run uvicorn` 启动
 - 共享同一个 PostgreSQL 实例
 
 ---
@@ -712,7 +712,7 @@ services:
 - sidecar 元数据查看/编辑（Phase 4）
 - 行级搜索（Phase 4）
 - 统计面板 / token 分布图表（Phase 4）
-- 文件查看页的 token 统计（如 "9700 lines · 4.1M tokens"）（Phase 4，需要 datahub-core 提供 manifest 级统计 API）
+- 文件查看页的 token 统计（如 "9700 lines · 4.1M tokens"）（Phase 4，需要 dit-core 提供 manifest 级统计 API）
 - 导出任务面板（Phase 4）
 - Blame 视图（Phase 5）
 - CI bridge 集成（Phase 4）

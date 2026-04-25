@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implement PR lifecycle, enhanced diff API with row content, row-level comments, merge execution flow, and conflict resolution for the DataHub review workflow.
+**Goal:** Implement PR lifecycle, enhanced diff API with row content, row-level comments, merge execution flow, and conflict resolution for the Dit review workflow.
 
-**Architecture:** PR state lives in datahub-core's PostgreSQL (data_pull_request_meta + pr_comment tables). PR operations delegate to existing merge/diff logic. Comments are stored per-PR with optional row-level anchoring. The merge endpoint orchestrates the full merge-then-update-PR flow.
+**Architecture:** PR state lives in dit-core's PostgreSQL (data_pull_request_meta + pr_comment tables). PR operations delegate to existing merge/diff logic. Comments are stored per-PR with optional row-level anchoring. The merge endpoint orchestrates the full merge-then-update-PR flow.
 
 **Tech Stack:** Python 3.12, FastAPI, SQLAlchemy 2.0 async, Alembic (migrations), pytest + pytest-asyncio
 
@@ -223,11 +223,11 @@ class PullRequestMeta(Base):
     __tablename__ = "data_pull_request_meta"
     __table_args__ = (
         sa.UniqueConstraint("repo_id", "pull_request_id", name="uq_pr_repo_prid"),
-        {"schema": "datahub"},
+        {"schema": "dit"},
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    repo_id: Mapped[int] = mapped_column(ForeignKey("datahub.repos.id"), nullable=False)
+    repo_id: Mapped[int] = mapped_column(ForeignKey("dit.repos.id"), nullable=False)
     pull_request_id: Mapped[int] = mapped_column(nullable=False)
     title: Mapped[str] = mapped_column(String(512), nullable=False)
     author: Mapped[str] = mapped_column(String(256), nullable=False)
@@ -289,7 +289,7 @@ def upgrade() -> None:
     op.create_table(
         "data_pull_request_meta",
         sa.Column("id", sa.BigInteger, primary_key=True, autoincrement=True),
-        sa.Column("repo_id", sa.Integer, sa.ForeignKey("datahub.repos.id"), nullable=False),
+        sa.Column("repo_id", sa.Integer, sa.ForeignKey("dit.repos.id"), nullable=False),
         sa.Column("pull_request_id", sa.BigInteger, nullable=False),
         sa.Column("title", sa.String(512), nullable=False),
         sa.Column("author", sa.String(256), nullable=False),
@@ -308,12 +308,12 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.UniqueConstraint("repo_id", "pull_request_id", name="uq_pr_repo_prid"),
-        schema="datahub",
+        schema="dit",
     )
 
 
 def downgrade() -> None:
-    op.drop_table("data_pull_request_meta", schema="datahub")
+    op.drop_table("data_pull_request_meta", schema="dit")
 ```
 
 - [ ] **1.6** Run the full server test suite to verify no regressions:
@@ -327,7 +327,7 @@ Expected: all existing tests pass, 4 new tests pass.
 - [ ] **1.7** Commit:
 
 ```bash
-cd /Users/lxs/code/datahub && git add src/dit/server/models.py src/dit/server/alembic/versions/003_pull_request_meta.py tests/server/test_models_pr.py && git commit -m "feat: PullRequestMeta model + Alembic migration 003 for data_pull_request_meta table"
+cd /Users/lxs/code/dit && git add src/dit/server/models.py src/dit/server/alembic/versions/003_pull_request_meta.py tests/server/test_models_pr.py && git commit -m "feat: PullRequestMeta model + Alembic migration 003 for data_pull_request_meta table"
 ```
 
 ---
@@ -1110,7 +1110,7 @@ uv run pytest tests/server/ -v
 - [ ] **2.7** Commit:
 
 ```bash
-cd /Users/lxs/code/datahub && git add src/dit/server/routes/pulls.py src/dit/server/app.py tests/server/test_routes_pulls.py && git commit -m "feat: PR CRUD API — create, list, get, update, merge pull requests"
+cd /Users/lxs/code/dit && git add src/dit/server/routes/pulls.py src/dit/server/app.py tests/server/test_routes_pulls.py && git commit -m "feat: PR CRUD API — create, list, get, update, merge pull requests"
 ```
 
 ---
@@ -1666,7 +1666,7 @@ uv run pytest tests/server/test_routes_diff_api.py tests/server/test_routes_diff
 - [ ] **3.6** Commit:
 
 ```bash
-cd /Users/lxs/code/datahub && git add src/dit/server/routes/diff_api.py tests/server/test_routes_diff_api_enhanced.py && git commit -m "feat: enhanced diff API — summary, row content, pagination, file filter, ref-based diff"
+cd /Users/lxs/code/dit && git add src/dit/server/routes/diff_api.py tests/server/test_routes_diff_api_enhanced.py && git commit -m "feat: enhanced diff API — summary, row content, pagination, file filter, ref-based diff"
 ```
 
 ---
@@ -1952,7 +1952,7 @@ uv run pytest tests/server/ -v
 - [ ] **4.6** Commit:
 
 ```bash
-cd /Users/lxs/code/datahub && git add src/dit/server/routes/refs.py tests/server/test_pr_update_on_push.py && git commit -m "feat: auto-update PR stats and mergeability on ref push"
+cd /Users/lxs/code/dit && git add src/dit/server/routes/refs.py tests/server/test_pr_update_on_push.py && git commit -m "feat: auto-update PR stats and mergeability on ref push"
 ```
 
 ---
@@ -2089,11 +2089,11 @@ Expected: `ImportError` — `PrComment` not found.
 
 class PrComment(Base):
     __tablename__ = "pr_comment"
-    __table_args__ = {"schema": "datahub"}
+    __table_args__ = {"schema": "dit"}
 
     id: Mapped[int] = mapped_column(primary_key=True)
     pull_request_meta_id: Mapped[int] = mapped_column(
-        ForeignKey("datahub.data_pull_request_meta.id"), nullable=False
+        ForeignKey("dit.data_pull_request_meta.id"), nullable=False
     )
     author: Mapped[str] = mapped_column(String(256), nullable=False)
     body: Mapped[str] = mapped_column(sa.Text, nullable=False)
@@ -2148,7 +2148,7 @@ def upgrade() -> None:
         sa.Column(
             "pull_request_meta_id",
             sa.BigInteger,
-            sa.ForeignKey("datahub.data_pull_request_meta.id"),
+            sa.ForeignKey("dit.data_pull_request_meta.id"),
             nullable=False,
         ),
         sa.Column("author", sa.String(256), nullable=False),
@@ -2159,19 +2159,19 @@ def upgrade() -> None:
         sa.Column("change_type", sa.String(16), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        schema="datahub",
+        schema="dit",
     )
     op.create_index(
         "ix_pr_comment_pr_meta_id",
         "pr_comment",
         ["pull_request_meta_id"],
-        schema="datahub",
+        schema="dit",
     )
 
 
 def downgrade() -> None:
-    op.drop_index("ix_pr_comment_pr_meta_id", table_name="pr_comment", schema="datahub")
-    op.drop_table("pr_comment", schema="datahub")
+    op.drop_index("ix_pr_comment_pr_meta_id", table_name="pr_comment", schema="dit")
+    op.drop_table("pr_comment", schema="dit")
 ```
 
 - [ ] **5.6** Run all model tests:
@@ -2185,7 +2185,7 @@ Expected: 7 passed (4 PullRequestMeta + 3 PrComment).
 - [ ] **5.7** Commit:
 
 ```bash
-cd /Users/lxs/code/datahub && git add src/dit/server/models.py src/dit/server/alembic/versions/004_pr_comment.py tests/server/test_models_pr.py && git commit -m "feat: PrComment model + Alembic migration 004 for row-level PR comments"
+cd /Users/lxs/code/dit && git add src/dit/server/models.py src/dit/server/alembic/versions/004_pr_comment.py tests/server/test_models_pr.py && git commit -m "feat: PrComment model + Alembic migration 004 for row-level PR comments"
 ```
 
 ---
@@ -2582,7 +2582,7 @@ uv run pytest tests/server/ -v
 - [ ] **6.7** Commit:
 
 ```bash
-cd /Users/lxs/code/datahub && git add src/dit/server/routes/pr_comments.py src/dit/server/app.py tests/server/test_routes_pr_comments.py && git commit -m "feat: PR comment CRUD API — create, list, update, delete with row-level anchoring"
+cd /Users/lxs/code/dit && git add src/dit/server/routes/pr_comments.py src/dit/server/app.py tests/server/test_routes_pr_comments.py && git commit -m "feat: PR comment CRUD API — create, list, update, delete with row-level anchoring"
 ```
 
 ---
@@ -2854,7 +2854,7 @@ Expected: all tests pass (since merge logic was implemented in Task 2).
 - [ ] **7.4** Commit:
 
 ```bash
-cd /Users/lxs/code/datahub && git add tests/server/test_routes_pulls_merge.py && git commit -m "test: comprehensive PR merge tests — three-way, fast-forward, conflict, edge cases"
+cd /Users/lxs/code/dit && git add tests/server/test_routes_pulls_merge.py && git commit -m "test: comprehensive PR merge tests — three-way, fast-forward, conflict, edge cases"
 ```
 
 ---
@@ -3277,7 +3277,7 @@ uv run pytest tests/server/ -v
 - [ ] **8.6** Commit:
 
 ```bash
-cd /Users/lxs/code/datahub && git add src/dit/server/routes/pulls.py tests/server/test_routes_conflict_resolution.py && git commit -m "feat: conflict resolution API — per-row ours/theirs choice with resolved merge commit"
+cd /Users/lxs/code/dit && git add src/dit/server/routes/pulls.py tests/server/test_routes_conflict_resolution.py && git commit -m "feat: conflict resolution API — per-row ours/theirs choice with resolved merge commit"
 ```
 
 ---
@@ -3299,7 +3299,7 @@ with zero failures.
 - [ ] **9.2** Confirm all new files are tracked:
 
 ```bash
-cd /Users/lxs/code/datahub && git status
+cd /Users/lxs/code/dit && git status
 ```
 
 Expected: `nothing to commit, working tree clean`.
@@ -3307,7 +3307,7 @@ Expected: `nothing to commit, working tree clean`.
 - [ ] **9.3** Confirm the API surface is registered:
 
 ```bash
-cd /Users/lxs/code/datahub && uv run python -c "
+cd /Users/lxs/code/dit && uv run python -c "
 from dit.server.app import create_app
 app = create_app()
 routes = [(r.methods, r.path) for r in app.routes if hasattr(r, 'methods')]
@@ -3334,7 +3334,7 @@ Expected output includes:
 - [ ] **9.4** Verify Alembic migration chain is continuous:
 
 ```bash
-ls -la /Users/lxs/code/datahub/src/dit/server/alembic/versions/
+ls -la /Users/lxs/code/dit/src/dit/server/alembic/versions/
 ```
 
 Expected: `001_initial.py`, `002_webhooks.py`, `003_pull_request_meta.py`, `004_pr_comment.py` — a clean sequential chain.

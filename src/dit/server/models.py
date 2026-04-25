@@ -12,7 +12,7 @@ class Base(DeclarativeBase):
 
 class Repo(Base):
     __tablename__ = "repos"
-    __table_args__ = {"schema": "datahub"}
+    __table_args__ = {"schema": "dit"}
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
@@ -24,9 +24,9 @@ class Repo(Base):
 
 class Ref(Base):
     __tablename__ = "refs"
-    __table_args__ = {"schema": "datahub"}
+    __table_args__ = {"schema": "dit"}
 
-    repo_id: Mapped[int] = mapped_column(ForeignKey("datahub.repos.id"), primary_key=True)
+    repo_id: Mapped[int] = mapped_column(ForeignKey("dit.repos.id"), primary_key=True)
     name: Mapped[str] = mapped_column(String(256), primary_key=True)
     target_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -37,12 +37,12 @@ class Ref(Base):
 
 class Token(Base):
     __tablename__ = "tokens"
-    __table_args__ = {"schema": "datahub"}
+    __table_args__ = {"schema": "dit"}
 
     id: Mapped[int] = mapped_column(primary_key=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     label: Mapped[str] = mapped_column(String(128), nullable=False)
-    repo_scope: Mapped[Optional[int]] = mapped_column(ForeignKey("datahub.repos.id"), nullable=True)
+    repo_scope: Mapped[Optional[int]] = mapped_column(ForeignKey("dit.repos.id"), nullable=True)
     permissions: Mapped[str] = mapped_column(String(32), nullable=False, default="push")
     role: Mapped[str] = mapped_column(String(32), nullable=False, default="reader")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -54,10 +54,10 @@ class Token(Base):
 
 class Webhook(Base):
     __tablename__ = "webhooks"
-    __table_args__ = {"schema": "datahub"}
+    __table_args__ = {"schema": "dit"}
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    repo_id: Mapped[int] = mapped_column(ForeignKey("datahub.repos.id"), nullable=False)
+    repo_id: Mapped[int] = mapped_column(ForeignKey("dit.repos.id"), nullable=False)
     url: Mapped[str] = mapped_column(String(512), nullable=False)
     secret: Mapped[str] = mapped_column(String(128), nullable=False, default="")
     events: Mapped[str] = mapped_column(String(256), nullable=False)
@@ -72,11 +72,11 @@ class PullRequestMeta(Base):
     __tablename__ = "data_pull_request_meta"
     __table_args__ = (
         sa.UniqueConstraint("repo_id", "pull_request_id", name="uq_pr_repo_prid"),
-        {"schema": "datahub"},
+        {"schema": "dit"},
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    repo_id: Mapped[int] = mapped_column(ForeignKey("datahub.repos.id"), nullable=False)
+    repo_id: Mapped[int] = mapped_column(ForeignKey("dit.repos.id"), nullable=False)
     pull_request_id: Mapped[int] = mapped_column(nullable=False)
     title: Mapped[str] = mapped_column(String(512), nullable=False)
     author: Mapped[str] = mapped_column(String(256), nullable=False)
@@ -105,11 +105,11 @@ class PullRequestMeta(Base):
 
 class PrComment(Base):
     __tablename__ = "pr_comment"
-    __table_args__ = {"schema": "datahub"}
+    __table_args__ = {"schema": "dit"}
 
     id: Mapped[int] = mapped_column(primary_key=True)
     pull_request_meta_id: Mapped[int] = mapped_column(
-        ForeignKey("datahub.data_pull_request_meta.id"), nullable=False
+        ForeignKey("dit.data_pull_request_meta.id"), nullable=False
     )
     author: Mapped[str] = mapped_column(String(256), nullable=False)
     body: Mapped[str] = mapped_column(sa.Text, nullable=False)
@@ -132,11 +132,11 @@ class BranchProtection(Base):
     __tablename__ = "branch_protection"
     __table_args__ = (
         sa.UniqueConstraint("repo_id", "branch_pattern", name="uq_branch_protection_repo_pattern"),
-        {"schema": "datahub"},
+        {"schema": "dit"},
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    repo_id: Mapped[int] = mapped_column(ForeignKey("datahub.repos.id"), nullable=False)
+    repo_id: Mapped[int] = mapped_column(ForeignKey("dit.repos.id"), nullable=False)
     branch_pattern: Mapped[str] = mapped_column(String(256), nullable=False)
     require_pr: Mapped[bool] = mapped_column(default=True)
     required_approvals: Mapped[int] = mapped_column(default=1)
@@ -149,11 +149,11 @@ class BranchProtection(Base):
 
 class PrApproval(Base):
     __tablename__ = "pr_approval"
-    __table_args__ = {"schema": "datahub"}
+    __table_args__ = {"schema": "dit"}
 
     id: Mapped[int] = mapped_column(primary_key=True)
     pull_request_id: Mapped[int] = mapped_column(nullable=False)
-    token_id: Mapped[int] = mapped_column(ForeignKey("datahub.tokens.id"), nullable=False)
+    token_id: Mapped[int] = mapped_column(ForeignKey("dit.tokens.id"), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False)  # 'approved' | 'changes_requested'
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -165,11 +165,11 @@ class CICheck(Base):
     __tablename__ = "ci_checks"
     __table_args__ = (
         sa.UniqueConstraint("repo_id", "commit_hash", "check_name", name="uq_ci_check"),
-        {"schema": "datahub"},
+        {"schema": "dit"},
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    repo_id: Mapped[int] = mapped_column(ForeignKey("datahub.repos.id"), nullable=False, index=True)
+    repo_id: Mapped[int] = mapped_column(ForeignKey("dit.repos.id"), nullable=False, index=True)
     commit_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     check_name: Mapped[str] = mapped_column(String(128), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False)  # pending|pass|fail
@@ -191,13 +191,13 @@ class CICheck(Base):
 
 class ReviewerRule(Base):
     __tablename__ = "data_reviewer_rule"
-    __table_args__ = {"schema": "datahub"}
+    __table_args__ = {"schema": "dit"}
 
     id: Mapped[int] = mapped_column(primary_key=True)
     repo_id: Mapped[int] = mapped_column(nullable=False)
     pattern: Mapped[str] = mapped_column(String(256), nullable=False)
     reviewer_token_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("datahub.tokens.id"), nullable=True
+        ForeignKey("dit.tokens.id"), nullable=True
     )
 
     def __repr__(self) -> str:

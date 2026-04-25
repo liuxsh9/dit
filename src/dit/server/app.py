@@ -29,7 +29,7 @@ def create_app(settings: ServerSettings | None = None) -> FastAPI:
     if settings is None:
         settings = ServerSettings()
 
-    application = FastAPI(title="DataHub", version="0.1.0", lifespan=lifespan)
+    application = FastAPI(title="Dit", version="0.1.0", lifespan=lifespan)
     application.state.settings = settings
     application.state.data_dir = Path(settings.data_dir)
 

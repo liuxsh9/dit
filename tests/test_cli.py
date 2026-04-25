@@ -9,14 +9,14 @@ runner = CliRunner()
 
 
 class TestInit:
-    def test_init_creates_datahub_dir(self, tmp_path: Path):
+    def test_init_creates_dit_dir(self, tmp_path: Path):
         os.chdir(tmp_path)
         result = runner.invoke(app, ["init"])
         assert result.exit_code == 0
-        assert (tmp_path / ".datahub").is_dir()
-        assert (tmp_path / ".datahub" / "HEAD").exists()
-        assert (tmp_path / ".datahub" / "refs" / "heads").is_dir()
-        assert (tmp_path / ".datahub" / "objects").is_dir()
+        assert (tmp_path / ".dit").is_dir()
+        assert (tmp_path / ".dit" / "HEAD").exists()
+        assert (tmp_path / ".dit" / "refs" / "heads").is_dir()
+        assert (tmp_path / ".dit" / "objects").is_dir()
 
     def test_init_already_exists(self, tmp_path: Path):
         os.chdir(tmp_path)
@@ -38,7 +38,7 @@ class TestAdd:
         result = runner.invoke(app, ["add", "coding.jsonl"])
         assert result.exit_code == 0
 
-        idx_path = tmp_path / ".datahub" / "index"
+        idx_path = tmp_path / ".dit" / "index"
         assert idx_path.exists()
         idx = json.loads(idx_path.read_text())
         assert "coding.jsonl" in idx
@@ -51,7 +51,7 @@ class TestAdd:
         (tmp_path / "sub" / "b.jsonl").write_text('{"y":2}\n')
         result = runner.invoke(app, ["add", "."])
         assert result.exit_code == 0
-        idx = json.loads((tmp_path / ".datahub" / "index").read_text())
+        idx = json.loads((tmp_path / ".dit" / "index").read_text())
         assert "a.jsonl" in idx
         assert "sub/b.jsonl" in idx
 
@@ -76,13 +76,13 @@ class TestCommit:
         assert result.exit_code == 0
         assert "initial" in result.stdout
 
-        head_ref = (tmp_path / ".datahub" / "refs" / "heads" / "main").read_text().strip()
+        head_ref = (tmp_path / ".dit" / "refs" / "heads" / "main").read_text().strip()
         assert len(head_ref) == 64
 
     def test_commit_clears_index(self, tmp_path: Path):
         self._setup_staged(tmp_path)
         runner.invoke(app, ["commit", "-m", "first"])
-        idx = json.loads((tmp_path / ".datahub" / "index").read_text())
+        idx = json.loads((tmp_path / ".dit" / "index").read_text())
         assert idx == {}
 
     def test_commit_nothing_staged(self, tmp_path: Path):
@@ -94,17 +94,17 @@ class TestCommit:
     def test_second_commit_has_parent(self, tmp_path: Path):
         self._setup_staged(tmp_path)
         runner.invoke(app, ["commit", "-m", "first"])
-        first_hash = (tmp_path / ".datahub" / "refs" / "heads" / "main").read_text().strip()
+        first_hash = (tmp_path / ".dit" / "refs" / "heads" / "main").read_text().strip()
 
         (tmp_path / "data.jsonl").write_text('{"messages":[{"role":"user","content":"updated"}]}\n')
         runner.invoke(app, ["add", "data.jsonl"])
         runner.invoke(app, ["commit", "-m", "second"])
-        second_hash = (tmp_path / ".datahub" / "refs" / "heads" / "main").read_text().strip()
+        second_hash = (tmp_path / ".dit" / "refs" / "heads" / "main").read_text().strip()
 
         assert first_hash != second_hash
         from dit.core.store import ObjectStore
         from dit.core.objects import deserialize_commit
-        store = ObjectStore(tmp_path / ".datahub" / "objects")
+        store = ObjectStore(tmp_path / ".dit" / "objects")
         commit_data = store.read("commits", second_hash)
         commit_obj = deserialize_commit(commit_data)
         assert commit_obj.parent_hashes == [first_hash]
@@ -310,7 +310,7 @@ class TestNestedTreeCommit:
         result = runner.invoke(app, ["commit", "-m", "nested commit"])
         assert result.exit_code == 0
 
-        dot = tmp_path / ".datahub"
+        dot = tmp_path / ".dit"
         store = ObjectStore(dot / "objects")
         refs = RefStore(dot)
         commit_hash = refs.resolve_head()
@@ -346,7 +346,7 @@ class TestNestedTreeCommit:
         result = runner.invoke(app, ["commit", "-m", "with readme"])
         assert result.exit_code == 0
 
-        dot = tmp_path / ".datahub"
+        dot = tmp_path / ".dit"
         store = ObjectStore(dot / "objects")
         refs = RefStore(dot)
         commit_hash = refs.resolve_head()
@@ -422,7 +422,7 @@ class TestMeta:
         )
         runner.invoke(app, ["add", "."])
         runner.invoke(app, ["commit", "-m", "initial data"])
-        return tmp_path / ".datahub"
+        return tmp_path / ".dit"
 
     def test_meta_compute_all(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
@@ -532,7 +532,7 @@ class TestMeta:
         runner.invoke(app, ["commit", "-m", "v1"])
         runner.invoke(app, ["meta", "compute"])
 
-        dot = tmp_path / ".datahub"
+        dot = tmp_path / ".dit"
         refs = RefStore(dot)
         commit1_hash = refs.resolve_head()
 

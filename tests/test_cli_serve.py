@@ -56,4 +56,4 @@ def test_module_entrypoint_registers_serve_command():
     )
 
     assert result.returncode == 0
-    assert "Start the DataHub HTTP API server." in result.stdout
+    assert "Start the Dit HTTP API server." in result.stdout

@@ -1,4 +1,4 @@
-# DataHub (dit) 设计过程完整记录
+# Dit (dit) 设计过程完整记录
 
 > 本文档由脚本从 Claude Code 会话历史中自动提取，保留了设计过程中的完整对话内容。
 
@@ -110,7 +110,7 @@ Gitea/Forgejo fork，好选择。Go 单二进制、代码简洁、改造成本�
 所以可能的组合：
 - **A. 纯 Go**：和 Gitea 同栈，分发简单，但团队学习成本高
 - **B. 纯 Python**：团队顺手，但分发要 pip + venv，单文件要 PyInstaller
-- **C. Go 核心 + Python SDK**：Go 做 `dh clone/add/commit/push` 这些核心 VCS 操作（性能敏感），Python 提供 `datahub` SDK 给数据分析/CI 脚本调用 HTTP API
+- **C. Go 核心 + Python SDK**：Go 做 `dh clone/add/commit/push` 这些核心 VCS 操作（性能敏感），Python 提供 `dit` SDK 给数据分析/CI 脚本调用 HTTP API
 
 你怎么看？或者还有别的考量？
 
@@ -164,16 +164,16 @@ Gitea/Forgejo fork，好选择。Go 单二进制、代码简洁、改造成本�
 
 ### 方案 X：「轻 Fork + 数据层独立」（推荐）
 
-**核心思路**：Gitea 只改最小必要的部分（UI 入口、PR 评审界面），把所有"数据 git"的核心逻辑放进一个独立的 `datahub-core` Python 服务，Gitea 通过插件/API 调用它。
+**核心思路**：Gitea 只改最小必要的部分（UI 入口、PR 评审界面），把所有"数据 git"的核心逻辑放进一个独立的 `dit-core` Python 服务，Gitea 通过插件/API 调用它。
 
 **组件**：
-- **datahub-core**（Python, FastAPI）：行级对象存储、diff、merge、引用管理。所有数据相关 API。
-- **datahub-storage**（S3 + PostgreSQL）：
+- **dit-core**（Python, FastAPI）：行级对象存储、diff、merge、引用管理。所有数据相关 API。
+- **dit-storage**（S3 + PostgreSQL）：
   - S3 存"行对象"（按 sha256 内容寻址，类似 git blob，可压缩去重）
   - S3 存"manifest"（每个文件版本 = 一个有序的行 hash 列表）
   - PostgreSQL 存元数据、引用（branch/tag）、commit 图、PR 状态、权限
-- **datahub-cli**（Python + Typer）：本地客户端，模仿 git CLI
-- **datahub-web**：Gitea fork，删除 git 仓库相关页面，新增"数据仓库"页面，diff/PR 评审 UI 调用 datahub-core API
+- **dit-cli**（Python + Typer）：本地客户端，模仿 git CLI
+- **dit-web**：Gitea fork，删除 git 仓库相关页面，新增"数据仓库"页面，diff/PR 评审 UI 调用 dit-core API
 - **CI Bridge**：独立小服务，PR 触发时打包增量到 S3 + 调外部 API + 轮询结果
 
 **优势**：
@@ -190,11 +190,11 @@ Gitea/Forgejo fork，好选择。Go 单二进制、代码简洁、改造成本�
 
 ### 方案 Y：「深度改造 Gitea」
 
-**核心思路**：把 Gitea 的 git 仓库后端替换成自定义的"行级对象库"，让 Gitea 以为它在管理 git，实际下层是 datahub。
+**核心思路**：把 Gitea 的 git 仓库后端替换成自定义的"行级对象库"，让 Gitea 以为它在管理 git，实际下层是 dit。
 
 **组件**：
-- 改 Gitea 的 `modules/git`（用 go-git 抽象层），让它读写一个 datahub 后端（gRPC 调 datahub-core）
-- datahub-core 同方案 X，但需要实现"伪装成 git 协议"的接口
+- 改 Gitea 的 `modules/git`（用 go-git 抽象层），让它读写一个 dit 后端（gRPC 调 dit-core）
+- dit-core 同方案 X，但需要实现"伪装成 git 协议"的接口
 - CLI 直接用 git？或自定义？
 
 **优势**：
@@ -251,13 +251,13 @@ X 吧，另外，是不是就和 dolt 无关了？有使用 dolt 会更好的部
 
 ## §1 核心概念与数据模型
 
-DataHub 的核心抽象与 Git 一一对应，但"最小单元"不同：Git 的最小单元是文件内容，DataHub 的最小单元是 **JSONL 中的一行**。
+Dit 的核心抽象与 Git 一一对应，但"最小单元"不同：Git 的最小单元是文件内容，Dit 的最小单元是 **JSONL 中的一行**。
 
 **对象类型**（都用内容寻址，SHA-256）：
 
 | 对象 | 说明 | 存储位置 |
 |---|---|---|
-| **Row** | 一行 JSON 的 canonical 序列化字节。hash = sha256(canonical(row))。行是 DataHub 的"atom" | S3 `objects/rows/<hash[0:2]>/<hash>` |
+| **Row** | 一行 JSON 的 canonical 序列化字节。hash = sha256(canonical(row))。行是 Dit 的"atom" | S3 `objects/rows/<hash[0:2]>/<hash>` |
 | **Manifest** | 对应一个 jsonl 文件的版本：有序的 row hash 列表 + 文件元信息。hash = sha256(manifest内容) | S3 `objects/manifests/<hash[0:2]>/<hash>` |
 | **Tree** | 对应一个目录：子目录名 + 子 manifest/tree 的 hash 映射 | S3 `objects/trees/<hash[0:2]>/<hash>` |
 | **Commit** | 指向 root tree、父 commit、作者、时间、message | S3 `objects/commits/<hash[0:2]>/<hash>` |
@@ -275,7 +275,7 @@ DataHub 的核心抽象与 Git 一一对应，但"最小单元"不同：Git 的�
 **对比 Git**：
 ```
 Git:         blob  →  tree  →  commit  →  ref
-DataHub:     row   →  manifest  →  tree  →  commit  →  ref
+Dit:     row   →  manifest  →  tree  →  commit  →  ref
            (新增一层，因为文件本身是可分解的)
 ```
 
@@ -313,7 +313,7 @@ s3://<bucket>/<repo-name>/
 
 ```
 ~/data/my-sft-repo/
-├── .datahub/
+├── .dit/
 │   ├── config                   # remote URL、user info
 │   ├── HEAD                     # 当前 branch ref
 │   ├── refs/
@@ -350,7 +350,7 @@ dh checkout bug-fix/bugfix-v2.jsonl  # 只下载单文件
 **关键机制**：
 
 1. **按需物化**：工作区中未 checkout 的目录只显示为占位符（类似 git sparse checkout）。`dh status` 只检测已 checkout 文件的变更。
-2. **本地对象缓存**：下载的 row 对象缓存在 `.datahub/objects/`，再次用到时无需重新下载。可设 LRU 上限（如 10GB），超出自动清理旧对象。
+2. **本地对象缓存**：下载的 row 对象缓存在 `.dit/objects/`，再次用到时无需重新下载。可设 LRU 上限（如 10GB），超出自动清理旧对象。
 3. **Pack 打包**（后期优化）：对于冷版本，将大量小 row 对象合并成 pack 文件，减少 S3 请求数。实现上参考 git packfile 格式，但更简单——因为 row 之间没有 delta 依赖，直接拼接 + 索引即可。
 4. **并发下载**：checkout 大目录时，用 asyncio + aioboto3 并发拉取 row 对象，充分利用带宽。
 
@@ -381,10 +381,10 @@ CAS（Compare-And-Swap）保护：push 时检查远端 branch 的 commit hash �
 
 ## §2（修订）存储布局与 Lazy Clone
 
-**服务端存储**（10T 服务器，比如 `/data/datahub/`）：
+**服务端存储**（10T 服务器，比如 `/data/dit/`）：
 
 ```
-/data/datahub/
+/data/dit/
 ├── repos/
 │   └── <repo-name>/
 │       ├── objects/
@@ -406,7 +406,7 @@ Row 对象用两级目录分片（`hash[0:2]/hash[2:4]/`），因为百万行级
 
 ```
 ~/data/my-sft-repo/
-├── .datahub/
+├── .dit/
 │   ├── config              # remote: http://<server>:8000/api/repos/<name>
 │   ├── HEAD
 │   ├── refs/
@@ -419,7 +419,7 @@ Row 对象用两级目录分片（`hash[0:2]/hash[2:4]/`），因为百万行级
 
 **传输协议**：
 
-CLI ↔ 服务端通过 HTTP API 通信（datahub-core 的 FastAPI），不再走 S3 SDK。
+CLI ↔ 服务端通过 HTTP API 通信（dit-core 的 FastAPI），不再走 S3 SDK。
 
 ```
 GET  /api/repos/{repo}/refs/{branch}           → commit hash
@@ -480,7 +480,7 @@ dh status feature-impl/coding.jsonl   # 单文件详细：哪些行 hash 是新�
 dh ls                      # 列出当前 commit 的目录树（含未 checkout 的占位）
 dh ls feature-impl/        # 展开某目录
 dh checkout <path>         # 物化目录或文件到工作区
-dh fetch <path>            # 同上但只下载到 .datahub/objects/，不展开到工作区
+dh fetch <path>            # 同上但只下载到 .dit/objects/，不展开到工作区
 ```
 
 **变更与提交**
@@ -544,7 +544,7 @@ dh tag v2026-w17                       # 打 tag（用于周版本）
 
 **元数据（sidecar）操作**
 
-这是 DataHub 独有的命令，对应需求里"元数据不污染 JSONL"。
+这是 Dit 独有的命令，对应需求里"元数据不污染 JSONL"。
 
 ```bash
 dh meta set <file> <line-spec> key=value     # 给指定行加元数据
@@ -717,13 +717,13 @@ dit pr merge <id>
 │              datahub-gateway (Go)                │
 │   - 复用 Forgejo 的用户/权限/PR/通知/Webhook      │
 │   - 改造: git 仓库页面 → 数据仓库页面            │
-│   - 改造: diff 视图 → 调 datahub-core 渲染        │
+│   - 改造: diff 视图 → 调 dit-core 渲染        │
 │   - 保留: Issue/Discussion/Wiki/Actions           │
 └──────┬─────────────────────────┬─────────────────┘
        │ gRPC/HTTP                │ 
        │                          │ SQL
 ┌──────▼──────────────────┐  ┌────▼─────────────┐
-│  datahub-core (Python)   │  │  PostgreSQL       │
+│  dit-core (Python)   │  │  PostgreSQL       │
 │  FastAPI + Uvicorn       │  │  - users/perms    │
 │  - 对象读写               │  │  - refs/PRs       │
 │  - diff/merge/blame      │  │  - sidecar meta   │
@@ -732,20 +732,20 @@ dit pr merge <id>
 └──────┬──────────────────┘
        │ 文件 IO
 ┌──────▼──────────────────┐
-│  /data/datahub/repos/    │
+│  /data/dit/repos/    │
 │  (本地文件系统对象库)      │
 └─────────────────────────┘
 ```
 
 **职责分工**：
 - **datahub-gateway**（Forgejo fork）：用户/权限/PR 生命周期/通知/Webhook/Actions，= "协作层"
-- **datahub-core**（Python FastAPI）：对象存储、行级 diff、merge、搜索、统计，= "数据层"
+- **dit-core**（Python FastAPI）：对象存储、行级 diff、merge、搜索、统计，= "数据层"
 - **PostgreSQL**：所有可变、事务性状态
 - **文件系统**：不可变对象（content-addressed）
 
 Gateway 只认"数据仓库 ID + 路径 + ref"这种层级，不关心行级细节；Core 只认对象和路径，不关心用户是谁。两层通过仓库 ID 连接。
 
-### 4.2 核心 API（datahub-core）
+### 4.2 核心 API（dit-core）
 
 ```
 # 对象层（content-addressed，不可变）
@@ -855,7 +855,7 @@ Forgejo 自带的可以**直接复用**：
 需要**改造或替换**的：
 - 仓库主页：从"git 文件树"换成"数据集树"，每个文件显示行数、token 总量、最近变更
 - 文件查看：JSONL 不再当文本展示，而是分页渲染每行 JSON（含语法高亮、可折叠 messages 数组）
-- Diff 视图：完全替换。调 datahub-core 的 diff API，渲染行级变更（含 query 刷新识别）
+- Diff 视图：完全替换。调 dit-core 的 diff API，渲染行级变更（含 query 刷新识别）
 - Blame 视图：行级 blame
 - Commit 视图：显示该 commit 的文件级摘要 + 可展开看行级变更
 - Compare 视图：两个 ref 的对比
@@ -914,7 +914,7 @@ Forgejo 自带的可以**直接复用**：
 **Stats 标签页**：
 - 行数变化、token 变化（按 user/assistant 分别统计）
 - 元数据维度的分布变化（如：标签 X 的占比从 12% → 18%）
-- 这些数据由 datahub-core 在 PR 创建时计算并缓存
+- 这些数据由 dit-core 在 PR 创建时计算并缓存
 
 **Checks 标签页**（CI 集成）：
 - 每个 check 显示状态、耗时、log 链接
@@ -967,11 +967,11 @@ Forgejo 自带的可以**直接复用**：
 Forgejo 是 Go 单体仓库，模板用 Go html/template + 少量 Vue/HTMX。改造策略：
 
 1. **新增"数据仓库"类型**：和原有 git 仓库共存，通过 `repo.type` 区分。原有 git 仓库功能不破坏。
-2. **替换路由**：`/[owner]/[repo]/` 在 type=data 时走新模板，调 datahub-core API 渲染。
+2. **替换路由**：`/[owner]/[repo]/` 在 type=data 时走新模板，调 dit-core API 渲染。
 3. **PR 模型借用**：复用 PR 数据库表（id/title/author/state），新增一个 `data_pr_meta` 副表存"源 commit、目标 commit"等数据特有字段。
 4. **Diff 渲染**：完全独立的前端模块（建议用 Vue 3 + 独立打包，挂在某个路由下）；服务端 Go 只做"调 core API + 透传"。
 
-工程量估计（不含 datahub-core 本身）：
+工程量估计（不含 dit-core 本身）：
 - 仓库类型扩展 + 路由 + 列表页：1-2 周
 - 文件查看 + Stats：1 周
 - Diff/PR 评审 UI（最重）：3-4 周
@@ -1080,7 +1080,7 @@ lisi:
 
 两个 PR 分别 merge 到 main 时：
 - 第一个 merge 正常
-- 第二个 merge 时 datahub-core 做三方合并：
+- 第二个 merge 时 dit-core 做三方合并：
   - lisi 新增的 200 行：无冲突，直接合入
   - zhangsan 删除的 100 行 lisi 没碰：无冲突，保持删除
   - 如果 lisi 恰好修改了 zhangsan 删除的某行：冲突
@@ -1312,7 +1312,7 @@ dit meta stats tag --in feature-impl/
 
 | 层 | 技术 | 理由 |
 |---|---|---|
-| **datahub-core** | Python 3.12+ / FastAPI / Uvicorn | 团队熟悉，async IO 性能足够 |
+| **dit-core** | Python 3.12+ / FastAPI / Uvicorn | 团队熟悉，async IO 性能足够 |
 | **CLI (dit)** | Python / Typer / httpx | 同语言、uv 分发 |
 | **Web (datahub-gateway)** | Forgejo fork (Go / Go template / Vue 3) | 复用 80% 协作功能 |
 | **数据库** | PostgreSQL 16 | refs、元数据、审计、PR 状态、权限 |
@@ -1331,15 +1331,15 @@ dit meta stats tag --in feature-impl/
 dit CLI ─────┤
              ▼
        ┌─ nginx (:443) ─────────────────────┐
-       │  /api/v1/*  → datahub-core (:8000)  │
+       │  /api/v1/*  → dit-core (:8000)  │
        │  /*         → forgejo (:3000)        │
        └──┬──────────────────┬───────────────┘
           ▼                  ▼
-   datahub-core         forgejo
+   dit-core         forgejo
    (FastAPI)            (Go 单二进制)
           │                  │
           ▼                  ▼
-     /data/datahub/     PostgreSQL (:5432)
+     /data/dit/     PostgreSQL (:5432)
      repos/objects/     (共用一个实例，不同 schema)
 ```
 
@@ -1351,11 +1351,11 @@ dit CLI ─────┤
 
 目标：能跑通 `dit init / add / commit / log / diff` 的本地单机流程。
 
-- datahub-core 对象模型（row / manifest / tree / commit）
+- dit-core 对象模型（row / manifest / tree / commit）
 - 本地对象存储读写
 - CLI 基础命令：init、add、status、commit、log、diff
 - JSON canonical 化 + sha256 行指纹
-- 本地 `.datahub/` 工作区管理
+- 本地 `.dit/` 工作区管理
 - 单元测试覆盖核心模型
 
 交付物：一个 Python 包，`uv tool install dit`，能在本地管理 JSONL 版本。
@@ -1364,7 +1364,7 @@ dit CLI ─────┤
 
 目标：多人能 clone / push / pull，有分支管理。
 
-- datahub-core HTTP API（对象传输、ref 管理）
+- dit-core HTTP API（对象传输、ref 管理）
 - PostgreSQL 接入（refs、commit 索引）
 - CLI 远程命令：clone、push、pull、fetch
 - Lazy clone + sparse checkout

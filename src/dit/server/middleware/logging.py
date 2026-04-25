@@ -1,4 +1,4 @@
-"""Structured request logging middleware for datahub-core."""
+"""Structured request logging middleware for dit-core."""
 from __future__ import annotations
 
 import json
@@ -9,7 +9,7 @@ import time
 from starlette.requests import Request
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-logger = logging.getLogger("datahub.access")
+logger = logging.getLogger("dit.access")
 
 _SKIP_PATHS = {"/metrics"}
 

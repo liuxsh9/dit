@@ -187,7 +187,7 @@ class TestFsck:
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /Users/lxs/code/datahub && uv run pytest tests/test_fsck.py -v`
+Run: `cd /Users/lxs/code/dit && uv run pytest tests/test_fsck.py -v`
 
 Expected: FAIL — `ModuleNotFoundError: No module named 'dit.core.fsck'`.
 
@@ -383,18 +383,18 @@ def fsck(
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd /Users/lxs/code/datahub && uv run pytest tests/test_fsck.py -v`
+Run: `cd /Users/lxs/code/dit && uv run pytest tests/test_fsck.py -v`
 
 Expected: All 9 tests PASS.
 
 - [ ] **Step 5: Run full test suite**
 
-Run: `cd /Users/lxs/code/datahub && uv run pytest tests/ -x -q`
+Run: `cd /Users/lxs/code/dit && uv run pytest tests/ -x -q`
 
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /Users/lxs/code/datahub
+cd /Users/lxs/code/dit
 git add src/dit/core/fsck.py tests/test_fsck.py
 git commit -m "feat: add core fsck module for object store integrity verification
 
@@ -436,7 +436,7 @@ runner = CliRunner()
 
 
 def _setup_repo(tmp_path: Path) -> tuple[Path, ObjectStore, RefStore]:
-    dot = tmp_path / ".datahub"
+    dot = tmp_path / ".dit"
     dot.mkdir()
     (dot / "objects").mkdir()
     store = ObjectStore(dot / "objects")
@@ -533,7 +533,7 @@ class TestFsckCommand:
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /Users/lxs/code/datahub && uv run pytest tests/test_cli_fsck.py -v`
+Run: `cd /Users/lxs/code/dit && uv run pytest tests/test_cli_fsck.py -v`
 
 - [ ] **Step 3: Add `fsck` command to `main.py`**
 
@@ -622,16 +622,16 @@ def fsck(
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd /Users/lxs/code/datahub && uv run pytest tests/test_cli_fsck.py -v`
+Run: `cd /Users/lxs/code/dit && uv run pytest tests/test_cli_fsck.py -v`
 
 - [ ] **Step 5: Run full test suite**
 
-Run: `cd /Users/lxs/code/datahub && uv run pytest tests/ -x -q`
+Run: `cd /Users/lxs/code/dit && uv run pytest tests/ -x -q`
 
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /Users/lxs/code/datahub
+cd /Users/lxs/code/dit
 git add src/dit/cli/main.py tests/test_cli_fsck.py
 git commit -m "feat: add dit fsck CLI command
 
@@ -773,7 +773,7 @@ async def test_fsck_defaults(client: AsyncClient, session, tmp_path):
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /Users/lxs/code/datahub && uv run pytest tests/server/test_routes_fsck.py -v`
+Run: `cd /Users/lxs/code/dit && uv run pytest tests/server/test_routes_fsck.py -v`
 
 - [ ] **Step 3: Create `src/dit/server/routes/fsck_api.py`**
 
@@ -857,16 +857,16 @@ Add after the dedup_router registration:
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cd /Users/lxs/code/datahub && uv run pytest tests/server/test_routes_fsck.py -v`
+Run: `cd /Users/lxs/code/dit && uv run pytest tests/server/test_routes_fsck.py -v`
 
 - [ ] **Step 6: Run full test suite**
 
-Run: `cd /Users/lxs/code/datahub && uv run pytest tests/ -x -q`
+Run: `cd /Users/lxs/code/dit && uv run pytest tests/ -x -q`
 
 - [ ] **Step 7: Commit**
 
 ```bash
-cd /Users/lxs/code/datahub
+cd /Users/lxs/code/dit
 git add src/dit/server/routes/fsck_api.py src/dit/server/app.py tests/server/test_routes_fsck.py
 git commit -m "feat: add server fsck API endpoint
 

@@ -8,7 +8,7 @@
 
 ## Overview
 
-Production-ready Docker Compose setup for datahub-gateway (Forgejo fork) + datahub-core (FastAPI) + PostgreSQL. Includes health checks, volume management, and database initialization.
+Production-ready Docker Compose setup for datahub-gateway (Forgejo fork) + dit-core (FastAPI) + PostgreSQL. Includes health checks, volume management, and database initialization.
 
 ---
 
@@ -29,9 +29,9 @@ services:
       FORGEJO__database__NAME: forgejo
       FORGEJO__database__USER: forgejo
       FORGEJO__database__PASSWD: forgejo
-      FORGEJO__datahub__ENABLED: "true"
-      FORGEJO__datahub__CORE_URL: "http://core:8000"
-      FORGEJO__datahub__SERVICE_TOKEN: "${SERVICE_TOKEN}"
+      FORGEJO__dit__ENABLED: "true"
+      FORGEJO__dit__CORE_URL: "http://core:8000"
+      FORGEJO__dit__SERVICE_TOKEN: "${SERVICE_TOKEN}"
     depends_on:
       db:
         condition: service_healthy
@@ -43,12 +43,12 @@ services:
 
   core:
     build:
-      context: ../datahub
+      context: ../dit
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: "postgresql+asyncpg://datahub:datahub@db:5432/datahub"
+      DATABASE_URL: "postgresql+asyncpg://dit:dit@db:5432/dit"
       DATA_DIR: "/data/objects"
     depends_on:
       db:
@@ -91,21 +91,21 @@ volumes:
 
 ### `scripts/init-db.sql`
 
-PostgreSQL runs scripts in `/docker-entrypoint-initdb.d/` on first start. This creates both databases and the datahub schema.
+PostgreSQL runs scripts in `/docker-entrypoint-initdb.d/` on first start. This creates both databases and the dit schema.
 
 ```sql
 -- Forgejo uses the default 'forgejo' database (created by POSTGRES_DB env)
 
--- Create datahub database and user
-CREATE USER datahub WITH PASSWORD 'datahub';
-CREATE DATABASE datahub OWNER datahub;
+-- Create dit database and user
+CREATE USER dit WITH PASSWORD 'dit';
+CREATE DATABASE dit OWNER dit;
 
--- Connect to datahub database and create schema
-\c datahub
-CREATE SCHEMA IF NOT EXISTS datahub AUTHORIZATION datahub;
+-- Connect to dit database and create schema
+\c dit
+CREATE SCHEMA IF NOT EXISTS dit AUTHORIZATION dit;
 ```
 
-Note: datahub-core runs its own Alembic migrations on startup to create tables within the `datahub` schema.
+Note: dit-core runs its own Alembic migrations on startup to create tables within the `dit` schema.
 
 ---
 
@@ -129,7 +129,7 @@ POSTGRES_PASSWORD=
 
 ## 4. Gateway Dockerfile
 
-The Forgejo fork builds like standard Forgejo with one addition: the `[datahub]` config section.
+The Forgejo fork builds like standard Forgejo with one addition: the `[dit]` config section.
 
 ```dockerfile
 FROM golang:1.23-alpine AS backend
@@ -178,8 +178,8 @@ CMD ["web"]
 # Terminal 1: PostgreSQL (via Docker)
 docker compose up db
 
-# Terminal 2: datahub-core
-cd ../datahub
+# Terminal 2: dit-core
+cd ../dit
 uvicorn dit.server.app:app --reload --port 8000
 
 # Terminal 3: Forgejo gateway
@@ -212,7 +212,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.23"
-      - run: go test ./modules/datahub/... ./routers/api/v1/repo/...
+      - run: go test ./modules/dit/... ./routers/api/v1/repo/...
   
   lint:
     runs-on: ubuntu-latest
@@ -233,7 +233,7 @@ jobs:
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| Database | Single PostgreSQL instance, two databases | Simpler ops; Forgejo and datahub-core schemas don't overlap |
+| Database | Single PostgreSQL instance, two databases | Simpler ops; Forgejo and dit-core schemas don't overlap |
 | Init strategy | SQL script in docker-entrypoint-initdb.d | Standard PostgreSQL pattern, runs once on first start |
 | Service communication | Docker network, no external ports for core | Core is internal-only; gateway proxies all requests |
 | Dev workflow | Components run independently | Faster iteration than full Docker rebuild |

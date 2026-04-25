@@ -1,4 +1,4 @@
-"""Prometheus metrics middleware for datahub-core."""
+"""Prometheus metrics middleware for dit-core."""
 from __future__ import annotations
 
 import re
@@ -31,20 +31,20 @@ def _normalize_path(path: str) -> str:
 
 def create_metrics(registry: CollectorRegistry):
     request_count = Counter(
-        "datahub_http_requests_total",
+        "dit_http_requests_total",
         "Total HTTP requests",
         ["method", "path", "status"],
         registry=registry,
     )
     request_latency = Histogram(
-        "datahub_http_request_duration_seconds",
+        "dit_http_request_duration_seconds",
         "HTTP request latency in seconds",
         ["method", "path"],
         buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0],
         registry=registry,
     )
     requests_in_progress = Gauge(
-        "datahub_http_requests_in_progress",
+        "dit_http_requests_in_progress",
         "Number of HTTP requests currently being processed",
         ["method"],
         registry=registry,

@@ -19,7 +19,7 @@ def upgrade() -> None:
     op.create_table(
         "data_pull_request_meta",
         sa.Column("id", sa.BigInteger, primary_key=True, autoincrement=True),
-        sa.Column("repo_id", sa.Integer, sa.ForeignKey("datahub.repos.id"), nullable=False),
+        sa.Column("repo_id", sa.Integer, sa.ForeignKey("dit.repos.id"), nullable=False),
         sa.Column("pull_request_id", sa.BigInteger, nullable=False),
         sa.Column("title", sa.String(512), nullable=False),
         sa.Column("author", sa.String(256), nullable=False),
@@ -38,9 +38,9 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.UniqueConstraint("repo_id", "pull_request_id", name="uq_pr_repo_prid"),
-        schema="datahub",
+        schema="dit",
     )
 
 
 def downgrade() -> None:
-    op.drop_table("data_pull_request_meta", schema="datahub")
+    op.drop_table("data_pull_request_meta", schema="dit")

@@ -1,6 +1,6 @@
-# DataHub 手动测试指南 05：服务端核心 API
+# Dit 手动测试指南 05：服务端核心 API
 
-本指南覆盖 DataHub Server 的核心 REST API 端点，通过 curl 直接测试，不经过 `dit` CLI。适合验证服务端行为、调试集成问题，或在没有 CLI 客户端的环境中使用。
+本指南覆盖 Dit Server 的核心 REST API 端点，通过 curl 直接测试，不经过 `dit` CLI。适合验证服务端行为、调试集成问题，或在没有 CLI 客户端的环境中使用。
 
 **前置条件**：
 - 已完成 **指南 00**（服务端在 `localhost:8000` 正常运行，Admin 令牌已备好）
@@ -811,7 +811,7 @@ curl -s -X POST "$BASE/api/v1/repos/$REPO/diff" \
 
 ## 9. 权限验证
 
-DataHub 使用分级角色系统（从低到高）：`reader` < `reviewer` < `committer` < `maintainer` < `admin` < `owner`。  
+Dit 使用分级角色系统（从低到高）：`reader` < `reviewer` < `committer` < `maintainer` < `admin` < `owner`。  
 旧版权限名 `read`/`push`/`admin` 分别映射到 `reader`/`committer`/`admin`。
 
 各端点的最低权限要求：

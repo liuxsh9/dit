@@ -16,7 +16,7 @@ _SUNSET_DATE = "Sat, 01 Jul 2027 00:00:00 GMT"
 def _add_deprecation_headers(response: Response) -> None:
     response.headers["Deprecation"] = _DEPRECATION_DATE
     response.headers["Sunset"] = _SUNSET_DATE
-    response.headers["Link"] = '<https://forgejo.datahub.example/docs/webhooks>; rel="successor-version"'
+    response.headers["Link"] = '<https://forgejo.dit.example/docs/webhooks>; rel="successor-version"'
 
 
 class CreateWebhookRequest(BaseModel):

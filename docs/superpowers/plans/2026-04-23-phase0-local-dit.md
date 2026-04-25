@@ -4,7 +4,7 @@
 
 **Goal:** Build a working local `dit init / add / commit / log / diff` flow that version-controls JSONL files with line-level tracking.
 
-**Architecture:** Content-addressed object store (Row → Manifest → Tree → Commit → Ref) on the local filesystem, with RFC 8785 JSON canonicalization for deterministic hashing. CLI built with Typer. All objects are SHA-256 addressed, zstd-compressed, stored under `.datahub/objects/` with two-level directory sharding.
+**Architecture:** Content-addressed object store (Row → Manifest → Tree → Commit → Ref) on the local filesystem, with RFC 8785 JSON canonicalization for deterministic hashing. CLI built with Typer. All objects are SHA-256 addressed, zstd-compressed, stored under `.dit/objects/` with two-level directory sharding.
 
 **Tech Stack:** Python 3.12+, uv, Typer, httpx (future), pyzstd, jcs (RFC 8785), pytest
 
@@ -13,7 +13,7 @@
 ## File Structure
 
 ```
-datahub/
+dit/
 ├── pyproject.toml                    # Package config, [project.scripts] dit = "dit.cli.main:app"
 ├── src/
 │   └── dit/
@@ -182,7 +182,7 @@ def sample_jsonl(tmp_repo: Path, sample_conversation: dict) -> Path:
 - [ ] **Step 5: Install dependencies and verify**
 
 ```bash
-cd /Users/lxs/code/datahub && uv sync
+cd /Users/lxs/code/dit && uv sync
 uv run dit version
 ```
 
@@ -756,53 +756,53 @@ from dit.core.store import ObjectStore
 
 class TestObjectStore:
     def test_write_and_read(self, tmp_repo: Path):
-        store = ObjectStore(tmp_repo / ".datahub" / "objects")
+        store = ObjectStore(tmp_repo / ".dit" / "objects")
         data = b"hello world"
         h = store.write("rows", data)
         assert len(h) == 64
         assert store.read("rows", h) == data
 
     def test_read_nonexistent_returns_none(self, tmp_repo: Path):
-        store = ObjectStore(tmp_repo / ".datahub" / "objects")
+        store = ObjectStore(tmp_repo / ".dit" / "objects")
         assert store.read("rows", "00" * 32) is None
 
     def test_exists(self, tmp_repo: Path):
-        store = ObjectStore(tmp_repo / ".datahub" / "objects")
+        store = ObjectStore(tmp_repo / ".dit" / "objects")
         data = b"test data"
         h = store.write("rows", data)
         assert store.exists("rows", h) is True
         assert store.exists("rows", "00" * 32) is False
 
     def test_two_level_sharding(self, tmp_repo: Path):
-        store = ObjectStore(tmp_repo / ".datahub" / "objects")
+        store = ObjectStore(tmp_repo / ".dit" / "objects")
         data = b"sharding test"
         h = store.write("rows", data)
         expected_path = store.root / "rows" / h[0:2] / h[2:4] / h
         assert expected_path.exists()
 
     def test_zstd_compression(self, tmp_repo: Path):
-        store = ObjectStore(tmp_repo / ".datahub" / "objects")
+        store = ObjectStore(tmp_repo / ".dit" / "objects")
         data = b"A" * 10000
         h = store.write("rows", data)
         raw_path = store.root / "rows" / h[0:2] / h[2:4] / h
         assert raw_path.stat().st_size < len(data)
 
     def test_idempotent_write(self, tmp_repo: Path):
-        store = ObjectStore(tmp_repo / ".datahub" / "objects")
+        store = ObjectStore(tmp_repo / ".dit" / "objects")
         data = b"same content"
         h1 = store.write("rows", data)
         h2 = store.write("rows", data)
         assert h1 == h2
 
     def test_different_types_independent(self, tmp_repo: Path):
-        store = ObjectStore(tmp_repo / ".datahub" / "objects")
+        store = ObjectStore(tmp_repo / ".dit" / "objects")
         data = b"some bytes"
         h = store.write("manifests", data)
         assert store.exists("manifests", h) is True
         assert store.exists("rows", h) is False
 
     def test_batch_exists(self, tmp_repo: Path):
-        store = ObjectStore(tmp_repo / ".datahub" / "objects")
+        store = ObjectStore(tmp_repo / ".dit" / "objects")
         h1 = store.write("rows", b"one")
         h2 = store.write("rows", b"two")
         missing = "00" * 32
@@ -903,14 +903,14 @@ from dit.core.refs import RefStore
 
 class TestRefStore:
     def test_get_head_default_main(self, tmp_repo: Path):
-        dot = tmp_repo / ".datahub"
+        dot = tmp_repo / ".dit"
         dot.mkdir()
         refs = RefStore(dot)
         refs.init()
         assert refs.get_head() == "ref:main"
 
     def test_get_set_branch(self, tmp_repo: Path):
-        dot = tmp_repo / ".datahub"
+        dot = tmp_repo / ".dit"
         dot.mkdir()
         refs = RefStore(dot)
         refs.init()
@@ -918,21 +918,21 @@ class TestRefStore:
         assert refs.get_branch("main") == "aa" * 32
 
     def test_get_nonexistent_branch_returns_none(self, tmp_repo: Path):
-        dot = tmp_repo / ".datahub"
+        dot = tmp_repo / ".dit"
         dot.mkdir()
         refs = RefStore(dot)
         refs.init()
         assert refs.get_branch("nonexistent") is None
 
     def test_resolve_head_no_commits(self, tmp_repo: Path):
-        dot = tmp_repo / ".datahub"
+        dot = tmp_repo / ".dit"
         dot.mkdir()
         refs = RefStore(dot)
         refs.init()
         assert refs.resolve_head() is None
 
     def test_resolve_head_with_commit(self, tmp_repo: Path):
-        dot = tmp_repo / ".datahub"
+        dot = tmp_repo / ".dit"
         dot.mkdir()
         refs = RefStore(dot)
         refs.init()
@@ -940,14 +940,14 @@ class TestRefStore:
         assert refs.resolve_head() == "cc" * 32
 
     def test_current_branch_name(self, tmp_repo: Path):
-        dot = tmp_repo / ".datahub"
+        dot = tmp_repo / ".dit"
         dot.mkdir()
         refs = RefStore(dot)
         refs.init()
         assert refs.current_branch() == "main"
 
     def test_list_branches(self, tmp_repo: Path):
-        dot = tmp_repo / ".datahub"
+        dot = tmp_repo / ".dit"
         dot.mkdir()
         refs = RefStore(dot)
         refs.init()
@@ -974,10 +974,10 @@ from typing import Optional
 
 
 class RefStore:
-    def __init__(self, dot_datahub: Path):
-        self.dot = dot_datahub
-        self.head_file = dot_datahub / "HEAD"
-        self.refs_dir = dot_datahub / "refs" / "heads"
+    def __init__(self, dot_dit: Path):
+        self.dot = dot_dit
+        self.head_file = dot_dit / "HEAD"
+        self.refs_dir = dot_dit / "refs" / "heads"
 
     def init(self) -> None:
         self.refs_dir.mkdir(parents=True, exist_ok=True)
@@ -1055,36 +1055,36 @@ from dit.core.index import StagingIndex
 
 class TestStagingIndex:
     def test_empty_index(self, tmp_repo: Path):
-        idx = StagingIndex(tmp_repo / ".datahub" / "index")
+        idx = StagingIndex(tmp_repo / ".dit" / "index")
         assert idx.entries() == {}
 
     def test_stage_and_read(self, tmp_repo: Path):
-        idx = StagingIndex(tmp_repo / ".datahub" / "index")
+        idx = StagingIndex(tmp_repo / ".dit" / "index")
         idx.stage("coding.jsonl", "aa" * 32)
         entries = idx.entries()
         assert entries == {"coding.jsonl": "aa" * 32}
 
     def test_stage_overwrites(self, tmp_repo: Path):
-        idx = StagingIndex(tmp_repo / ".datahub" / "index")
+        idx = StagingIndex(tmp_repo / ".dit" / "index")
         idx.stage("coding.jsonl", "aa" * 32)
         idx.stage("coding.jsonl", "bb" * 32)
         assert idx.entries()["coding.jsonl"] == "bb" * 32
 
     def test_unstage(self, tmp_repo: Path):
-        idx = StagingIndex(tmp_repo / ".datahub" / "index")
+        idx = StagingIndex(tmp_repo / ".dit" / "index")
         idx.stage("coding.jsonl", "aa" * 32)
         idx.unstage("coding.jsonl")
         assert idx.entries() == {}
 
     def test_clear(self, tmp_repo: Path):
-        idx = StagingIndex(tmp_repo / ".datahub" / "index")
+        idx = StagingIndex(tmp_repo / ".dit" / "index")
         idx.stage("a.jsonl", "aa" * 32)
         idx.stage("b.jsonl", "bb" * 32)
         idx.clear()
         assert idx.entries() == {}
 
     def test_persistence(self, tmp_repo: Path):
-        path = tmp_repo / ".datahub" / "index"
+        path = tmp_repo / ".dit" / "index"
         idx1 = StagingIndex(path)
         idx1.stage("x.jsonl", "cc" * 32)
         idx2 = StagingIndex(path)
@@ -1183,9 +1183,9 @@ class TestFindJsonlFiles:
         rel_paths = sorted(str(f.relative_to(tmp_repo)) for f in files)
         assert rel_paths == ["a.jsonl", "sub/c.jsonl"]
 
-    def test_ignores_datahub_dir(self, tmp_repo: Path):
-        (tmp_repo / ".datahub").mkdir()
-        (tmp_repo / ".datahub" / "internal.jsonl").write_text('{"z":1}\n')
+    def test_ignores_dit_dir(self, tmp_repo: Path):
+        (tmp_repo / ".dit").mkdir()
+        (tmp_repo / ".dit" / "internal.jsonl").write_text('{"z":1}\n')
         (tmp_repo / "real.jsonl").write_text('{"w":1}\n')
         files = find_jsonl_files(tmp_repo)
         assert len(files) == 1
@@ -1240,7 +1240,7 @@ from dit.utils.jsonl import read_rows
 def find_jsonl_files(root: Path) -> list[Path]:
     results = []
     for p in sorted(root.rglob("*.jsonl")):
-        if ".datahub" in p.parts:
+        if ".dit" in p.parts:
             continue
         results.append(p)
     return results
@@ -1465,14 +1465,14 @@ runner = CliRunner()
 
 
 class TestInit:
-    def test_init_creates_datahub_dir(self, tmp_path: Path):
+    def test_init_creates_dit_dir(self, tmp_path: Path):
         os.chdir(tmp_path)
         result = runner.invoke(app, ["init"])
         assert result.exit_code == 0
-        assert (tmp_path / ".datahub").is_dir()
-        assert (tmp_path / ".datahub" / "HEAD").exists()
-        assert (tmp_path / ".datahub" / "refs" / "heads").is_dir()
-        assert (tmp_path / ".datahub" / "objects").is_dir()
+        assert (tmp_path / ".dit").is_dir()
+        assert (tmp_path / ".dit" / "HEAD").exists()
+        assert (tmp_path / ".dit" / "refs" / "heads").is_dir()
+        assert (tmp_path / ".dit" / "objects").is_dir()
 
     def test_init_already_exists(self, tmp_path: Path):
         os.chdir(tmp_path)
@@ -1508,7 +1508,7 @@ def find_repo_root() -> Path:
     cwd = Path.cwd()
     p = cwd
     while True:
-        if (p / ".datahub").is_dir():
+        if (p / ".dit").is_dir():
             return p
         if p.parent == p:
             break
@@ -1518,7 +1518,7 @@ def find_repo_root() -> Path:
 
 
 def get_dot(repo_root: Path) -> Path:
-    return repo_root / ".datahub"
+    return repo_root / ".dit"
 
 
 @app.command()
@@ -1532,7 +1532,7 @@ def version():
 def init():
     """Initialize a new dit repository in the current directory."""
     cwd = Path.cwd()
-    dot = cwd / ".datahub"
+    dot = cwd / ".dit"
     if dot.exists():
         typer.echo(f"Already initialized dit repository in {cwd}")
         return
@@ -1585,7 +1585,7 @@ class TestAdd:
         result = runner.invoke(app, ["add", "coding.jsonl"])
         assert result.exit_code == 0
 
-        idx_path = tmp_path / ".datahub" / "index"
+        idx_path = tmp_path / ".dit" / "index"
         assert idx_path.exists()
         idx = json.loads(idx_path.read_text())
         assert "coding.jsonl" in idx
@@ -1598,7 +1598,7 @@ class TestAdd:
         (tmp_path / "sub" / "b.jsonl").write_text('{"y":2}\n')
         result = runner.invoke(app, ["add", "."])
         assert result.exit_code == 0
-        idx = json.loads((tmp_path / ".datahub" / "index").read_text())
+        idx = json.loads((tmp_path / ".dit" / "index").read_text())
         assert "a.jsonl" in idx
         assert "sub/b.jsonl" in idx
 
@@ -1698,13 +1698,13 @@ class TestCommit:
         assert result.exit_code == 0
         assert "initial" in result.stdout
 
-        head_ref = (tmp_path / ".datahub" / "refs" / "heads" / "main").read_text().strip()
+        head_ref = (tmp_path / ".dit" / "refs" / "heads" / "main").read_text().strip()
         assert len(head_ref) == 64
 
     def test_commit_clears_index(self, tmp_path: Path):
         self._setup_staged(tmp_path)
         runner.invoke(app, ["commit", "-m", "first"])
-        idx = json.loads((tmp_path / ".datahub" / "index").read_text())
+        idx = json.loads((tmp_path / ".dit" / "index").read_text())
         assert idx == {}
 
     def test_commit_nothing_staged(self, tmp_path: Path):
@@ -1716,18 +1716,18 @@ class TestCommit:
     def test_second_commit_has_parent(self, tmp_path: Path):
         self._setup_staged(tmp_path)
         runner.invoke(app, ["commit", "-m", "first"])
-        first_hash = (tmp_path / ".datahub" / "refs" / "heads" / "main").read_text().strip()
+        first_hash = (tmp_path / ".dit" / "refs" / "heads" / "main").read_text().strip()
 
         (tmp_path / "data.jsonl").write_text('{"messages":[{"role":"user","content":"updated"}]}\n')
         runner.invoke(app, ["add", "data.jsonl"])
         runner.invoke(app, ["commit", "-m", "second"])
-        second_hash = (tmp_path / ".datahub" / "refs" / "heads" / "main").read_text().strip()
+        second_hash = (tmp_path / ".dit" / "refs" / "heads" / "main").read_text().strip()
 
         assert first_hash != second_hash
         # Verify parent by reading the commit object
         from dit.core.store import ObjectStore
         from dit.core.objects import deserialize_commit
-        store = ObjectStore(tmp_path / ".datahub" / "objects")
+        store = ObjectStore(tmp_path / ".dit" / "objects")
         commit_data = store.read("commits", second_hash)
         commit = deserialize_commit(commit_data)
         assert commit.parent_hashes == [first_hash]
@@ -2328,15 +2328,15 @@ Expected: All tests PASS
 
 ```bash
 cd /tmp && mkdir dit-test && cd dit-test
-uv run --project /Users/lxs/code/datahub dit init
+uv run --project /Users/lxs/code/dit dit init
 echo '{"messages":[{"role":"user","content":"hello"},{"role":"assistant","content":"world"}]}' > test.jsonl
-uv run --project /Users/lxs/code/datahub dit add .
-uv run --project /Users/lxs/code/datahub dit commit -m "test commit"
-uv run --project /Users/lxs/code/datahub dit log
-uv run --project /Users/lxs/code/datahub dit status
+uv run --project /Users/lxs/code/dit dit add .
+uv run --project /Users/lxs/code/dit dit commit -m "test commit"
+uv run --project /Users/lxs/code/dit dit log
+uv run --project /Users/lxs/code/dit dit status
 echo '{"messages":[{"role":"user","content":"goodbye"},{"role":"assistant","content":"bye"}]}' >> test.jsonl
-uv run --project /Users/lxs/code/datahub dit diff
-cd /Users/lxs/code/datahub
+uv run --project /Users/lxs/code/dit dit diff
+cd /Users/lxs/code/dit
 rm -rf /tmp/dit-test
 ```
 

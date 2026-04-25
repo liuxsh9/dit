@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans.
 
-**Goal:** Add data repository support to Forgejo — IsDataRepo flag, [datahub] config, proxy client, 13 API routes
+**Goal:** Add data repository support to Forgejo — IsDataRepo flag, [dit] config, proxy client, 13 API routes
 **Architecture:** Minimal Forgejo fork with boolean flag, thin HTTP proxy, API route group
 **Tech Stack:** Go 1.23, Forgejo v15.0, chi router, xorm ORM
 **Source:** `/tmp/forgejo-src`
@@ -48,16 +48,16 @@ cd ~/code/datahub-gateway
 
 ## Task 2: Config Module
 
-**Objective:** Create `[datahub]` config section, register loader in `LoadCommonSettings`.
+**Objective:** Create `[dit]` config section, register loader in `LoadCommonSettings`.
 
 ### Steps
 
-- [ ] Create `modules/setting/datahub.go` with `DataHub` var struct
+- [ ] Create `modules/setting/dit.go` with `Dit` var struct
 - [ ] Add `loadDatahubFrom(rootCfg)` call in `modules/setting/setting.go`
 - [ ] Write unit test
 - [ ] Verify build
 
-### File: `modules/setting/datahub.go` (create new)
+### File: `modules/setting/dit.go` (create new)
 
 ```go
 // Copyright 2024 The Forgejo Authors. All rights reserved.
@@ -65,8 +65,8 @@ cd ~/code/datahub-gateway
 
 package setting
 
-// DataHub holds configuration for the [datahub] section of app.ini.
-var DataHub = struct {
+// Dit holds configuration for the [dit] section of app.ini.
+var Dit = struct {
 	Enabled      bool   `ini:"ENABLED"`
 	CoreURL      string `ini:"CORE_URL"`
 	ServiceToken string `ini:"SERVICE_TOKEN"`
@@ -77,20 +77,20 @@ var DataHub = struct {
 }
 
 func loadDatahubFrom(rootCfg ConfigProvider) {
-	mustMapSetting(rootCfg, "datahub", &DataHub)
+	mustMapSetting(rootCfg, "dit", &Dit)
 }
 ```
 
 ### Edit: `modules/setting/setting.go`
 
-Find `LoadCommonSettings()` — it calls a series of `loadXxxFrom(rootCfg)` functions. Add the datahub loader after the last existing loader (e.g., after `loadProjectFrom` or similar near-end entry):
+Find `LoadCommonSettings()` — it calls a series of `loadXxxFrom(rootCfg)` functions. Add the dit loader after the last existing loader (e.g., after `loadProjectFrom` or similar near-end entry):
 
 ```go
 // Inside LoadCommonSettings(), alongside other loadXxxFrom calls:
 loadDatahubFrom(rootCfg)
 ```
 
-### File: `modules/setting/datahub_test.go` (create new)
+### File: `modules/setting/dit_test.go` (create new)
 
 ```go
 package setting_test
@@ -103,9 +103,9 @@ import (
 )
 
 func TestDatahubDefaults(t *testing.T) {
-	assert.False(t, setting.DataHub.Enabled)
-	assert.Equal(t, "http://localhost:8000", setting.DataHub.CoreURL)
-	assert.Equal(t, "", setting.DataHub.ServiceToken)
+	assert.False(t, setting.Dit.Enabled)
+	assert.Equal(t, "http://localhost:8000", setting.Dit.CoreURL)
+	assert.Equal(t, "", setting.Dit.ServiceToken)
 }
 ```
 
@@ -199,13 +199,13 @@ go test ./models/repo/... -v -count=1
 
 ## Task 4: Create/Delete Hooks
 
-**Objective:** Short-circuit `CreateRepositoryDirectly` for data repos (skip git init, call datahub client); add fail-open cleanup in `DeleteRepositoryDirectly`.
+**Objective:** Short-circuit `CreateRepositoryDirectly` for data repos (skip git init, call dit client); add fail-open cleanup in `DeleteRepositoryDirectly`.
 
 ### Steps
 
-- [ ] Add datahub create hook in `CreateRepositoryDirectly` (inside DB transaction, after mirror early return)
-- [ ] Add datahub delete hook in `DeleteRepositoryDirectly` (before filesystem removal)
-- [ ] Write integration-style tests with a mock datahub server
+- [ ] Add dit create hook in `CreateRepositoryDirectly` (inside DB transaction, after mirror early return)
+- [ ] Add dit delete hook in `DeleteRepositoryDirectly` (before filesystem removal)
+- [ ] Write integration-style tests with a mock dit server
 - [ ] Verify build
 
 ### Edit: `services/repository/create.go`
@@ -215,7 +215,7 @@ Add import (will be needed after client module exists):
 ```go
 import (
     // existing imports ...
-    "code.gitea.io/gitea/modules/datahub"
+    "code.gitea.io/gitea/modules/dit"
 )
 ```
 
@@ -223,8 +223,8 @@ Inside `CreateRepositoryDirectly`, after the mirror early-return block, add:
 
 ```go
 if opts.IsDataRepo {
-    if err := datahub.DefaultClient().CreateRepo(ctx, repo.Name); err != nil {
-        return fmt.Errorf("datahub create repo: %w", err)
+    if err := dit.DefaultClient().CreateRepo(ctx, repo.Name); err != nil {
+        return fmt.Errorf("dit create repo: %w", err)
     }
     // Skip: initRepository, CheckDaemonExportOK, git update-server-info
     return nil
@@ -238,7 +238,7 @@ Add import:
 ```go
 import (
     // existing imports ...
-    "code.gitea.io/gitea/modules/datahub"
+    "code.gitea.io/gitea/modules/dit"
 )
 ```
 
@@ -246,14 +246,14 @@ In `DeleteRepositoryDirectly`, before the filesystem removal block, add:
 
 ```go
 if repo.IsDataRepo {
-    if err := datahub.DefaultClient().DeleteRepo(ctx, repo.Name); err != nil {
-        log.Error("Failed to delete datahub-core repo %s: %v", repo.Name, err)
+    if err := dit.DefaultClient().DeleteRepo(ctx, repo.Name); err != nil {
+        log.Error("Failed to delete dit-core repo %s: %v", repo.Name, err)
         // fail-open: continue Forgejo cleanup regardless
     }
 }
 ```
 
-### File: `services/repository/datahub_test.go` (create new)
+### File: `services/repository/dit_test.go` (create new)
 
 ```go
 package repository_test
@@ -277,21 +277,21 @@ func TestCreateDataRepoCallsDatuhubClient(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// Override DataHub.CoreURL to srv.URL before calling CreateRepository
+	// Override Dit.CoreURL to srv.URL before calling CreateRepository
 	// (exact wiring depends on how DefaultClient() is initialized — see Task 5)
 
 	// Assert
-	assert.True(t, called, "datahub-core CreateRepo should have been called")
+	assert.True(t, called, "dit-core CreateRepo should have been called")
 }
 
 func TestDeleteDataRepoFailOpen(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Simulate datahub-core being down
+		// Simulate dit-core being down
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
 
-	// DeleteRepositoryDirectly should succeed (fail-open) even when datahub returns 500
+	// DeleteRepositoryDirectly should succeed (fail-open) even when dit returns 500
 	// assert no error returned from delete
 	require.NoError(t, nil) // replace nil with actual call once wired
 }
@@ -309,23 +309,23 @@ go test ./services/repository/... -run TestDataRepo -v
 
 ## Task 5: Proxy Client
 
-**Objective:** Create `modules/datahub/client.go` with `Client` struct, singleton `DefaultClient()`, and 15 proxy methods.
+**Objective:** Create `modules/dit/client.go` with `Client` struct, singleton `DefaultClient()`, and 15 proxy methods.
 
 ### Steps
 
-- [ ] Create `modules/datahub/` directory
+- [ ] Create `modules/dit/` directory
 - [ ] Implement `client.go` with Client struct and DefaultClient singleton
 - [ ] Implement all 15 methods
 - [ ] Write tests using `httptest`
 - [ ] Verify build
 
-### File: `modules/datahub/client.go` (create new)
+### File: `modules/dit/client.go` (create new)
 
 ```go
 // Copyright 2024 The Forgejo Authors. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-package datahub
+package dit
 
 import (
 	"bytes"
@@ -339,7 +339,7 @@ import (
 	"code.gitea.io/gitea/modules/setting"
 )
 
-// Client is a thin HTTP proxy client for datahub-core.
+// Client is a thin HTTP proxy client for dit-core.
 type Client struct {
 	baseURL      string
 	serviceToken string
@@ -351,12 +351,12 @@ var (
 	defaultClientOnce sync.Once
 )
 
-// DefaultClient returns the singleton Client initialized from setting.DataHub.
+// DefaultClient returns the singleton Client initialized from setting.Dit.
 func DefaultClient() *Client {
 	defaultClientOnce.Do(func() {
 		defaultClient = &Client{
-			baseURL:      strings.TrimRight(setting.DataHub.CoreURL, "/"),
-			serviceToken: setting.DataHub.ServiceToken,
+			baseURL:      strings.TrimRight(setting.Dit.CoreURL, "/"),
+			serviceToken: setting.Dit.ServiceToken,
 			httpClient:   &http.Client{},
 		}
 	})
@@ -396,7 +396,7 @@ func (c *Client) do(ctx context.Context, method, path string, body []byte) ([]by
 	return data, resp.StatusCode, nil
 }
 
-// CreateRepo registers a new data repo in datahub-core.
+// CreateRepo registers a new data repo in dit-core.
 // Returns error if the response status is not 2xx.
 func (c *Client) CreateRepo(ctx context.Context, repoName string) error {
 	payload := []byte(fmt.Sprintf(`{"name":%q}`, repoName))
@@ -405,12 +405,12 @@ func (c *Client) CreateRepo(ctx context.Context, repoName string) error {
 		return err
 	}
 	if status < 200 || status >= 300 {
-		return fmt.Errorf("datahub-core returned status %d for CreateRepo", status)
+		return fmt.Errorf("dit-core returned status %d for CreateRepo", status)
 	}
 	return nil
 }
 
-// DeleteRepo removes a data repo from datahub-core.
+// DeleteRepo removes a data repo from dit-core.
 // Returns error if the response status is not 2xx or 404.
 func (c *Client) DeleteRepo(ctx context.Context, repoName string) error {
 	_, status, err := c.do(ctx, http.MethodDelete, "/api/v1/repos/"+repoName, nil)
@@ -421,7 +421,7 @@ func (c *Client) DeleteRepo(ctx context.Context, repoName string) error {
 		return nil // already gone, treat as success
 	}
 	if status < 200 || status >= 300 {
-		return fmt.Errorf("datahub-core returned status %d for DeleteRepo", status)
+		return fmt.Errorf("dit-core returned status %d for DeleteRepo", status)
 	}
 	return nil
 }
@@ -492,10 +492,10 @@ func (c *Client) GetManifest(ctx context.Context, repoName, hash string) ([]byte
 }
 ```
 
-### File: `modules/datahub/client_test.go` (create new)
+### File: `modules/dit/client_test.go` (create new)
 
 ```go
-package datahub_test
+package dit_test
 
 import (
 	"context"
@@ -506,19 +506,19 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"code.gitea.io/gitea/modules/datahub"
+	"code.gitea.io/gitea/modules/dit"
 	"code.gitea.io/gitea/modules/setting"
 )
 
-func newTestClient(t *testing.T, handler http.Handler) *datahub.Client {
+func newTestClient(t *testing.T, handler http.Handler) *dit.Client {
 	t.Helper()
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 	// Override setting and reset singleton for test isolation
-	setting.DataHub.CoreURL = srv.URL
-	setting.DataHub.ServiceToken = "test-token"
-	datahub.ResetDefaultClient()
-	return datahub.DefaultClient()
+	setting.Dit.CoreURL = srv.URL
+	setting.Dit.ServiceToken = "test-token"
+	dit.ResetDefaultClient()
+	return dit.DefaultClient()
 }
 
 func TestListRefs(t *testing.T) {
@@ -572,24 +572,24 @@ func TestDeleteRepoServerError(t *testing.T) {
 
 ```bash
 cd ~/code/datahub-gateway
-go test ./modules/datahub/... -v -count=1
+go test ./modules/dit/... -v -count=1
 ```
 
 ---
 
 ## Task 6: API Routes
 
-**Objective:** Create 13 datahub handler functions and register the `/datahub` route group in api.go.
+**Objective:** Create 13 dit handler functions and register the `/dit` route group in api.go.
 
 ### Steps
 
-- [ ] Create `routers/api/v1/repo/datahub.go` with all 13 handlers
+- [ ] Create `routers/api/v1/repo/dit.go` with all 13 handlers
 - [ ] Register route group in `routers/api/v1/api.go`
 - [ ] Confirm no `reqRepoReader` or `ReferencesGitRepo` middleware is used
 - [ ] Write handler tests
 - [ ] Verify build
 
-### File: `routers/api/v1/repo/datahub.go` (create new)
+### File: `routers/api/v1/repo/dit.go` (create new)
 
 ```go
 // Copyright 2024 The Forgejo Authors. All rights reserved.
@@ -600,11 +600,11 @@ package repo
 import (
 	"net/http"
 
-	"code.gitea.io/gitea/modules/datahub"
+	"code.gitea.io/gitea/modules/dit"
 	"code.gitea.io/gitea/services/context"
 )
 
-// proxyToDatahub checks IsDataRepo, proxies the request to datahub-core,
+// proxyToDatahub checks IsDataRepo, proxies the request to dit-core,
 // and forwards the raw response (status code + body).
 func proxyToDatahub(ctx *context.APIContext, fn func() ([]byte, int, error)) {
 	if !ctx.Repo.Repository.IsDataRepo {
@@ -613,7 +613,7 @@ func proxyToDatahub(ctx *context.APIContext, fn func() ([]byte, int, error)) {
 	}
 	data, status, err := fn()
 	if err != nil {
-		ctx.Error(http.StatusBadGateway, "datahub proxy", err)
+		ctx.Error(http.StatusBadGateway, "dit proxy", err)
 		return
 	}
 	ctx.Resp.Header().Set("Content-Type", "application/json")
@@ -623,25 +623,25 @@ func proxyToDatahub(ctx *context.APIContext, fn func() ([]byte, int, error)) {
 
 // DatahubListRefs godoc
 // @Summary List refs for a data repository
-// @Router /repos/{owner}/{repo}/datahub/refs [get]
+// @Router /repos/{owner}/{repo}/dit/refs [get]
 func DatahubListRefs(ctx *context.APIContext) {
 	proxyToDatahub(ctx, func() ([]byte, int, error) {
-		return datahub.DefaultClient().ListRefs(ctx, ctx.Repo.Repository.Name)
+		return dit.DefaultClient().ListRefs(ctx, ctx.Repo.Repository.Name)
 	})
 }
 
 // DatahubGetRef godoc
-// @Router /repos/{owner}/{repo}/datahub/refs/{ref_type}/{name} [get]
+// @Router /repos/{owner}/{repo}/dit/refs/{ref_type}/{name} [get]
 func DatahubGetRef(ctx *context.APIContext) {
 	refType := ctx.Params(":ref_type")
 	name := ctx.Params(":name")
 	proxyToDatahub(ctx, func() ([]byte, int, error) {
-		return datahub.DefaultClient().GetRef(ctx, ctx.Repo.Repository.Name, refType, name)
+		return dit.DefaultClient().GetRef(ctx, ctx.Repo.Repository.Name, refType, name)
 	})
 }
 
 // DatahubUpdateRef godoc
-// @Router /repos/{owner}/{repo}/datahub/refs/{ref_type}/{name} [post]
+// @Router /repos/{owner}/{repo}/dit/refs/{ref_type}/{name} [post]
 func DatahubUpdateRef(ctx *context.APIContext) {
 	refType := ctx.Params(":ref_type")
 	name := ctx.Params(":name")
@@ -657,98 +657,98 @@ func DatahubUpdateRef(ctx *context.APIContext) {
 	}
 	// Simplified — read body bytes then proxy:
 	proxyToDatahub(ctx, func() ([]byte, int, error) {
-		return datahub.DefaultClient().UpdateRef(ctx, ctx.Repo.Repository.Name, refType, name, bodyBytes)
+		return dit.DefaultClient().UpdateRef(ctx, ctx.Repo.Repository.Name, refType, name, bodyBytes)
 	})
 }
 
 // DatahubGetObject godoc
-// @Router /repos/{owner}/{repo}/datahub/objects/{hash} [get]
+// @Router /repos/{owner}/{repo}/dit/objects/{hash} [get]
 func DatahubGetObject(ctx *context.APIContext) {
 	hash := ctx.Params(":hash")
 	proxyToDatahub(ctx, func() ([]byte, int, error) {
-		return datahub.DefaultClient().GetObject(ctx, ctx.Repo.Repository.Name, hash)
+		return dit.DefaultClient().GetObject(ctx, ctx.Repo.Repository.Name, hash)
 	})
 }
 
 // DatahubPushObjects godoc
-// @Router /repos/{owner}/{repo}/datahub/objects/batch [post]
+// @Router /repos/{owner}/{repo}/dit/objects/batch [post]
 func DatahubPushObjects(ctx *context.APIContext) {
 	proxyToDatahub(ctx, func() ([]byte, int, error) {
 		body, _ := io.ReadAll(ctx.Req.Body)
-		return datahub.DefaultClient().PushObjects(ctx, ctx.Repo.Repository.Name, body)
+		return dit.DefaultClient().PushObjects(ctx, ctx.Repo.Repository.Name, body)
 	})
 }
 
 // DatahubGetTree godoc
-// @Router /repos/{owner}/{repo}/datahub/tree/{hash} [get]
+// @Router /repos/{owner}/{repo}/dit/tree/{hash} [get]
 func DatahubGetTree(ctx *context.APIContext) {
 	hash := ctx.Params(":hash")
 	proxyToDatahub(ctx, func() ([]byte, int, error) {
-		return datahub.DefaultClient().GetTree(ctx, ctx.Repo.Repository.Name, hash)
+		return dit.DefaultClient().GetTree(ctx, ctx.Repo.Repository.Name, hash)
 	})
 }
 
 // DatahubGetDiff godoc
-// @Router /repos/{owner}/{repo}/datahub/diff/{old}/{new} [get]
+// @Router /repos/{owner}/{repo}/dit/diff/{old}/{new} [get]
 func DatahubGetDiff(ctx *context.APIContext) {
 	old := ctx.Params(":old")
 	new := ctx.Params(":new")
 	proxyToDatahub(ctx, func() ([]byte, int, error) {
-		return datahub.DefaultClient().GetDiff(ctx, ctx.Repo.Repository.Name, old, new)
+		return dit.DefaultClient().GetDiff(ctx, ctx.Repo.Repository.Name, old, new)
 	})
 }
 
 // DatahubGetLog godoc
-// @Router /repos/{owner}/{repo}/datahub/log/{ref} [get]
+// @Router /repos/{owner}/{repo}/dit/log/{ref} [get]
 func DatahubGetLog(ctx *context.APIContext) {
 	ref := ctx.Params(":ref")
 	proxyToDatahub(ctx, func() ([]byte, int, error) {
-		return datahub.DefaultClient().GetLog(ctx, ctx.Repo.Repository.Name, ref)
+		return dit.DefaultClient().GetLog(ctx, ctx.Repo.Repository.Name, ref)
 	})
 }
 
 // DatahubListPulls godoc
-// @Router /repos/{owner}/{repo}/datahub/pulls [get]
+// @Router /repos/{owner}/{repo}/dit/pulls [get]
 func DatahubListPulls(ctx *context.APIContext) {
 	proxyToDatahub(ctx, func() ([]byte, int, error) {
-		return datahub.DefaultClient().ListPulls(ctx, ctx.Repo.Repository.Name)
+		return dit.DefaultClient().ListPulls(ctx, ctx.Repo.Repository.Name)
 	})
 }
 
 // DatahubCreatePull godoc
-// @Router /repos/{owner}/{repo}/datahub/pulls [post]
+// @Router /repos/{owner}/{repo}/dit/pulls [post]
 func DatahubCreatePull(ctx *context.APIContext) {
 	proxyToDatahub(ctx, func() ([]byte, int, error) {
 		body, _ := io.ReadAll(ctx.Req.Body)
-		return datahub.DefaultClient().CreatePull(ctx, ctx.Repo.Repository.Name, body)
+		return dit.DefaultClient().CreatePull(ctx, ctx.Repo.Repository.Name, body)
 	})
 }
 
 // DatahubGetPull godoc
-// @Router /repos/{owner}/{repo}/datahub/pulls/{id} [get]
+// @Router /repos/{owner}/{repo}/dit/pulls/{id} [get]
 func DatahubGetPull(ctx *context.APIContext) {
 	id := ctx.Params(":id")
 	proxyToDatahub(ctx, func() ([]byte, int, error) {
-		return datahub.DefaultClient().GetPull(ctx, ctx.Repo.Repository.Name, id)
+		return dit.DefaultClient().GetPull(ctx, ctx.Repo.Repository.Name, id)
 	})
 }
 
 // DatahubMergePull godoc
-// @Router /repos/{owner}/{repo}/datahub/pulls/{id}/merge [post]
+// @Router /repos/{owner}/{repo}/dit/pulls/{id}/merge [post]
 func DatahubMergePull(ctx *context.APIContext) {
 	id := ctx.Params(":id")
 	proxyToDatahub(ctx, func() ([]byte, int, error) {
 		body, _ := io.ReadAll(ctx.Req.Body)
-		return datahub.DefaultClient().MergePull(ctx, ctx.Repo.Repository.Name, id, body)
+		return dit.DefaultClient().MergePull(ctx, ctx.Repo.Repository.Name, id, body)
 	})
 }
 
 // DatahubGetManifest godoc
-// @Router /repos/{owner}/{repo}/datahub/manifest/{hash} [get]
+// @Router /repos/{owner}/{repo}/dit/manifest/{hash} [get]
 func DatahubGetManifest(ctx *context.APIContext) {
 	hash := ctx.Params(":hash")
 	proxyToDatahub(ctx, func() ([]byte, int, error) {
-		return datahub.DefaultClient().GetManifest(ctx, ctx.Repo.Repository.Name, hash)
+		return dit.DefaultClient().GetManifest(ctx, ctx.Repo.Repository.Name, hash)
 	})
 }
 ```
@@ -757,11 +757,11 @@ func DatahubGetManifest(ctx *context.APIContext) {
 
 ### Edit: `routers/api/v1/api.go`
 
-Search for the `/{username}/{reponame}` group. Inside it, add the datahub group after the existing API groups (e.g., after `issues`, `releases`, etc.):
+Search for the `/{username}/{reponame}` group. Inside it, add the dit group after the existing API groups (e.g., after `issues`, `releases`, etc.):
 
 ```go
 // Inside /{username}/{reponame} group, after other sub-groups:
-m.Group("/datahub", func() {
+m.Group("/dit", func() {
     m.Get("/refs", repo.DatahubListRefs)
     m.Get("/refs/{ref_type}/{name}", repo.DatahubGetRef)
     m.Post("/refs/{ref_type}/{name}", repo.DatahubUpdateRef)
@@ -780,7 +780,7 @@ m.Group("/datahub", func() {
 
 **Critical:** Do NOT add `reqRepoReader` or `context.ReferencesGitRepo()` to this group. `repoAssignment()` is sufficient — it resolves the repo and checks basic access without opening any git directory.
 
-### File: `routers/api/v1/repo/datahub_test.go` (create new)
+### File: `routers/api/v1/repo/dit_test.go` (create new)
 
 ```go
 package repo_test
@@ -801,7 +801,7 @@ func TestDatahubListRefsNotDataRepo(t *testing.T) {
 }
 
 func TestDatahubListRefsProxies(t *testing.T) {
-	// Mock datahub-core, assert response is forwarded transparently
+	// Mock dit-core, assert response is forwarded transparently
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`[{"name":"main"}]`))
@@ -861,7 +861,7 @@ func isRepoIndexable(repo *repo_model.Repository) bool {
 }
 ```
 
-### Test: add to existing indexer tests or create `modules/indexer/code/datahub_test.go`
+### Test: add to existing indexer tests or create `modules/indexer/code/dit_test.go`
 
 ```go
 func TestDataRepoExcludedFromIndex(t *testing.T) {
@@ -930,7 +930,7 @@ if !repo.IsDataRepo {
 
 The key invariant: **data repos must always have `IsEmpty = true`** to prevent git-opening middleware from crashing.
 
-### Test: `routers/api/v1/repo/datahub_settings_test.go` (create new)
+### Test: `routers/api/v1/repo/dit_settings_test.go` (create new)
 
 ```go
 func TestEditHandlerCannotClearIsEmptyOnDataRepo(t *testing.T) {
@@ -959,7 +959,7 @@ Tasks must be done in this order due to dependencies:
 ```
 Task 1 (fork setup)
   └── Task 2 (config)
-        └── Task 5 (proxy client — needs setting.DataHub)
+        └── Task 5 (proxy client — needs setting.Dit)
               └── Task 4 (create/delete hooks — needs DefaultClient())
               └── Task 6 (API routes — needs DefaultClient())
   └── Task 3 (data model — needed by Tasks 4, 6, 7, 8)
@@ -975,9 +975,9 @@ Tasks 7 and 8 are independent once Task 3 is done and can be done in parallel.
 
 | Constraint | Detail |
 |------------|--------|
-| Never call `ReferencesGitRepo()` on datahub routes | Opens git dir, crashes — no git dir exists for data repos |
-| Never add `reqRepoReader` to datahub route group | No matching unit type exists; causes 403 for all requests |
+| Never call `ReferencesGitRepo()` on dit routes | Opens git dir, crashes — no git dir exists for data repos |
+| Never add `reqRepoReader` to dit route group | No matching unit type exists; causes 403 for all requests |
 | `IsEmpty` must always be `true` for data repos | Prevents git middleware crash; enforce in both create path and API PATCH |
-| Deletion is fail-open | Do not block Forgejo DB/filesystem cleanup on datahub-core errors |
+| Deletion is fail-open | Do not block Forgejo DB/filesystem cleanup on dit-core errors |
 | CreateRepo is inside DB transaction | On error, transaction rolls back and existing rollback calls DeleteRepositoryDirectly |
 | Migration uses `x.Sync()` not raw SQL | Follows Forgejo migration pattern for cross-DB compatibility |

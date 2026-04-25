@@ -23,7 +23,7 @@ async def service_token_engine():
         await conn.run_sync(Base.metadata.create_all)
     yield eng
     for table in Base.metadata.tables.values():
-        table.schema = "datahub"
+        table.schema = "dit"
     await eng.dispose()
 
 
@@ -133,5 +133,5 @@ class TestServiceTokenAuth:
             )
             assert resp.status_code == 401
         for table in Base.metadata.tables.values():
-            table.schema = "datahub"
+            table.schema = "dit"
         await eng.dispose()

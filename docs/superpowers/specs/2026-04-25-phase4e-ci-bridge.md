@@ -298,7 +298,7 @@ POST /api/v1/repos/{repo}/checks
 GET  /api/v1/repos/{repo}/checks/{commit}
 ```
 
-These endpoints form the external CI interface. External CI systems call `POST` to report results and `GET` to query them. The datahub PR review UI (Phase 5) will call `GET` to show check badges.
+These endpoints form the external CI interface. External CI systems call `POST` to report results and `GET` to query them. The dit PR review UI (Phase 5) will call `GET` to show check badges.
 
 **POST body:**
 
@@ -462,7 +462,7 @@ Add an Alembic migration (new file in `migrations/versions/`) that creates the `
 
 ### 6.1 Gateway routes
 
-Add three routes to the `datahub` group in `routers/api/v1/api.go`:
+Add three routes to the `dit` group in `routers/api/v1/api.go`:
 
 ```go
 m.Post("/validate",           repo.DatahubValidate)
@@ -470,7 +470,7 @@ m.Post("/checks",             repo.DatahubReportCheck)
 m.Get("/checks/{commit}",     repo.DatahubGetChecks)
 ```
 
-### 6.2 Handlers in `routers/api/v1/repo/datahub.go`
+### 6.2 Handlers in `routers/api/v1/repo/dit.go`
 
 ```go
 func DatahubValidate(ctx *context.APIContext) {
@@ -479,7 +479,7 @@ func DatahubValidate(ctx *context.APIContext) {
         ctx.Error(http.StatusBadRequest, "read body", err)
         return
     }
-    data, status, err := datahub.DefaultClient().Validate(ctx, ctx.Repo.Repository.Name, body)
+    data, status, err := dit.DefaultClient().Validate(ctx, ctx.Repo.Repository.Name, body)
     proxyResponse(ctx, data, status, err)
 }
 
@@ -489,17 +489,17 @@ func DatahubReportCheck(ctx *context.APIContext) {
         ctx.Error(http.StatusBadRequest, "read body", err)
         return
     }
-    data, status, err := datahub.DefaultClient().ReportCheck(ctx, ctx.Repo.Repository.Name, body)
+    data, status, err := dit.DefaultClient().ReportCheck(ctx, ctx.Repo.Repository.Name, body)
     proxyResponse(ctx, data, status, err)
 }
 
 func DatahubGetChecks(ctx *context.APIContext) {
-    data, status, err := datahub.DefaultClient().GetChecks(ctx, ctx.Repo.Repository.Name, ctx.Params(":commit"))
+    data, status, err := dit.DefaultClient().GetChecks(ctx, ctx.Repo.Repository.Name, ctx.Params(":commit"))
     proxyResponse(ctx, data, status, err)
 }
 ```
 
-### 6.3 Client methods in `modules/datahub/client.go`
+### 6.3 Client methods in `modules/dit/client.go`
 
 ```go
 func (c *Client) Validate(ctx context.Context, repoName string, body []byte) ([]byte, int, error) {
@@ -573,7 +573,7 @@ async loadChecks() {
   if (!this.commitHash) return;
   this.checksLoading = true;
   try {
-    this.checksData = await datahubFetch(
+    this.checksData = await ditFetch(
       this.owner, this.repo,
       `/checks/${this.commitHash}`,
     );
@@ -602,7 +602,7 @@ The badge is display-only in Phase 4E. Clicking it has no action. The full Check
 | `forbidden_keywords` matching | Case-insensitive substring on the raw JSON string | Catches variations in casing; operates on the raw string to avoid missing keywords split across fields |
 | Char-count rule applies to raw JSON | `len(row_json)` | Simple, deterministic; consistent with what gets stored in the object store |
 | `ci_checks` upsert semantics | Unique constraint on `(repo_id, commit_hash, check_name)` | Allows a CI job to update a `pending` → `pass`/`fail` result without duplication; external CI systems often poll and update |
-| `details_json` | Arbitrary JSON, opaque to datahub-core | External CI systems have varied result formats; datahub-core stores and proxies without interpreting |
+| `details_json` | Arbitrary JSON, opaque to dit-core | External CI systems have varied result formats; dit-core stores and proxies without interpreting |
 | `POST /checks` auth | `require_permission("write")` | Only authorized parties should be able to assert check status; read-only tokens cannot tamper with results |
 | Web UI checks badge | Inline badge, no tab in Phase 4E | Minimal viable signal (pass/fail/pending) with near-zero effort; full Checks tab deferred to Phase 5 |
 | Badge loaded automatically | Yes, not lazy | It is a small GET and conveys critical CI status; unlike Stats it should always be visible when data is present |
@@ -614,7 +614,7 @@ The badge is display-only in Phase 4E. Clicking it has no action. The full Check
 
 - **Automatic pre-commit hook.** Running `dit validate` automatically on `dit commit` requires hook integration. Deferred to Phase 5.
 - **Webhook triggers for CI jobs.** Forgejo's native webhook system handles triggering external CI when a PR is opened or updated. The CI Bridge skeleton provides the interface for CI systems to report back, but does not send outbound webhooks.
-- **CI job execution.** External systems run the actual CI jobs. DataHub-core only stores and exposes results.
+- **CI job execution.** External systems run the actual CI jobs. Dit-core only stores and exposes results.
 - **S3 packaging for CI.** Packaging incremental data to S3 for external CI consumption is Phase 5.
 - **CI result → PR block logic.** Preventing a PR from being merged when CI checks are failing requires Forgejo integration (status check enforcement). Deferred to Phase 5.
 - **Full Checks tab UI.** The PR review Checks tab with per-check details, failure counts, and deep links to failing rows in the Files view is Phase 5.

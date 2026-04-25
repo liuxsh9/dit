@@ -48,5 +48,5 @@ async def test_health(test_app):
         assert "checks" in data
 
     for table in Base.metadata.tables.values():
-        table.schema = "datahub"
+        table.schema = "dit"
     await engine.dispose()

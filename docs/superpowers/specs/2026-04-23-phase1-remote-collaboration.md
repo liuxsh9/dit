@@ -1,6 +1,6 @@
 # Phase 1: Remote Collaboration — 设计文档
 
-> 基于 [Phase 0 总体设计](2026-04-22-datahub-design.md) 的 Phase 1 细化设计。本文档记录了设计过程中的所有决策和完整技术方案。
+> 基于 [Phase 0 总体设计](2026-04-22-dit-design.md) 的 Phase 1 细化设计。本文档记录了设计过程中的所有决策和完整技术方案。
 
 ---
 
@@ -53,7 +53,7 @@ repo URL 形如 `http://server/sft-code`，所有 repo 平铺。管理员通过 
 
 - ObjectStore 文件系统 + PG refs 分层，Phase 2-5 不需要改
 - API 路径 `/api/v1/repos/{repo}/...` 兼容 Phase 3 nginx 代理
-- PG schema 用 `datahub` namespace，避免和 Phase 3 Forgejo 冲突
+- PG schema 用 `dit` namespace，避免和 Phase 3 Forgejo 冲突
 - 依赖用 optional group `[server]` 隔离，CLI 核心保持轻量
 - ORM 用 SQLAlchemy 2.0 async，配合 alembic 迁移链
 
@@ -62,7 +62,7 @@ repo URL 形如 `http://server/sft-code`，所有 repo 平铺。管理员通过 
 ## 3. 整体架构
 
 ```
-dit CLI ──── HTTP/JSON ────→ datahub-server (FastAPI)
+dit CLI ──── HTTP/JSON ────→ dit-server (FastAPI)
                                     │
                     ┌───────────────┼───────────────┐
                     ▼               ▼               ▼
@@ -78,21 +78,21 @@ dit CLI ──── HTTP/JSON ────→ datahub-server (FastAPI)
 
 ## 4. PostgreSQL Schema
 
-所有表在 `datahub` schema 下，alembic 管理迁移。
+所有表在 `dit` schema 下，alembic 管理迁移。
 
 ```sql
-CREATE SCHEMA datahub;
+CREATE SCHEMA dit;
 
 -- 仓库注册表
-CREATE TABLE datahub.repos (
+CREATE TABLE dit.repos (
     id          SERIAL PRIMARY KEY,
     name        VARCHAR(128) UNIQUE NOT NULL,
     created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- 引用表（branches/tags），CAS 更新
-CREATE TABLE datahub.refs (
-    repo_id     INT NOT NULL REFERENCES datahub.repos(id),
+CREATE TABLE dit.refs (
+    repo_id     INT NOT NULL REFERENCES dit.repos(id),
     name        VARCHAR(256) NOT NULL,       -- e.g. "heads/main"
     target_hash CHAR(64) NOT NULL,
     updated_at  TIMESTAMPTZ DEFAULT NOW(),
@@ -100,11 +100,11 @@ CREATE TABLE datahub.refs (
 );
 
 -- API Token 认证
-CREATE TABLE datahub.tokens (
+CREATE TABLE dit.tokens (
     id          SERIAL PRIMARY KEY,
     token_hash  CHAR(64) NOT NULL UNIQUE,    -- SHA-256 of raw token
     label       VARCHAR(128) NOT NULL,       -- "zhangsan-laptop"
-    repo_scope  INT REFERENCES datahub.repos(id),  -- NULL = all repos
+    repo_scope  INT REFERENCES dit.repos(id),  -- NULL = all repos
     permissions VARCHAR(32) NOT NULL DEFAULT 'push', -- 'push' / 'read' / 'admin'
     created_at  TIMESTAMPTZ DEFAULT NOW(),
     expires_at  TIMESTAMPTZ
@@ -114,7 +114,7 @@ CREATE TABLE datahub.tokens (
 **CAS 更新 refs：**
 
 ```sql
-UPDATE datahub.refs SET target_hash = $new, updated_at = NOW()
+UPDATE dit.refs SET target_hash = $new, updated_at = NOW()
 WHERE repo_id = $repo AND name = $ref AND target_hash = $old
 RETURNING target_hash;
 ```
@@ -158,10 +158,10 @@ dit clone <url> [--token <token>]  # 克隆仓库
 dit push [remote] [branch]         # 推送
 dit pull [remote] [branch]         # 拉取 (fetch + fast-forward)
 dit fetch [remote]                 # 拉取远端 refs 和对象
-dit auth set-token <token>         # 保存 token 到 .datahub/config
+dit auth set-token <token>         # 保存 token 到 .dit/config
 ```
 
-**Remote 配置** — `.datahub/config` 用 TOML：
+**Remote 配置** — `.dit/config` 用 TOML：
 
 ```toml
 [remote.origin]
@@ -206,7 +206,7 @@ CLI 是同步的（typer），内部用 `asyncio.run()` 调异步客户端。
 
 1. 获取远端 main ref → commit hash
 2. 下载 commit 链 + tree + manifests
-3. 存入本地 `.datahub/objects/`
+3. 存入本地 `.dit/objects/`
 4. 设置本地 ref: `heads/main` = commit hash, HEAD → main
 5. 设置 remote origin
 6. 物化工作区：对每个 manifest 下载 rows → 重建 JSONL 文件

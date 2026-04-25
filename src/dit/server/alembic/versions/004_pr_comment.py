@@ -18,7 +18,7 @@ def upgrade() -> None:
         "pr_comment",
         sa.Column("id", sa.BigInteger, primary_key=True, autoincrement=True),
         sa.Column("pull_request_meta_id", sa.BigInteger,
-                  sa.ForeignKey("datahub.data_pull_request_meta.id"), nullable=False),
+                  sa.ForeignKey("dit.data_pull_request_meta.id"), nullable=False),
         sa.Column("author", sa.String(256), nullable=False),
         sa.Column("body", sa.Text, nullable=False),
         sa.Column("file_path", sa.Text, nullable=True),
@@ -27,11 +27,11 @@ def upgrade() -> None:
         sa.Column("change_type", sa.String(16), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        schema="datahub",
+        schema="dit",
     )
     op.create_index("ix_pr_comment_pr_meta_id", "pr_comment",
-                    ["pull_request_meta_id"], schema="datahub")
+                    ["pull_request_meta_id"], schema="dit")
 
 def downgrade() -> None:
-    op.drop_index("ix_pr_comment_pr_meta_id", table_name="pr_comment", schema="datahub")
-    op.drop_table("pr_comment", schema="datahub")
+    op.drop_index("ix_pr_comment_pr_meta_id", table_name="pr_comment", schema="dit")
+    op.drop_table("pr_comment", schema="dit")

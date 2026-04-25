@@ -21,9 +21,9 @@
 | `tests/test_stats.py` | Create | Unit tests for `core/stats.py` |
 | `tests/test_cli_stats.py` | Create | CLI integration tests for `dit stats` |
 | `tests/server/test_routes_stats.py` | Create | Server route tests |
-| `datahub-gateway/modules/datahub/client.go` | Modify | Add `GetStats()` client method |
-| `datahub-gateway/routers/api/v1/repo/datahub.go` | Modify | Add `DatahubGetStats()` handler |
-| `datahub-gateway/routers/api/v1/api.go` | Modify | Register route in datahub group |
+| `datahub-gateway/modules/dit/client.go` | Modify | Add `GetStats()` client method |
+| `datahub-gateway/routers/api/v1/repo/dit.go` | Modify | Add `DatahubGetStats()` handler |
+| `datahub-gateway/routers/api/v1/api.go` | Modify | Register route in dit group |
 | `datahub-gateway/web_src/js/components/DataRepoHome.vue` | Modify | Add collapsible stats panel |
 
 ---
@@ -280,7 +280,7 @@ class TestCompareStats:
 - [ ] **Step 2: Run test to verify it fails**
 
 ```bash
-cd /Users/lxs/code/datahub
+cd /Users/lxs/code/dit
 uv run pytest tests/test_stats.py -v
 ```
 
@@ -541,7 +541,7 @@ def _init_repo_with_sidecar(tmp_path: Path) -> tuple[ObjectStore, RefStore, str]
     os.chdir(tmp_path)
     runner.invoke(app, ["init"])
 
-    dot = tmp_path / ".datahub"
+    dot = tmp_path / ".dit"
     store = ObjectStore(dot / "objects")
     refs = RefStore(dot)
 
@@ -1160,15 +1160,15 @@ git commit -m "feat: server stats endpoint GET /{repo}/stats/{commit_hash}"
 ## Task 4: Gateway proxy
 
 **Files (all in `/Users/lxs/code/datahub-gateway/`):**
-- Modify: `modules/datahub/client.go`
-- Modify: `routers/api/v1/repo/datahub.go`
+- Modify: `modules/dit/client.go`
+- Modify: `routers/api/v1/repo/dit.go`
 - Modify: `routers/api/v1/api.go`
 
-Add a `GetStats` client method, a `DatahubGetStats` handler that proxies GET requests with an optional `path` query param, and register the route in the `datahub` group.
+Add a `GetStats` client method, a `DatahubGetStats` handler that proxies GET requests with an optional `path` query param, and register the route in the `dit` group.
 
-- [ ] **Step 1: Add `GetStats` to `modules/datahub/client.go`**
+- [ ] **Step 1: Add `GetStats` to `modules/dit/client.go`**
 
-Open `/Users/lxs/code/datahub-gateway/modules/datahub/client.go`. After the `MetaDiff` method (currently the last method in the file), append:
+Open `/Users/lxs/code/datahub-gateway/modules/dit/client.go`. After the `MetaDiff` method (currently the last method in the file), append:
 
 ```go
 func (c *Client) GetStats(ctx context.Context, repoName, commitHash, pathFilter string) ([]byte, int, error) {
@@ -1182,14 +1182,14 @@ func (c *Client) GetStats(ctx context.Context, repoName, commitHash, pathFilter 
 
 `url` is already imported in the file (`"net/url"`), so no new import is needed.
 
-- [ ] **Step 2: Add `DatahubGetStats` handler to `routers/api/v1/repo/datahub.go`**
+- [ ] **Step 2: Add `DatahubGetStats` handler to `routers/api/v1/repo/dit.go`**
 
-Open `/Users/lxs/code/datahub-gateway/routers/api/v1/repo/datahub.go`. After the `DatahubMetaDiff` function (the last function in the file), append:
+Open `/Users/lxs/code/datahub-gateway/routers/api/v1/repo/dit.go`. After the `DatahubMetaDiff` function (the last function in the file), append:
 
 ```go
 func DatahubGetStats(ctx *context.APIContext) {
 	proxyToDatahub(ctx, func() ([]byte, int, error) {
-		return datahub.DefaultClient().GetStats(
+		return dit.DefaultClient().GetStats(
 			ctx,
 			ctx.Repo.Repository.Name,
 			ctx.Params(":commit"),
@@ -1201,10 +1201,10 @@ func DatahubGetStats(ctx *context.APIContext) {
 
 - [ ] **Step 3: Register the route in `routers/api/v1/api.go`**
 
-Open `/Users/lxs/code/datahub-gateway/routers/api/v1/api.go`. Find the `datahub` group block (around line 1424):
+Open `/Users/lxs/code/datahub-gateway/routers/api/v1/api.go`. Find the `dit` group block (around line 1424):
 
 ```go
-m.Group("/datahub", func() {
+m.Group("/dit", func() {
     m.Get("/refs", repo.DatahubListRefs)
     ...
     m.Get("/meta/{commit}/{path}/summary", repo.DatahubMetaSummary)
@@ -1236,11 +1236,11 @@ go build ./...
 
 Expected: exits 0, no errors.
 
-- [ ] **Step 5: Run Go datahub tests**
+- [ ] **Step 5: Run Go dit tests**
 
 ```bash
 cd /Users/lxs/code/datahub-gateway
-go test ./modules/datahub/... -v
+go test ./modules/dit/... -v
 ```
 
 Expected: all tests `PASS`. (These tests mock the HTTP client; `GetStats` has the same signature pattern as `MetaDiff` so they will pass without additional test additions.)
@@ -1249,8 +1249,8 @@ Expected: all tests `PASS`. (These tests mock the HTTP client; `GetStats` has th
 
 ```bash
 cd /Users/lxs/code/datahub-gateway
-git add modules/datahub/client.go routers/api/v1/repo/datahub.go routers/api/v1/api.go
-git commit -m "feat: gateway proxy for datahub stats endpoint"
+git add modules/dit/client.go routers/api/v1/repo/dit.go routers/api/v1/api.go
+git commit -m "feat: gateway proxy for dit stats endpoint"
 ```
 
 ---
@@ -1330,7 +1330,7 @@ At the bottom of the `methods` object, before the closing `},` of `methods`, add
       this.statsLoading = true;
       this.statsError = null;
       try {
-        this.repoStats = await datahubFetch(
+        this.repoStats = await ditFetch(
           this.owner, this.repo,
           `/stats/${this.commitHash}`,
         );
@@ -1456,7 +1456,7 @@ git commit -m "feat: lazy stats panel in DataRepoHome.vue"
 - [ ] **Step 1: Run Python test suite**
 
 ```bash
-cd /Users/lxs/code/datahub
+cd /Users/lxs/code/dit
 uv run pytest tests/ -v
 ```
 
@@ -1512,7 +1512,7 @@ Expected: valid JSON with `commit_hash`, `files`, `totals` keys.
 
 ```bash
 # Record first commit hash
-C1=$(cd /tmp/stats-smoke && git -C .datahub log --format='%H' 2>/dev/null || dit log | grep '^commit' | head -1 | awk '{print $2}')
+C1=$(cd /tmp/stats-smoke && git -C .dit log --format='%H' 2>/dev/null || dit log | grep '^commit' | head -1 | awk '{print $2}')
 # Add a row and commit
 printf '{"instruction":"new","response":"row"}\n' >> /tmp/stats-smoke/train.jsonl
 dit add .
@@ -1529,7 +1529,7 @@ Expected: table showing `train.jsonl` with row delta `+1`.
 ```bash
 cd /Users/lxs/code/datahub-gateway
 go build ./...
-go test ./modules/datahub/... -v
+go test ./modules/dit/... -v
 ```
 
 Expected: build succeeds, tests `PASS`.
@@ -1553,7 +1553,7 @@ Expected: build succeeds, tests `PASS`.
 | 404 when commit not found | Task 3 |
 | 200 with empty files list for commit with no manifests | Task 3 (server returns `repo_stats()` result directly) |
 | Register router in `app.py` | Task 3 |
-| Gateway route `GET /stats/{commit}` in datahub group | Task 4 |
+| Gateway route `GET /stats/{commit}` in dit group | Task 4 |
 | `DatahubGetStats` handler with optional `path` param | Task 4 |
 | `GetStats` client method | Task 4 |
 | Vue collapsible stats panel, lazy-loaded | Task 5 |
@@ -1573,4 +1573,4 @@ No TBD/TODO/placeholder text in code blocks. All function signatures, return sha
 - `_fmt_tokens`, `_fmt_chars`, `_fmt_lang` — private helpers in `cli/main.py`, not imported anywhere else.
 - `_store_for_repo(request, repo_name) -> ObjectStore` — copy-paste pattern from `meta_api.py` and `export_api.py`; identical implementation in `stats_api.py`.
 - Go `GetStats(ctx, repoName, commitHash, pathFilter)` — mirrors `MetaDiff` pattern: builds URL, appends query param if non-empty, calls `c.do`.
-- Vue `repoStats` — populated by `datahubFetch(owner, repo, /stats/${commitHash})`, which returns the same JSON shape as `repo_stats()` via the server.
+- Vue `repoStats` — populated by `ditFetch(owner, repo, /stats/${commitHash})`, which returns the same JSON shape as `repo_stats()` via the server.

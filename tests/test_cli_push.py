@@ -61,7 +61,7 @@ def server_app(tmp_path):
     yield fastapi_app
     fastapi_app.dependency_overrides.clear()
     for table in Base.metadata.tables.values():
-        table.schema = "datahub"
+        table.schema = "dit"
     loop.run_until_complete(engine.dispose())
     loop.close()
 
@@ -102,8 +102,8 @@ def _patch_remote_client(monkeypatch, server_app):
                 headers={"Authorization": f"token {token}"},
             )
 
-        def _datahub_prefix(self) -> str:
-            # DataHub server uses direct paths without /datahub/ infix
+        def _dit_prefix(self) -> str:
+            # Dit server uses direct paths without /dit/ infix
             return f"{self.base_url}/api/v1/repos/{self.repo}"
 
     monkeypatch.setattr(remote_mod, "RemoteClient", PatchedRemoteClient)
@@ -117,7 +117,7 @@ def test_push_creates_objects_on_server(server_app, local_repo: Path, monkeypatc
     resp = sync_client.post("/api/v1/repos", json={"name": "train"})
     assert resp.status_code == 201
 
-    dot = local_repo / ".datahub"
+    dot = local_repo / ".dit"
     set_remote(dot, "origin", "http://testserver/train", token="dit_admin")
 
     result = runner.invoke(app, ["push"], catch_exceptions=False)
@@ -136,7 +136,7 @@ def test_push_idempotent(server_app, local_repo: Path, monkeypatch) -> None:
     sync_client = TestClient(server_app, headers={"Authorization": "Bearer dit_admin"})
     sync_client.post("/api/v1/repos", json={"name": "train"})
 
-    dot = local_repo / ".datahub"
+    dot = local_repo / ".dit"
     set_remote(dot, "origin", "http://testserver/train", token="dit_admin")
 
     r1 = runner.invoke(app, ["push"], catch_exceptions=False)

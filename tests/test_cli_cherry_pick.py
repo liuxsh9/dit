@@ -29,7 +29,7 @@ class TestCherryPick:
         )
         runner.invoke(app, ["add", "."], catch_exceptions=False)
         runner.invoke(app, ["commit", "-m", "add feature file"], catch_exceptions=False)
-        feature_hash = (tmp_path / ".datahub" / "refs" / "heads" / "feature").read_text().strip()
+        feature_hash = (tmp_path / ".dit" / "refs" / "heads" / "feature").read_text().strip()
         runner.invoke(app, ["checkout", "main"], catch_exceptions=False)
         result = runner.invoke(app, ["cherry-pick", feature_hash], catch_exceptions=False)
         assert result.exit_code == 0
@@ -37,7 +37,7 @@ class TestCherryPick:
         from dit.core.store import ObjectStore
         from dit.core.objects import deserialize_commit
         from dit.core.refs import RefStore
-        dot = tmp_path / ".datahub"
+        dot = tmp_path / ".dit"
         store = ObjectStore(dot / "objects")
         refs = RefStore(dot)
         head_hash = refs.resolve_head()
@@ -53,7 +53,7 @@ class TestCherryPick:
         )
         runner.invoke(app, ["add", "."], catch_exceptions=False)
         runner.invoke(app, ["commit", "-m", "feature change"], catch_exceptions=False)
-        feature_hash = (tmp_path / ".datahub" / "refs" / "heads" / "feature").read_text().strip()
+        feature_hash = (tmp_path / ".dit" / "refs" / "heads" / "feature").read_text().strip()
         runner.invoke(app, ["checkout", "main"], catch_exceptions=False)
         (tmp_path / "data.jsonl").write_text(
             json.dumps({"messages": [{"role": "user", "content": "hello"}, {"role": "assistant", "content": "main"}]}) + "\n"
@@ -62,8 +62,8 @@ class TestCherryPick:
         runner.invoke(app, ["commit", "-m", "main change"], catch_exceptions=False)
         result = runner.invoke(app, ["cherry-pick", feature_hash])
         assert result.exit_code != 0
-        assert (tmp_path / ".datahub" / "CHERRY_PICK_HEAD").exists()
-        assert not (tmp_path / ".datahub" / "MERGE_HEAD").exists()
+        assert (tmp_path / ".dit" / "CHERRY_PICK_HEAD").exists()
+        assert not (tmp_path / ".dit" / "MERGE_HEAD").exists()
 
     def test_cherry_pick_continue(self, tmp_path):
         _init_and_commit(tmp_path)
@@ -73,7 +73,7 @@ class TestCherryPick:
         )
         runner.invoke(app, ["add", "."], catch_exceptions=False)
         runner.invoke(app, ["commit", "-m", "feature change"], catch_exceptions=False)
-        feature_hash = (tmp_path / ".datahub" / "refs" / "heads" / "feature").read_text().strip()
+        feature_hash = (tmp_path / ".dit" / "refs" / "heads" / "feature").read_text().strip()
         runner.invoke(app, ["checkout", "main"], catch_exceptions=False)
         (tmp_path / "data.jsonl").write_text(
             json.dumps({"messages": [{"role": "user", "content": "hello"}, {"role": "assistant", "content": "main"}]}) + "\n"
@@ -87,11 +87,11 @@ class TestCherryPick:
         runner.invoke(app, ["add", "."], catch_exceptions=False)
         result = runner.invoke(app, ["cherry-pick", "--continue"], catch_exceptions=False)
         assert result.exit_code == 0
-        assert not (tmp_path / ".datahub" / "CHERRY_PICK_HEAD").exists()
+        assert not (tmp_path / ".dit" / "CHERRY_PICK_HEAD").exists()
         from dit.core.store import ObjectStore
         from dit.core.objects import deserialize_commit
         from dit.core.refs import RefStore
-        dot = tmp_path / ".datahub"
+        dot = tmp_path / ".dit"
         store = ObjectStore(dot / "objects")
         refs = RefStore(dot)
         head_hash = refs.resolve_head()
@@ -106,7 +106,7 @@ class TestCherryPick:
         )
         runner.invoke(app, ["add", "."], catch_exceptions=False)
         runner.invoke(app, ["commit", "-m", "feature change"], catch_exceptions=False)
-        feature_hash = (tmp_path / ".datahub" / "refs" / "heads" / "feature").read_text().strip()
+        feature_hash = (tmp_path / ".dit" / "refs" / "heads" / "feature").read_text().strip()
         runner.invoke(app, ["checkout", "main"], catch_exceptions=False)
         (tmp_path / "data.jsonl").write_text(
             json.dumps({"messages": [{"role": "user", "content": "hello"}, {"role": "assistant", "content": "main"}]}) + "\n"
@@ -116,7 +116,7 @@ class TestCherryPick:
         runner.invoke(app, ["cherry-pick", feature_hash])
         result = runner.invoke(app, ["cherry-pick", "--abort"], catch_exceptions=False)
         assert result.exit_code == 0
-        assert not (tmp_path / ".datahub" / "CHERRY_PICK_HEAD").exists()
+        assert not (tmp_path / ".dit" / "CHERRY_PICK_HEAD").exists()
         content = (tmp_path / "data.jsonl").read_text()
         assert "main" in content
 
@@ -127,8 +127,8 @@ class TestCherryPick:
 
     def test_merge_and_cherry_pick_mutually_exclusive(self, tmp_path):
         _init_and_commit(tmp_path)
-        (tmp_path / ".datahub" / "MERGE_HEAD").write_text("a" * 64 + "\n")
+        (tmp_path / ".dit" / "MERGE_HEAD").write_text("a" * 64 + "\n")
         result = runner.invoke(app, ["cherry-pick", "b" * 64])
         assert result.exit_code != 0
         assert "merge" in result.output.lower()
-        (tmp_path / ".datahub" / "MERGE_HEAD").unlink()
+        (tmp_path / ".dit" / "MERGE_HEAD").unlink()

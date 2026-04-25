@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implement 6-level permission model, branch protection rules, required reviewer rules, PR approval flow, and webhook deprecation for DataHub's collaboration security layer.
+**Goal:** Implement 6-level permission model, branch protection rules, required reviewer rules, PR approval flow, and webhook deprecation for Dit's collaboration security layer.
 
-**Architecture:** Phase 3C extends datahub-core's auth layer from 3 levels (read/push/admin) to 6 numeric levels (10–60), adds branch protection and reviewer rule tables with enforcement hooks in the refs CAS update and merge routes, and marks Phase 2 webhook endpoints as deprecated. All new models follow the existing SQLAlchemy 2.0 async/Alembic migration pattern; all new routes follow the `require_permission()` dependency factory pattern already used throughout `src/dit/server/routes/`.
+**Architecture:** Phase 3C extends dit-core's auth layer from 3 levels (read/push/admin) to 6 numeric levels (10–60), adds branch protection and reviewer rule tables with enforcement hooks in the refs CAS update and merge routes, and marks Phase 2 webhook endpoints as deprecated. All new models follow the existing SQLAlchemy 2.0 async/Alembic migration pattern; all new routes follow the `require_permission()` dependency factory pattern already used throughout `src/dit/server/routes/`.
 
 **Tech Stack:** Python 3.12, FastAPI, SQLAlchemy 2.0 async, Alembic (migrations), pytest + pytest-asyncio
 
@@ -207,12 +207,12 @@ class TestSixLevelPermissions:
 ```python
 class Token(Base):
     __tablename__ = "tokens"
-    __table_args__ = {"schema": "datahub"}
+    __table_args__ = {"schema": "dit"}
 
     id: Mapped[int] = mapped_column(primary_key=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     label: Mapped[str] = mapped_column(String(128), nullable=False)
-    repo_scope: Mapped[Optional[int]] = mapped_column(ForeignKey("datahub.repos.id"), nullable=True)
+    repo_scope: Mapped[Optional[int]] = mapped_column(ForeignKey("dit.repos.id"), nullable=True)
     permissions: Mapped[str] = mapped_column(String(32), nullable=False, default="push")
     role: Mapped[str] = mapped_column(String(32), nullable=False, default="reader")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -358,10 +358,10 @@ class TestBranchProtectionModel:
 ```python
 class BranchProtection(Base):
     __tablename__ = "branch_protection"
-    __table_args__ = {"schema": "datahub"}
+    __table_args__ = {"schema": "dit"}
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    repo_id: Mapped[int] = mapped_column(ForeignKey("datahub.repos.id"), nullable=False)
+    repo_id: Mapped[int] = mapped_column(ForeignKey("dit.repos.id"), nullable=False)
     branch_pattern: Mapped[str] = mapped_column(String(256), nullable=False)
     require_pr: Mapped[bool] = mapped_column(default=True)
     required_approvals: Mapped[int] = mapped_column(default=1)
@@ -406,27 +406,27 @@ def upgrade() -> None:
     op.add_column(
         "tokens",
         sa.Column("role", sa.String(32), nullable=False, server_default="reader"),
-        schema="datahub",
+        schema="dit",
     )
 
     # Create branch_protection table
     op.create_table(
         "branch_protection",
         sa.Column("id", sa.BigInteger(), primary_key=True),
-        sa.Column("repo_id", sa.BigInteger(), sa.ForeignKey("datahub.repos.id"), nullable=False),
+        sa.Column("repo_id", sa.BigInteger(), sa.ForeignKey("dit.repos.id"), nullable=False),
         sa.Column("branch_pattern", sa.String(256), nullable=False),
         sa.Column("require_pr", sa.Boolean(), nullable=False, server_default="true"),
         sa.Column("required_approvals", sa.Integer(), nullable=False, server_default="1"),
         sa.Column("block_force_push", sa.Boolean(), nullable=False, server_default="true"),
         sa.Column("auto_delete_branch", sa.Boolean(), nullable=False, server_default="false"),
         sa.UniqueConstraint("repo_id", "branch_pattern", name="uq_branch_protection_repo_pattern"),
-        schema="datahub",
+        schema="dit",
     )
 
 
 def downgrade() -> None:
-    op.drop_table("branch_protection", schema="datahub")
-    op.drop_column("tokens", "role", schema="datahub")
+    op.drop_table("branch_protection", schema="dit")
+    op.drop_column("tokens", "role", schema="dit")
 ```
 
 ### Step 5: Commit
@@ -1005,11 +1005,11 @@ class TestPrApprovalModel:
 ```python
 class PrApproval(Base):
     __tablename__ = "pr_approval"
-    __table_args__ = {"schema": "datahub"}
+    __table_args__ = {"schema": "dit"}
 
     id: Mapped[int] = mapped_column(primary_key=True)
     pull_request_id: Mapped[int] = mapped_column(nullable=False)
-    token_id: Mapped[int] = mapped_column(ForeignKey("datahub.tokens.id"), nullable=False)
+    token_id: Mapped[int] = mapped_column(ForeignKey("dit.tokens.id"), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False)  # 'approved' | 'changes_requested'
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -1046,7 +1046,7 @@ def upgrade() -> None:
         sa.Column(
             "token_id",
             sa.BigInteger(),
-            sa.ForeignKey("datahub.tokens.id"),
+            sa.ForeignKey("dit.tokens.id"),
             nullable=False,
         ),
         sa.Column("status", sa.String(16), nullable=False),
@@ -1057,12 +1057,12 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.UniqueConstraint("pull_request_id", "token_id", name="uq_pr_approval_pr_token"),
-        schema="datahub",
+        schema="dit",
     )
 
 
 def downgrade() -> None:
-    op.drop_table("pr_approval", schema="datahub")
+    op.drop_table("pr_approval", schema="dit")
 ```
 
 ### Step 4: Run model tests
@@ -1109,7 +1109,7 @@ class TestPrReviewAPI:
 
     async def test_submit_approval(self, client):
         await self._create_repo(client)
-        # PR id 1 (simulated — does not reference a real PR table in datahub-core)
+        # PR id 1 (simulated — does not reference a real PR table in dit-core)
         resp = await client.post(
             "/api/v1/repos/review-test-repo/pulls/1/reviews",
             json={"status": "approved"},
@@ -1374,13 +1374,13 @@ class TestReviewerRuleModel:
 ```python
 class ReviewerRule(Base):
     __tablename__ = "data_reviewer_rule"
-    __table_args__ = {"schema": "datahub"}
+    __table_args__ = {"schema": "dit"}
 
     id: Mapped[int] = mapped_column(primary_key=True)
     repo_id: Mapped[int] = mapped_column(nullable=False)
     pattern: Mapped[str] = mapped_column(String(256), nullable=False)
     reviewer_token_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("datahub.tokens.id"), nullable=True
+        ForeignKey("dit.tokens.id"), nullable=True
     )
 
     def __repr__(self) -> str:
@@ -1420,15 +1420,15 @@ def upgrade() -> None:
         sa.Column(
             "reviewer_token_id",
             sa.BigInteger(),
-            sa.ForeignKey("datahub.tokens.id"),
+            sa.ForeignKey("dit.tokens.id"),
             nullable=True,
         ),
-        schema="datahub",
+        schema="dit",
     )
 
 
 def downgrade() -> None:
-    op.drop_table("data_reviewer_rule", schema="datahub")
+    op.drop_table("data_reviewer_rule", schema="dit")
 ```
 
 ### Step 4: Run model tests
@@ -2024,7 +2024,7 @@ def _add_deprecation_headers(response: Response) -> None:
     response.headers["Deprecation"] = _DEPRECATION_DATE
     response.headers["Sunset"] = _SUNSET_DATE
     response.headers["Link"] = (
-        '<https://forgejo.datahub.example/api/v1/repos/{owner}/{repo}/hooks>; '
+        '<https://forgejo.dit.example/api/v1/repos/{owner}/{repo}/hooks>; '
         'rel="successor-version"'
     )
 
@@ -2140,7 +2140,7 @@ Setting `role="owner"` for the test admin token ensures it passes all permission
 
 ## Summary of API Changes
 
-After Phase 3C, datahub-core exposes:
+After Phase 3C, dit-core exposes:
 
 | Method | Path | Role Required | Description |
 |---|---|---|---|

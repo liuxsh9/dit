@@ -188,9 +188,9 @@ This is more REST-friendly and allows the gateway to serve individual files with
 
 ### 4.1 Gateway proxy
 
-Add export routes to datahub group:
-- `POST /datahub/export` → proxy to core export endpoint
-- `GET /datahub/export/{commit}/{path}` → proxy to core single-file export
+Add export routes to dit group:
+- `POST /dit/export` → proxy to core export endpoint
+- `GET /dit/export/{commit}/{path}` → proxy to core single-file export
 
 ### 4.2 Gateway client methods
 

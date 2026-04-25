@@ -44,12 +44,12 @@ view.go handler
 
 ### 1.3 Webpack registration
 
-1. Create feature loader: `web_src/js/features/datahub.js`
+1. Create feature loader: `web_src/js/features/dit.js`
 2. Register as entry point in `webpack.config.js`
 3. Feature loader mounts Vue apps on DOM elements rendered by templates
 
 ```js
-// web_src/js/features/datahub.js
+// web_src/js/features/dit.js
 import {createApp} from 'vue';
 
 const dataRepoHome = document.getElementById('data-repo-home');
@@ -71,16 +71,16 @@ All in `web_src/js/components/`.
 Replaces the git file browser for data repos. Main landing page.
 
 **Layout:**
-- Top bar: branch/ref selector dropdown (fetches from `GET /datahub/refs`)
+- Top bar: branch/ref selector dropdown (fetches from `GET /dit/refs`)
 - Stats section: row count, file count, total size (from manifest)
 - File listing table from tree endpoint with clickable navigation
 - Each file row shows: path, row count, size
 
 **API calls:**
-- `GET /api/v1/repos/{owner}/{repo}/datahub/refs` — list branches
-- `GET /api/v1/repos/{owner}/{repo}/datahub/refs/heads/{branch}` — resolve ref to commit hash
-- `GET /api/v1/repos/{owner}/{repo}/datahub/tree/{commit_hash}` — get file tree
-- `GET /api/v1/repos/{owner}/{repo}/datahub/manifest/{hash}` — get manifest for stats
+- `GET /api/v1/repos/{owner}/{repo}/dit/refs` — list branches
+- `GET /api/v1/repos/{owner}/{repo}/dit/refs/heads/{branch}` — resolve ref to commit hash
+- `GET /api/v1/repos/{owner}/{repo}/dit/tree/{commit_hash}` — get file tree
+- `GET /api/v1/repos/{owner}/{repo}/dit/manifest/{hash}` — get manifest for stats
 
 **Interactions:**
 - Branch selector changes → re-fetch ref → re-fetch tree
@@ -104,8 +104,8 @@ Tabular view of JSONL data files.
 - Row numbers in leftmost column
 
 **API calls:**
-- `GET /api/v1/repos/{owner}/{repo}/datahub/manifest/{hash}` — get file chunks
-- `GET /api/v1/repos/{owner}/{repo}/datahub/objects/{chunk_hash}` — fetch individual chunks
+- `GET /api/v1/repos/{owner}/{repo}/dit/manifest/{hash}` — get file chunks
+- `GET /api/v1/repos/{owner}/{repo}/dit/objects/{chunk_hash}` — fetch individual chunks
 
 **Pagination:**
 - Manifest contains ordered list of chunk hashes
@@ -127,8 +127,8 @@ Side-by-side diff view for data pull requests.
 **Color scheme:** Reuse Forgejo's existing diff CSS variables for consistency.
 
 **API calls:**
-- `GET /api/v1/repos/{owner}/{repo}/datahub/diff/{old_commit}/{new_commit}` — get diff summary
-- `GET /api/v1/repos/{owner}/{repo}/datahub/objects/{hash}` — fetch row data for display
+- `GET /api/v1/repos/{owner}/{repo}/dit/diff/{old_commit}/{new_commit}` — get diff summary
+- `GET /api/v1/repos/{owner}/{repo}/dit/objects/{hash}` — fetch row data for display
 
 **Features:**
 - Field-level highlighting within changed rows
@@ -153,7 +153,7 @@ Interactive merge conflict resolution for data PRs.
 
 **API calls:**
 - Uses diff endpoint to identify conflicts
-- `POST /api/v1/repos/{owner}/{repo}/datahub/pulls/{id}/merge` — submit resolved version
+- `POST /api/v1/repos/{owner}/{repo}/dit/pulls/{id}/merge` — submit resolved version
 
 **State management:**
 - Resolution state tracked client-side in a Map<rowHash, resolution>
@@ -164,13 +164,13 @@ Interactive merge conflict resolution for data PRs.
 
 ## 3. Shared Utilities
 
-### 3.1 `web_src/js/utils/datahub-api.js`
+### 3.1 `web_src/js/utils/dit-api.js`
 
 Thin API wrapper:
 
 ```js
-export async function datahubFetch(owner, repo, path, options = {}) {
-  const url = `/api/v1/repos/${owner}/${repo}/datahub${path}`;
+export async function ditFetch(owner, repo, path, options = {}) {
+  const url = `/api/v1/repos/${owner}/${repo}/dit${path}`;
   const resp = await fetch(url, {
     headers: {'Content-Type': 'application/json'},
     ...options,

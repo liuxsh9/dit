@@ -21,7 +21,7 @@ All three plans are detailed, TDD-ordered, and internally coherent. The core pla
 |---|---|---|---|
 | 1.1 SidecarEntry / Sidecar dataclasses | core | Task 1 | ✅ |
 | 1.2 TreeEntry sidecar_hash optional field | core | Task 2 | ✅ |
-| 1.3 Object store layout (.datahub/objects/sidecars/) | core | Tasks 1, 6 | ✅ (store.write("sidecars",...) used correctly) |
+| 1.3 Object store layout (.dit/objects/sidecars/) | core | Tasks 1, 6 | ✅ (store.write("sidecars",...) used correctly) |
 | 2.1 serialize_sidecar / deserialize_sidecar | core | Task 1 | ✅ |
 | 2.2 serialize_tree extension (omit None) | core | Task 3 | ✅ |
 | 2.3 deserialize_tree extension (.get) | core | Task 4 | ✅ |
@@ -150,7 +150,7 @@ The existing server tests (e.g., `tests/server/test_routes_manifest.py`) should 
 **[I-3] Gateway Task 4B: `net/url` import — `url.QueryEscape` will not compile without explicit import verification**
 
 **Plan:** 4A-Gateway, Task 4, Step 4B  
-**File:** `modules/datahub/client.go`
+**File:** `modules/dit/client.go`
 
 The plan adds:
 ```go
@@ -162,7 +162,7 @@ The existing `client.go` does not import `"net/url"`. The plan says "add `net/ur
 
 More importantly, `url.QueryEscape` escapes `/` as `%2F`, which is correct for query parameter values. However, if `filePath` contains slashes (e.g., `subdir/train.jsonl`), the diff endpoint on the Python side receives `?file=subdir%2Ftrain.jsonl`. The Python server uses `file.lstrip("/")` for path cleaning but does not URL-decode the query parameter — FastAPI's `Query()` will decode it automatically, so this is fine. But the gateway test `TestMetaDiff` only tests a simple filename (`train.jsonl`) — a test with a path containing a slash would be valuable to confirm end-to-end encoding correctness.
 
-**Required fix:** In Step 4B, show the full updated import block for `client.go`. Add a note about running `goimports` or `go build ./modules/datahub/...` immediately after to catch the import.
+**Required fix:** In Step 4B, show the full updated import block for `client.go`. Add a note about running `goimports` or `go build ./modules/dit/...` immediately after to catch the import.
 
 ---
 
@@ -296,4 +296,4 @@ The following changes must be made before any worker begins execution:
 
 ### Fixes required in `2026-04-25-phase4a-gateway.md`
 
-6. **[I-3] Task 4, Step 4B:** Show the complete updated import block for `client.go`. Add a `go build ./modules/datahub/...` step immediately after the implementation to catch the import.
+6. **[I-3] Task 4, Step 4B:** Show the complete updated import block for `client.go`. Add a `go build ./modules/dit/...` step immediately after the implementation to catch the import.

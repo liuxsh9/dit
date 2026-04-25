@@ -16,23 +16,23 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.execute("CREATE SCHEMA IF NOT EXISTS datahub")
+    op.execute("CREATE SCHEMA IF NOT EXISTS dit")
 
     op.create_table(
         "repos",
         sa.Column("id", sa.Integer, primary_key=True),
         sa.Column("name", sa.String(128), unique=True, nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        schema="datahub",
+        schema="dit",
     )
 
     op.create_table(
         "refs",
-        sa.Column("repo_id", sa.Integer, sa.ForeignKey("datahub.repos.id"), primary_key=True),
+        sa.Column("repo_id", sa.Integer, sa.ForeignKey("dit.repos.id"), primary_key=True),
         sa.Column("name", sa.String(256), primary_key=True),
         sa.Column("target_hash", sa.String(64), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        schema="datahub",
+        schema="dit",
     )
 
     op.create_table(
@@ -40,16 +40,16 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer, primary_key=True),
         sa.Column("token_hash", sa.String(64), unique=True, nullable=False),
         sa.Column("label", sa.String(128), nullable=False),
-        sa.Column("repo_scope", sa.Integer, sa.ForeignKey("datahub.repos.id"), nullable=True),
+        sa.Column("repo_scope", sa.Integer, sa.ForeignKey("dit.repos.id"), nullable=True),
         sa.Column("permissions", sa.String(32), nullable=False, server_default="push"),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=True),
-        schema="datahub",
+        schema="dit",
     )
 
 
 def downgrade() -> None:
-    op.drop_table("tokens", schema="datahub")
-    op.drop_table("refs", schema="datahub")
-    op.drop_table("repos", schema="datahub")
-    op.execute("DROP SCHEMA IF EXISTS datahub")
+    op.drop_table("tokens", schema="dit")
+    op.drop_table("refs", schema="dit")
+    op.drop_table("repos", schema="dit")
+    op.execute("DROP SCHEMA IF EXISTS dit")

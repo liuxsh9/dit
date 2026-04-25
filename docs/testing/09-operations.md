@@ -187,7 +187,7 @@ GC 只删除"不可达且超过宽限期"的对象。为制造可测试的场景
 cd /tmp/dit-ops-test
 
 # 查看当前对象数量
-find .datahub/objects -type f | wc -l
+find .dit/objects -type f | wc -l
 
 # 写入一个孤立的 rows 对象（不属于任何 commit）
 python3 - <<'PY'
@@ -196,7 +196,7 @@ from pathlib import Path
 
 data = json.dumps({"orphan": True}, separators=(",",":"), sort_keys=True).encode()
 h = hashlib.sha256(data).hexdigest()
-shard = Path(".datahub/objects/rows") / h[:2] / h[2:4]
+shard = Path(".dit/objects/rows") / h[:2] / h[2:4]
 shard.mkdir(parents=True, exist_ok=True)
 obj_path = shard / h
 
@@ -272,7 +272,7 @@ from pathlib import Path
 
 data = json.dumps({"orphan2h": True}, separators=(",",":"), sort_keys=True).encode()
 h = hashlib.sha256(data).hexdigest()
-shard = Path(".datahub/objects/rows") / h[:2] / h[2:4]
+shard = Path(".dit/objects/rows") / h[:2] / h[2:4]
 shard.mkdir(parents=True, exist_ok=True)
 obj_path = shard / h
 obj_path.write_bytes(pyzstd.compress(data))
@@ -833,23 +833,23 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 curl -s http://localhost:8000/metrics
 ```
 
-### 11.2 datahub_http_requests_total
+### 11.2 dit_http_requests_total
 
 ```bash
-curl -s http://localhost:8000/metrics | grep datahub_http_requests_total
+curl -s http://localhost:8000/metrics | grep dit_http_requests_total
 ```
 
 预期示例输出：
 
 ```
-# HELP datahub_http_requests_total Total HTTP requests
-# TYPE datahub_http_requests_total counter
-datahub_http_requests_total{method="GET",path="/health",status="200"} 2.0
-datahub_http_requests_total{method="GET",path="/api/v1/repos/{repo}/blame/{hash}/train.jsonl",status="200"} 1.0
+# HELP dit_http_requests_total Total HTTP requests
+# TYPE dit_http_requests_total counter
+dit_http_requests_total{method="GET",path="/health",status="200"} 2.0
+dit_http_requests_total{method="GET",path="/api/v1/repos/{repo}/blame/{hash}/train.jsonl",status="200"} 1.0
 ```
 
 验证检查点：
-- [ ] 出现 `datahub_http_requests_total` 计数器
+- [ ] 出现 `dit_http_requests_total` 计数器
 - [ ] path 中 `/health` 请求被计入
 - [ ] path 中仓库名被规范化为 `{repo}`，commit hash 被规范化为 `{hash}`
 
@@ -869,18 +869,18 @@ curl -s http://localhost:8000/metrics | grep "blame.*{hash}"
 ### 11.4 latency histogram
 
 ```bash
-curl -s http://localhost:8000/metrics | grep datahub_http_request_duration_seconds
+curl -s http://localhost:8000/metrics | grep dit_http_request_duration_seconds
 ```
 
 预期示例：
 
 ```
-# HELP datahub_http_request_duration_seconds HTTP request latency in seconds
-# TYPE datahub_http_request_duration_seconds histogram
-datahub_http_request_duration_seconds_bucket{method="GET",path="/health",le="0.01"} 2.0
+# HELP dit_http_request_duration_seconds HTTP request latency in seconds
+# TYPE dit_http_request_duration_seconds histogram
+dit_http_request_duration_seconds_bucket{method="GET",path="/health",le="0.01"} 2.0
 ...
-datahub_http_request_duration_seconds_sum{method="GET",path="/health"} 0.001234
-datahub_http_request_duration_seconds_count{method="GET",path="/health"} 2.0
+dit_http_request_duration_seconds_sum{method="GET",path="/health"} 0.001234
+dit_http_request_duration_seconds_count{method="GET",path="/health"} 2.0
 ```
 
 验证检查点：
@@ -890,15 +890,15 @@ datahub_http_request_duration_seconds_count{method="GET",path="/health"} 2.0
 ### 11.5 in_progress gauge
 
 ```bash
-curl -s http://localhost:8000/metrics | grep datahub_http_requests_in_progress
+curl -s http://localhost:8000/metrics | grep dit_http_requests_in_progress
 ```
 
 预期示例（静止状态下应为 0）：
 
 ```
-# HELP datahub_http_requests_in_progress Number of HTTP requests currently being processed
-# TYPE datahub_http_requests_in_progress gauge
-datahub_http_requests_in_progress{method="GET"} 0.0
+# HELP dit_http_requests_in_progress Number of HTTP requests currently being processed
+# TYPE dit_http_requests_in_progress gauge
+dit_http_requests_in_progress{method="GET"} 0.0
 ```
 
 验证检查点：
@@ -958,7 +958,7 @@ curl -s -v http://localhost:8000/health 2>&1 | grep -i "x-request-id"
 
 ### 12.3 结构化 JSON 日志
 
-> 日志输出到 `datahub.access` logger，需确认服务端已配置 JSON 日志格式。
+> 日志输出到 `dit.access` logger，需确认服务端已配置 JSON 日志格式。
 
 查看服务端日志（或将 stdout 重定向到文件），预期每行格式：
 
@@ -1015,7 +1015,7 @@ from pathlib import Path
 
 data = json.dumps({"fresh_orphan": True}, separators=(",",":"), sort_keys=True).encode()
 h = hashlib.sha256(data).hexdigest()
-shard = Path(".datahub/objects/rows") / h[:2] / h[2:4]
+shard = Path(".dit/objects/rows") / h[:2] / h[2:4]
 shard.mkdir(parents=True, exist_ok=True)
 (shard / h).write_bytes(pyzstd.compress(data))
 print(f"hash={h}")
@@ -1072,7 +1072,7 @@ dit dedup
 cd /tmp/dit-ops-test
 
 # 找到一个 rows 对象路径
-ROW_FILE=$(find .datahub/objects/rows -type f | head -1)
+ROW_FILE=$(find .dit/objects/rows -type f | head -1)
 echo "将要破坏: $ROW_FILE"
 
 # 备份
@@ -1116,7 +1116,7 @@ dit fsck
 
 ```bash
 # 再次破坏一个对象
-ROW_FILE=$(find .datahub/objects/rows -type f | head -1)
+ROW_FILE=$(find .dit/objects/rows -type f | head -1)
 cp "$ROW_FILE" "${ROW_FILE}.bak"
 python3 -c "import pyzstd; open('$ROW_FILE', 'wb').write(pyzstd.compress(b'corrupted content'))"
 

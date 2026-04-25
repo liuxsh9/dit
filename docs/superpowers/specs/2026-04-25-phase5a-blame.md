@@ -318,13 +318,13 @@ Register the router in `src/dit/server/app.py` alongside existing routers.
 
 ### 4.1 Gateway route
 
-Add to the `datahub` group in `routers/api/v1/api.go`:
+Add to the `dit` group in `routers/api/v1/api.go`:
 
 ```go
 m.Get("/blame/{commit}/{file:*}", repo.DatahubGetBlame)
 ```
 
-### 4.2 Handler in `routers/api/v1/repo/datahub.go`
+### 4.2 Handler in `routers/api/v1/repo/dit.go`
 
 ```go
 func DatahubGetBlame(ctx *context.APIContext) {
@@ -332,14 +332,14 @@ func DatahubGetBlame(ctx *context.APIContext) {
     filePath := ctx.Params(":file")
     rowParam := ctx.FormString("row")
 
-    data, status, err := datahub.DefaultClient().GetBlame(
+    data, status, err := dit.DefaultClient().GetBlame(
         ctx, ctx.Repo.Repository.Name, commitHash, filePath, rowParam,
     )
     proxyDatahubResponse(ctx, data, status, err)
 }
 ```
 
-### 4.3 Client method in `modules/datahub/client.go`
+### 4.3 Client method in `modules/dit/client.go`
 
 ```go
 func (c *Client) GetBlame(ctx context.Context, repoName, commitHash, filePath, row string) ([]byte, int, error) {

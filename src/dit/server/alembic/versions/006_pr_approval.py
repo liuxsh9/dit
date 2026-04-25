@@ -15,12 +15,12 @@ def upgrade() -> None:
         "pr_approval",
         sa.Column("id", sa.BigInteger(), primary_key=True),
         sa.Column("pull_request_id", sa.BigInteger(), nullable=False),
-        sa.Column("token_id", sa.BigInteger(), sa.ForeignKey("datahub.tokens.id"), nullable=False),
+        sa.Column("token_id", sa.BigInteger(), sa.ForeignKey("dit.tokens.id"), nullable=False),
         sa.Column("status", sa.String(16), nullable=False),
         sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("NOW()"), nullable=False),
         sa.UniqueConstraint("pull_request_id", "token_id", name="uq_pr_approval_pr_token"),
-        schema="datahub",
+        schema="dit",
     )
 
 def downgrade() -> None:
-    op.drop_table("pr_approval", schema="datahub")
+    op.drop_table("pr_approval", schema="dit")
