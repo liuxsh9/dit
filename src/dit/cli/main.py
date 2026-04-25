@@ -476,12 +476,12 @@ def checkout(
         typer.echo(f"error: branch '{target}' not found", err=True)
         raise typer.Exit(1)
 
-    if _has_uncommitted_changes(repo_root, dot, store, refs):
-        typer.echo("error: working directory has uncommitted changes", err=True)
-        raise typer.Exit(1)
-
     if index.entries():
         typer.echo("error: staging area is not empty — please commit or reset first", err=True)
+        raise typer.Exit(1)
+
+    if _has_uncommitted_changes(repo_root, dot, store, refs):
+        typer.echo("error: working directory has uncommitted changes", err=True)
         raise typer.Exit(1)
 
     current_hash = refs.resolve_head()
@@ -511,12 +511,12 @@ def switch(
         typer.echo(f"error: branch '{target}' not found", err=True)
         raise typer.Exit(1)
 
-    if _has_uncommitted_changes(repo_root, dot, store, refs):
-        typer.echo("error: working directory has uncommitted changes", err=True)
-        raise typer.Exit(1)
-
     if index.entries():
         typer.echo("error: staging area is not empty — please commit or reset first", err=True)
+        raise typer.Exit(1)
+
+    if _has_uncommitted_changes(repo_root, dot, store, refs):
+        typer.echo("error: working directory has uncommitted changes", err=True)
         raise typer.Exit(1)
 
     current_hash = refs.resolve_head()

@@ -80,6 +80,9 @@ dit add .
 dit commit -m "补充文件操作样本"
 ```
 
+> 可选：如果你还想执行文档中的“源码级对象/refs 内省”片段，再额外设置 Dit 源码目录：
+> `export DIT_SOURCE_DIR=/path/to/dit`
+
 验证清单：
 - [ ] `dit log` 输出 2 个 commit 块
 - [ ] `train.jsonl` 有 3 行（`wc -l "$TEST_DIR/train.jsonl"` 输出 `3`）
@@ -772,10 +775,10 @@ echo "退出码: $?"
 恢复工作目录（丢弃该临时修改）：
 
 ```bash
-# 利用 checkout main 强制还原工作目录文件（此时 HEAD 已经是 main，不会拒绝）
-# 注意：需要先使文件恢复干净状态；最简单的办法是用 HEAD 的 train.jsonl 覆盖
-cd "$TEST_DIR"
-uv run python3 - << 'PYEOF'
+# 通过 HEAD 快照把工作目录文件覆写回当前分支版本
+cd "$DIT_SOURCE_DIR"
+TEST_DIR="$TEST_DIR" uv run python3 - << 'PYEOF'
+import os
 from pathlib import Path
 from dit.core.store import ObjectStore
 from dit.core.objects import deserialize_commit, deserialize_manifest
@@ -783,7 +786,8 @@ from dit.core.refs import RefStore
 from dit.core.tree_walker import flatten_tree
 from dit.core.workspace import materialize_file
 
-dot = Path(".dit")
+repo_root = Path(os.environ["TEST_DIR"])
+dot = repo_root / ".dit"
 store = ObjectStore(dot / "objects")
 refs = RefStore(dot)
 
@@ -794,7 +798,7 @@ for path, (obj_type, obj_hash, _) in flat.items():
     if obj_type == "manifest":
         m_data = store.read("manifests", obj_hash)
         manifest = deserialize_manifest(m_data)
-        materialize_file(Path("."), path, manifest, store)
+        materialize_file(repo_root, path, manifest, store)
         print(f"已还原：{path}")
 PYEOF
 ```
@@ -909,12 +913,13 @@ diff "$TEST_DIR/.dit/refs/heads/main" "$TEST_DIR/.dit/refs/tags/v1.0"
 ### 11.3 用 Python 内省 refs 状态
 
 ```bash
-cd "$TEST_DIR"
-uv run python3 - << 'PYEOF'
+cd "$DIT_SOURCE_DIR"
+TEST_DIR="$TEST_DIR" uv run python3 - << 'PYEOF'
+import os
 from pathlib import Path
 from dit.core.refs import RefStore
 
-dot = Path(".dit")
+dot = Path(os.environ["TEST_DIR"]) / ".dit"
 refs = RefStore(dot)
 
 print(f"HEAD          : {refs.get_head()}")

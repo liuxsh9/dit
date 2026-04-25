@@ -113,6 +113,18 @@ class TestCheckout:
         assert result.exit_code != 0
         assert "uncommitted" in result.output.lower()
 
+    def test_checkout_with_staged_changes_prefers_staging_error(self, tmp_path):
+        _init_and_commit(tmp_path)
+        runner.invoke(app, ["branch", "feature"], catch_exceptions=False)
+        (tmp_path / "staged.jsonl").write_text('{"messages":[{"role":"user","content":"staged"}]}\n')
+        runner.invoke(app, ["add", "staged.jsonl"], catch_exceptions=False)
+
+        result = runner.invoke(app, ["checkout", "feature"])
+
+        assert result.exit_code != 0
+        assert "staging area is not empty" in result.output.lower()
+        assert (tmp_path / ".dit" / "HEAD").read_text().strip() == "ref:main"
+
     def test_checkout_removes_files_not_in_target(self, tmp_path):
         _init_and_commit(tmp_path)
         runner.invoke(app, ["checkout", "-b", "feature"], catch_exceptions=False)
@@ -136,3 +148,15 @@ class TestSwitch:
         _init_and_commit(tmp_path)
         result = runner.invoke(app, ["switch", "nope"])
         assert result.exit_code != 0
+
+    def test_switch_with_staged_changes_prefers_staging_error(self, tmp_path):
+        _init_and_commit(tmp_path)
+        runner.invoke(app, ["branch", "feature"], catch_exceptions=False)
+        (tmp_path / "staged.jsonl").write_text('{"messages":[{"role":"user","content":"staged"}]}\n')
+        runner.invoke(app, ["add", "staged.jsonl"], catch_exceptions=False)
+
+        result = runner.invoke(app, ["switch", "feature"])
+
+        assert result.exit_code != 0
+        assert "staging area is not empty" in result.output.lower()
+        assert (tmp_path / ".dit" / "HEAD").read_text().strip() == "ref:main"
