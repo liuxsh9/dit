@@ -10,9 +10,11 @@ from dit.server.auth import get_session
 
 @pytest.fixture
 def test_settings(tmp_path):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
     return ServerSettings(
         database_url="sqlite+aiosqlite:///:memory:",
-        data_dir=str(tmp_path / "data"),
+        data_dir=str(data_dir),
     )
 
 
@@ -41,7 +43,9 @@ async def test_health(test_app):
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.get("/health")
         assert response.status_code == 200
-        assert response.json() == {"status": "ok"}
+        data = response.json()
+        assert data["status"] == "healthy"
+        assert "checks" in data
 
     for table in Base.metadata.tables.values():
         table.schema = "datahub"

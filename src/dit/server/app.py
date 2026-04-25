@@ -38,7 +38,40 @@ def create_app(settings: ServerSettings | None = None) -> FastAPI:
 
     @application.get("/health")
     async def health():
-        return {"status": "ok"}
+        import time as _time
+        from sqlalchemy import text
+        from starlette.responses import JSONResponse
+
+        checks = {}
+        overall = "healthy"
+
+        try:
+            factory = application.dependency_overrides.get(get_session)
+            if factory:
+                async for session in factory():
+                    start = _time.monotonic()
+                    await session.execute(text("SELECT 1"))
+                    latency = (_time.monotonic() - start) * 1000
+                    checks["database"] = {"status": "healthy", "latency_ms": round(latency, 2)}
+                    break
+            else:
+                checks["database"] = {"status": "healthy", "latency_ms": 0}
+        except Exception as exc:
+            checks["database"] = {"status": "unhealthy", "error": str(exc)}
+            overall = "unhealthy"
+
+        data_dir = getattr(application.state, "data_dir", None)
+        if data_dir and data_dir.is_dir():
+            checks["data_dir"] = {"status": "healthy"}
+        else:
+            checks["data_dir"] = {"status": "unhealthy", "error": "data directory not found"}
+            overall = "unhealthy"
+
+        status_code = 200 if overall == "healthy" else 503
+        return JSONResponse(
+            content={"status": overall, "checks": checks},
+            status_code=status_code,
+        )
 
     from dit.server.routes.repos import router as repos_router
     application.include_router(repos_router)

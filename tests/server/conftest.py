@@ -38,9 +38,11 @@ ADMIN_TOKEN_RAW = "test-admin-token"
 
 @pytest_asyncio.fixture
 async def client(engine, tmp_path):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
     settings = ServerSettings(
         database_url="sqlite+aiosqlite:///:memory:",
-        data_dir=str(tmp_path / "data"),
+        data_dir=str(data_dir),
     )
     app = create_app(settings=settings)
     factory = create_session_factory(engine)
