@@ -478,3 +478,44 @@ class TestMeta:
         result = runner.invoke(app, ["meta", "compute"])
         assert result.exit_code != 0
         assert "No commits" in result.output or "fatal" in result.output.lower()
+
+    def test_meta_show_table(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        dot = self._make_repo_with_data(tmp_path)
+        runner.invoke(app, ["meta", "compute"])
+
+        result = runner.invoke(app, ["meta", "show", "train.jsonl"])
+        assert result.exit_code == 0, result.output
+        assert "train.jsonl" in result.output
+        assert "Total chars" in result.output or "total" in result.output.lower()
+        assert "Token estimate" in result.output or "token" in result.output.lower()
+
+    def test_meta_show_json(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        dot = self._make_repo_with_data(tmp_path)
+        runner.invoke(app, ["meta", "compute"])
+
+        result = runner.invoke(app, ["meta", "show", "train.jsonl", "--format", "json"])
+        assert result.exit_code == 0, result.output
+        import json
+        data = json.loads(result.output)
+        assert "manifest_hash" in data
+        assert "entries" in data
+        assert len(data["entries"]) == 2
+
+    def test_meta_show_no_sidecar(self, tmp_path, monkeypatch):
+        """meta show on a file without sidecar exits with error."""
+        monkeypatch.chdir(tmp_path)
+        dot = self._make_repo_with_data(tmp_path)
+
+        result = runner.invoke(app, ["meta", "show", "train.jsonl"])
+        assert result.exit_code != 0
+        assert "no sidecar" in result.output.lower() or "not found" in result.output.lower()
+
+    def test_meta_show_file_not_in_tree(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        dot = self._make_repo_with_data(tmp_path)
+        runner.invoke(app, ["meta", "compute"])
+
+        result = runner.invoke(app, ["meta", "show", "nonexistent.jsonl"])
+        assert result.exit_code != 0

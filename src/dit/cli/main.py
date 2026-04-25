@@ -1077,6 +1077,101 @@ def meta_compute(
     typer.echo(f'Created commit: {new_commit_hash[:8]} "meta: compute sidecar metadata"')
 
 
+@meta_app.command("show")
+def meta_show(
+    file: str = typer.Argument(..., help="File path (e.g. train.jsonl)"),
+    format: str = typer.Option("table", "--format", help="Output format: table or json"),
+):
+    """Display sidecar metadata stats for a file at HEAD."""
+    from dit.core.tree_walker import flatten_tree
+    from dit.core.objects import deserialize_sidecar
+
+    repo_root = find_repo_root()
+    dot = get_dot(repo_root)
+    store = ObjectStore(dot / "objects")
+    refs = RefStore(dot)
+
+    head_hash = refs.resolve_head()
+    if head_hash is None:
+        typer.echo("fatal: no commits in this repository", err=True)
+        raise typer.Exit(1)
+
+    commit_data = store.read("commits", head_hash)
+    head_commit = deserialize_commit(commit_data)
+    flat = flatten_tree(store, head_commit.tree_hash)
+
+    clean = file.lstrip("/")
+    if clean not in flat:
+        typer.echo(f"fatal: '{file}' not found in current HEAD tree", err=True)
+        raise typer.Exit(1)
+
+    obj_type, obj_hash, sidecar_hash = flat[clean]
+    if obj_type != "manifest":
+        typer.echo(f"fatal: '{file}' is not a manifest file (type={obj_type})", err=True)
+        raise typer.Exit(1)
+
+    if sidecar_hash is None:
+        typer.echo(
+            f"fatal: no sidecar for '{file}' — run 'dit meta compute' first",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    sidecar_data = store.read("sidecars", sidecar_hash)
+    if sidecar_data is None:
+        typer.echo(f"fatal: sidecar object {sidecar_hash[:8]} missing from store", err=True)
+        raise typer.Exit(1)
+
+    sidecar = deserialize_sidecar(sidecar_data)
+
+    if format == "json":
+        import json as _json
+        out = {
+            "manifest_hash": sidecar.manifest_hash,
+            "entries": [
+                {
+                    "row_hash": e.row_hash,
+                    "char_count": e.char_count,
+                    "token_estimate": e.token_estimate,
+                    "field_count": e.field_count,
+                    "lang": e.lang,
+                }
+                for e in sidecar.entries
+            ],
+        }
+        typer.echo(_json.dumps(out, indent=2))
+        return
+
+    # Table format: aggregate stats
+    row_count = len(sidecar.entries)
+    if row_count == 0:
+        typer.echo(f"File: {file} (0 rows)")
+        typer.echo("  No data.")
+        return
+
+    total_chars = sum(e.char_count for e in sidecar.entries)
+    total_tokens = sum(e.token_estimate for e in sidecar.entries)
+    avg_fields = sum(e.field_count for e in sidecar.entries) / row_count
+
+    lang_counts: dict[str, int] = {}
+    for e in sidecar.entries:
+        lang_key = e.lang or "unknown"
+        lang_counts[lang_key] = lang_counts.get(lang_key, 0) + 1
+    lang_pcts = {
+        lang: f"{count / row_count * 100:.0f}%"
+        for lang, count in sorted(lang_counts.items(), key=lambda x: -x[1])
+    }
+    lang_str = ", ".join(f"{lang} ({pct})" for lang, pct in lang_pcts.items())
+
+    typer.echo(f"File: {file} ({row_count} rows)")
+    typer.echo(f"Sidecar: {sidecar_hash[:8]}")
+    typer.echo("")
+    typer.echo(f"  Total chars:    {total_chars:,}")
+    typer.echo(f"  Token estimate: {total_tokens:,}")
+    typer.echo(f"  Avg fields/row: {avg_fields:.1f}")
+    typer.echo(f"  Languages:      {lang_str}")
+
+
 def _build_remote_client(dot: Path, remote_name: str = "origin") -> "RemoteClient":
     from dit.core.config import get_remote
     from dit.core.remote import RemoteClient
