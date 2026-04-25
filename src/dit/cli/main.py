@@ -2007,6 +2007,110 @@ def validate(
     raise typer.Exit(1)
 
 
+@app.command()
+def blame(
+    file: str = typer.Argument(..., help="File path (e.g. train.jsonl)"),
+    ref: str = typer.Option("main", "--ref", help="Branch name or commit hash"),
+    row: Optional[int] = typer.Option(None, "--row", help="Show history for a specific row index"),
+    format: str = typer.Option("table", "--format", help="Output format: table or json"),
+):
+    """Show which commit introduced each row in a file."""
+    import json as _json
+    from datetime import datetime, timezone
+    from dit.core.blame import blame_file as _blame_file, row_history as _row_history
+
+    repo_root = find_repo_root()
+    dot = get_dot(repo_root)
+    store = ObjectStore(dot / "objects")
+    refs = RefStore(dot)
+
+    commit_hash = refs.get_branch(ref)
+    if commit_hash is None:
+        if len(ref) == 64 and all(c in "0123456789abcdef" for c in ref):
+            commit_hash = ref
+        else:
+            typer.echo(f"fatal: ref '{ref}' not found", err=True)
+            raise typer.Exit(1)
+
+    if commit_hash is None:
+        typer.echo(f"fatal: no commits on branch '{ref}'", err=True)
+        raise typer.Exit(1)
+
+    try:
+        if row is not None:
+            result = _row_history(store, commit_hash, file, row)
+
+            if format == "json":
+                typer.echo(_json.dumps(result, indent=2))
+                return
+
+            ref_display = f"heads/{ref}" if refs.get_branch(ref) else ref
+            typer.echo(f"History for {file} row {row} at {ref_display}")
+            typer.echo("")
+
+            events = result["events"]
+            if not events:
+                typer.echo("No events found.")
+                return
+
+            col_commit = 9
+            col_author = max(len(e["author"]) for e in events)
+            col_author = max(col_author, 6)
+            header = f"  {'Commit':<{col_commit}}  {'Author':<{col_author}}  {'Date':<21}  Event     Content"
+            sep = "\u2500" * max(len(header), 80)
+            typer.echo(header)
+            typer.echo(sep)
+            for e in events:
+                ts = datetime.fromtimestamp(e["timestamp"], tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+                preview = e.get("content_preview", "")[:50]
+                typer.echo(f"  {e['commit_hash'][:7]:<{col_commit}}  {e['author']:<{col_author}}  {ts:<21}  {e['event']:<8}  {preview}")
+            typer.echo(sep)
+
+            qfp = result.get("query_fingerprint")
+            if qfp:
+                typer.echo(f"{len(events)} events (query_fingerprint: {qfp[:8]}...{qfp[-4:]})")
+            else:
+                typer.echo(f"{len(events)} events")
+
+        else:
+            result = _blame_file(store, commit_hash, file)
+
+            if format == "json":
+                typer.echo(_json.dumps(result, indent=2))
+                return
+
+            ref_display = f"heads/{ref}" if refs.get_branch(ref) else ref
+            typer.echo(f"Blame for {file} at {ref_display} (commit {commit_hash[:8]})")
+            typer.echo("")
+
+            entries = result["entries"]
+            if not entries:
+                typer.echo("No rows.")
+                return
+
+            col_author = max(len(e["author"]) for e in entries)
+            col_author = max(col_author, 6)
+            header = f" {'Row':>4}  {'Commit':<9}  {'Author':<{col_author}}  {'Date':<21}  Content"
+            sep = "\u2500" * max(len(header) + 40, 80)
+            typer.echo(header)
+            typer.echo(sep)
+            for e in entries:
+                ts = datetime.fromtimestamp(e["timestamp"], tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+                preview = e.get("content_preview", "")[:60]
+                typer.echo(f" {e['row_index']:>4}  {e['commit_hash'][:7]:<9}  {e['author']:<{col_author}}  {ts:<21}  {preview}")
+            typer.echo(sep)
+
+            s = result["summary"]
+            typer.echo(f"{s['total_rows']} rows, {s['unique_commits']} commits, {s['unique_authors']} authors")
+
+    except FileNotFoundError as exc:
+        typer.echo(f"fatal: {exc}", err=True)
+        raise typer.Exit(1)
+    except IndexError as exc:
+        typer.echo(f"fatal: {exc}", err=True)
+        raise typer.Exit(1)
+
+
 def _count_result_files(store, commit_hash: str) -> int:
     """Count manifest files in a commit (used for validate summary line)."""
     from dit.core.objects import deserialize_commit
