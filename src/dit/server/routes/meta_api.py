@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from dit.server.auth import get_session, require_permission
 from dit.server.models import Ref
 from dit.server.routes._helpers import _get_repo
+from dit.core.sidecar import sidecar_summary as _sidecar_summary
 
 router = APIRouter(prefix="/api/v1/repos", tags=["meta"])
 
@@ -21,32 +22,6 @@ def _store_for_repo(request: Request, repo_name: str):
     from dit.core.store import ObjectStore
     data_dir: Path = request.app.state.data_dir
     return ObjectStore(Path(data_dir) / "repos" / repo_name / "objects")
-
-
-def _sidecar_summary(sidecar) -> dict:
-    row_count = len(sidecar.entries)
-    if row_count == 0:
-        return {
-            "row_count": 0,
-            "char_count": 0,
-            "token_estimate": 0,
-            "avg_fields": 0.0,
-            "lang_distribution": {},
-        }
-    total_chars = sum(e.char_count for e in sidecar.entries)
-    total_tokens = sum(e.token_estimate for e in sidecar.entries)
-    avg_fields = sum(e.field_count for e in sidecar.entries) / row_count
-    lang_counts: dict[str, int] = {}
-    for e in sidecar.entries:
-        k = e.lang or "unknown"
-        lang_counts[k] = lang_counts.get(k, 0) + 1
-    return {
-        "row_count": row_count,
-        "char_count": total_chars,
-        "token_estimate": total_tokens,
-        "avg_fields": round(avg_fields, 2),
-        "lang_distribution": lang_counts,
-    }
 
 
 class MetaComputeRequest(BaseModel):

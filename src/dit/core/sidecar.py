@@ -83,3 +83,29 @@ def compute_sidecar(store: ObjectStore, manifest_hash: str) -> Sidecar:
             )
         )
     return Sidecar(manifest_hash=manifest_hash, entries=entries)
+
+
+def sidecar_summary(sidecar) -> dict:
+    row_count = len(sidecar.entries)
+    if row_count == 0:
+        return {
+            "row_count": 0,
+            "char_count": 0,
+            "token_estimate": 0,
+            "avg_fields": 0.0,
+            "lang_distribution": {},
+        }
+    total_chars = sum(e.char_count for e in sidecar.entries)
+    total_tokens = sum(e.token_estimate for e in sidecar.entries)
+    avg_fields = sum(e.field_count for e in sidecar.entries) / row_count
+    lang_counts: dict[str, int] = {}
+    for e in sidecar.entries:
+        k = e.lang or "unknown"
+        lang_counts[k] = lang_counts.get(k, 0) + 1
+    return {
+        "row_count": row_count,
+        "char_count": total_chars,
+        "token_estimate": total_tokens,
+        "avg_fields": round(avg_fields, 2),
+        "lang_distribution": lang_counts,
+    }
