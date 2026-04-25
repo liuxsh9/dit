@@ -1378,6 +1378,11 @@ def _clone_tree_objects(
                 sc_data = rc.download_object("sidecars", entry.sidecar_hash)
                 if sc_data:
                     store.write("sidecars", sc_data)
+                else:
+                    typer.echo(
+                        f"  warning: sidecar {entry.sidecar_hash[:8]} not found on remote (skipped)",
+                        err=True,
+                    )
         elif entry.obj_type == "tree":
             _clone_tree_objects(rc, store, entry.obj_hash, manifest_hashes)
 
@@ -1517,6 +1522,11 @@ def _fetch_tree_objects(
                 if sc_data:
                     store.write("sidecars", sc_data)
                     downloaded += 1
+                else:
+                    typer.echo(
+                        f"  warning: sidecar {entry.sidecar_hash[:8]} not found on remote (skipped)",
+                        err=True,
+                    )
         elif entry.obj_type == "tree":
             downloaded += _fetch_tree_objects(rc, store, entry.obj_hash, manifest_hashes)
 
