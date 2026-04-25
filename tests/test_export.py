@@ -155,3 +155,50 @@ class TestExportCommitJsonl:
 
         with pytest.raises(FileNotFoundError, match="not found"):
             export_commit(store, commit_hash, out, file_filter="missing.jsonl")
+
+
+class TestExportCommitCsv:
+    def test_csv_has_header(self, tmp_path: Path):
+        store, commit_hash = _build_repo(tmp_path)
+        out = tmp_path / "exported"
+        out.mkdir()
+
+        export_commit(store, commit_hash, out, fmt="csv", file_filter="train.jsonl")
+
+        lines = (out / "train.jsonl").read_text().splitlines()
+        assert len(lines) >= 2
+        assert "messages" in lines[0]
+
+    def test_csv_row_count_matches_manifest(self, tmp_path: Path):
+        store, commit_hash = _build_repo(tmp_path)
+        out = tmp_path / "exported"
+        out.mkdir()
+
+        report = export_commit(store, commit_hash, out, fmt="csv", file_filter="train.jsonl")
+
+        lines = (out / "train.jsonl").read_text().splitlines()
+        assert len(lines) == 3  # header + 2 data rows
+        assert report[0]["rows"] == 2
+
+    def test_csv_nested_values_are_json_strings(self, tmp_path: Path):
+        store, commit_hash = _build_repo(tmp_path)
+        out = tmp_path / "exported"
+        out.mkdir()
+
+        export_commit(store, commit_hash, out, fmt="csv", file_filter="train.jsonl")
+
+        import csv as _csv
+        with (out / "train.jsonl").open() as fh:
+            reader = _csv.DictReader(fh)
+            rows = list(reader)
+        val = rows[0]["messages"]
+        parsed = json.loads(val)
+        assert isinstance(parsed, list)
+
+    def test_invalid_format_raises(self, tmp_path: Path):
+        store, commit_hash = _build_repo(tmp_path)
+        out = tmp_path / "exported"
+        out.mkdir()
+
+        with pytest.raises(ValueError, match="Unknown format"):
+            export_commit(store, commit_hash, out, fmt="parquet")
