@@ -1,8 +1,37 @@
 # Phase 3: Web UI — Forgejo 集成设计文档
 
+> **Status:** Updated 2026-04-24 — split into sub-specs after Forgejo v15.0 source review  
+> **IMPORTANT:** This file is now an **index**. The authoritative specs are the sub-spec files listed below.
+
 ## 1. 目标
 
-在 Forgejo 上实现 DataHub 的 Web 界面：创建/浏览数据仓库、PR 审查、行级评论、权限管理、通知集成。Forgejo 已有完整的协作基础设施（用户/组织/PR/通知），Phase 3 的核心是**在现有框架内做有限改造**——新增 `data` repo type，替换对应模板调 datahub-core API。
+在 Forgejo 上实现 DataHub 的 Web 界面：创建/浏览数据仓库、PR 审查、行级评论、权限管理、通知集成。Forgejo 已有完整的协作基础设施（用户/组织/PR/通知），Phase 3 的核心是**在现有框架内做有限改造**——新增 `IsDataRepo` 布尔标志（非 type 枚举），替换对应模板调 datahub-core API。
+
+## ⚠️ 重要修正 (2026-04-24)
+
+经 Forgejo v15.0 源码审查发现：**Forgejo 没有 `repo.type` 枚举字段**，使用的是布尔标志（`IsMirror`, `IsTemplate`, `IsFork`）。本文档原始设计中所有 `type=data` 的引用已过时。正确做法是添加 `IsDataRepo bool` 字段。
+
+详见已通过 code review 的子规范：
+
+## Sub-specs (权威来源)
+
+| Sub-spec | 文件 | 状态 |
+|----------|------|------|
+| **3D: Go Backend** | [phase3d-go-backend.md](2026-04-24-phase3d-go-backend.md) | ✅ Reviewed |
+| **3E: Vue Frontend** | [phase3e-vue-frontend.md](2026-04-24-phase3e-vue-frontend.md) | ✅ Reviewed |
+| **3F: Deployment** | [phase3f-deployment.md](2026-04-24-phase3f-deployment.md) | ✅ Reviewed |
+
+## 已完成的 Phase 3 子项目 (datahub-core 侧)
+
+| Sub-project | 状态 |
+|-------------|------|
+| **3A: Core API 扩展** | ✅ 完成 |
+| **3B: PR & Diff** | ✅ 完成 |
+| **3C: 权限 & 通知** | ✅ 完成 |
+
+---
+
+> **以下为原始设计文档，保留作为历史参考。实现请以上方子规范为准。**
 
 ## 2. 前置依赖
 
