@@ -2205,6 +2205,86 @@ def gc(
             typer.echo(f"warning: {err}", err=True)
 
 
+@app.command()
+def fsck(
+    no_hash_check: bool = typer.Option(False, "--no-hash-check", help="Skip hash verification"),
+    no_graph_check: bool = typer.Option(False, "--no-graph-check", help="Skip graph verification"),
+    format: str = typer.Option("table", "--format", help="Output format: table or json"),
+):
+    """Verify object store integrity."""
+    import json as _json
+    from dit.core.fsck import fsck as run_fsck
+
+    repo_root = find_repo_root()
+    dot = get_dot(repo_root)
+    store = ObjectStore(dot / "objects")
+    refs = RefStore(dot)
+
+    ref_hashes = []
+    for _name, h in refs.list_branches().items():
+        ref_hashes.append(h)
+    for _name, h in refs.list_tags().items():
+        ref_hashes.append(h)
+
+    result = run_fsck(
+        store,
+        ref_hashes,
+        check_hashes=not no_hash_check,
+        check_graph=not no_graph_check,
+    )
+
+    if format == "json":
+        typer.echo(_json.dumps({
+            "checked_objects": result.checked_objects,
+            "errors": [{"severity": e.severity, "obj_type": e.obj_type, "obj_hash": e.obj_hash, "message": e.message} for e in result.errors],
+            "warnings": [{"severity": w.severity, "obj_type": w.obj_type, "obj_hash": w.obj_hash, "message": w.message} for w in result.warnings],
+            "total_checked": result.total_checked,
+            "total_errors": result.total_errors,
+            "total_warnings": result.total_warnings,
+        }, indent=2))
+        raise typer.Exit(1 if result.total_errors > 0 else 0)
+
+    typer.echo("Object store integrity check")
+    typer.echo("")
+
+    if not no_hash_check:
+        typer.echo("Hash verification:")
+        for obj_type in ["commits", "trees", "manifests", "rows", "sidecars", "blobs"]:
+            count = result.checked_objects.get(obj_type, 0)
+            type_errors = [e for e in result.errors if e.obj_type == obj_type and ("hash" in e.message.lower() or "corrupt" in e.message.lower())]
+            status = f"✗ {len(type_errors)} error(s)" if type_errors else "✓"
+            typer.echo(f"  {obj_type:<14} {count:>4}  {status}")
+        typer.echo("")
+
+    if not no_graph_check:
+        typer.echo("Graph verification:")
+        graph_errors = [e for e in result.errors if "missing" in e.message.lower() or "dangling" in e.message.lower()]
+        if graph_errors:
+            typer.echo(f"  {len(graph_errors)} missing or dangling reference(s) found")
+        else:
+            typer.echo("  All references valid ✓")
+        typer.echo("")
+
+    if result.total_errors > 0:
+        typer.echo(f"ERRORS ({result.total_errors}):")
+        for e in result.errors:
+            typer.echo(f"  [{e.obj_type}] {e.obj_hash[:16]}...: {e.message}")
+        typer.echo("")
+
+    if result.total_warnings > 0:
+        typer.echo(f"WARNINGS ({result.total_warnings}):")
+        for w in result.warnings:
+            typer.echo(f"  [{w.obj_type}] {w.obj_hash[:16]}...: {w.message}")
+        typer.echo("")
+
+    if result.total_errors == 0 and result.total_warnings == 0:
+        typer.echo(f"✓ No issues found. {result.total_checked} objects checked.")
+    else:
+        typer.echo(f"✗ {result.total_errors} error(s), {result.total_warnings} warning(s). {result.total_checked} objects checked.")
+
+    raise typer.Exit(1 if result.total_errors > 0 else 0)
+
+
 def _count_result_files(store, commit_hash: str) -> int:
     """Count manifest files in a commit (used for validate summary line)."""
     from dit.core.objects import deserialize_commit
