@@ -36,6 +36,9 @@ def create_app(settings: ServerSettings | None = None) -> FastAPI:
     from dit.server.middleware.metrics import MetricsMiddleware
     application.add_middleware(MetricsMiddleware)
 
+    from dit.server.middleware.logging import LoggingMiddleware
+    application.add_middleware(LoggingMiddleware)
+
     @application.get("/health")
     async def health():
         import time as _time
