@@ -20,6 +20,7 @@ class TreeEntry:
     name: str
     obj_type: str  # "manifest" or "tree"
     obj_hash: str
+    sidecar_hash: Optional[str] = None  # present only when obj_type == "manifest"
 
 
 @dataclass

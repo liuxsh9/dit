@@ -189,3 +189,21 @@ class TestSidecar:
         obj = json.loads(data)
         keys = list(obj["entries"][0].keys())
         assert keys == sorted(keys)
+
+
+class TestTreeEntryWithSidecar:
+    def test_sidecar_hash_defaults_to_none(self):
+        e = TreeEntry(name="data.jsonl", obj_type="manifest", obj_hash="aa" * 32)
+        assert e.sidecar_hash is None
+
+    def test_sidecar_hash_can_be_set(self):
+        e = TreeEntry(name="data.jsonl", obj_type="manifest", obj_hash="aa" * 32, sidecar_hash="bb" * 32)
+        assert e.sidecar_hash == "bb" * 32
+
+    def test_tree_entry_frozen(self):
+        e = TreeEntry(name="data.jsonl", obj_type="manifest", obj_hash="aa" * 32)
+        try:
+            e.sidecar_hash = "cc" * 32  # type: ignore[misc]
+            assert False, "should have raised"
+        except Exception:
+            pass
