@@ -12,9 +12,11 @@ from dit.core.objects import (
     ManifestEntry,
     Tree,
     TreeEntry,
+    serialize_blob,
     serialize_commit,
     serialize_manifest,
     serialize_tree,
+    object_hash,
 )
 from dit.core.store import ObjectStore
 from dit.core.walker import is_ancestor, walk_commit_objects
@@ -192,3 +194,122 @@ class TestWalkSidecars:
 
         result = walk_commit_objects(store, commit_hash)
         assert "sidecars" in result
+
+
+# ── Blob helpers ──────────────────────────────────────────────────────────────
+
+def _write_row(store: ObjectStore, content: str) -> str:
+    """Write a raw row, return its hash."""
+    data = content.encode("utf-8")
+    return store.write("rows", data)
+
+
+def _make_blob(store: ObjectStore, content: str) -> str:
+    """Serialize and write a blob object, return its hash."""
+    blob_bytes = serialize_blob(content.encode("utf-8"))
+    return store.write("blobs", blob_bytes)
+
+
+def _make_commit_with_blob(
+    store: ObjectStore,
+    blob_hash: str,
+    parent_hashes: list[str] | None = None,
+) -> str:
+    """Create a commit whose tree contains a single blob entry."""
+    tree_entries = [TreeEntry(name="file.bin", obj_type="blob", obj_hash=blob_hash)]
+    tree = Tree(entries=tree_entries)
+    tree_hash = store.write("trees", serialize_tree(tree))
+    commit = Commit(
+        tree_hash=tree_hash,
+        parent_hashes=parent_hashes or [],
+        author="tester",
+        message="blob commit",
+        timestamp=int(time.time()),
+    )
+    return store.write("commits", serialize_commit(commit))
+
+
+def _make_commit_with_manifest_and_blob(
+    store: ObjectStore,
+    rows: list[str],
+    blob_content: str,
+    parent_hashes: list[str] | None = None,
+) -> str:
+    """Create a commit whose tree has both a manifest entry and a blob entry."""
+    row_hashes = [_write_row(store, r) for r in rows]
+    manifest = Manifest(entries=[ManifestEntry(row_hash=rh, query_fingerprint=None) for rh in row_hashes])
+    manifest_hash = store.write("manifests", serialize_manifest(manifest))
+    blob_hash = _make_blob(store, blob_content)
+    tree_entries = [
+        TreeEntry(name="data.jsonl", obj_type="manifest", obj_hash=manifest_hash),
+        TreeEntry(name="attachment.bin", obj_type="blob", obj_hash=blob_hash),
+    ]
+    tree = Tree(entries=tree_entries)
+    tree_hash = store.write("trees", serialize_tree(tree))
+    commit = Commit(
+        tree_hash=tree_hash,
+        parent_hashes=parent_hashes or [],
+        author="tester",
+        message="mixed commit",
+        timestamp=int(time.time()),
+    )
+    return store.write("commits", serialize_commit(commit)), blob_hash
+
+
+# ── Blob tests ────────────────────────────────────────────────────────────────
+
+class TestWalkBlobs:
+    def test_walk_includes_blobs_key(self, tmp_path: Path) -> None:
+        """Result dict must always contain a 'blobs' key."""
+        store = _make_store(tmp_path)
+        tree_hash = _store_tree(store, [])
+        commit_hash = _store_commit(store, tree_hash, [])
+
+        result = walk_commit_objects(store, commit_hash)
+        assert "blobs" in result
+
+    def test_walk_collects_blob_hashes(self, tmp_path: Path) -> None:
+        """Blob hashes from tree entries must appear in result['blobs']."""
+        store = _make_store(tmp_path)
+        blob_hash = _make_blob(store, "binary content here")
+        commit_hash = _make_commit_with_blob(store, blob_hash)
+
+        result = walk_commit_objects(store, commit_hash)
+        assert blob_hash in result["blobs"]
+
+    def test_walk_mixed_tree_collects_all_types(self, tmp_path: Path) -> None:
+        """Commit with both manifest and blob entries collects all types."""
+        store = _make_store(tmp_path)
+        commit_hash, blob_hash = _make_commit_with_manifest_and_blob(
+            store, ['{"x":1}'], "raw data"
+        )
+
+        result = walk_commit_objects(store, commit_hash)
+        assert "blobs" in result
+        assert blob_hash in result["blobs"]
+        assert len(result["manifests"]) == 1
+        assert len(result["rows"]) == 1
+
+    def test_walk_no_blobs_returns_empty_set(self, tmp_path: Path) -> None:
+        """Commit with only manifests has empty blobs set."""
+        store = _make_store(tmp_path)
+        row_hash = _store_row(store, '{"a":1}')
+        manifest_hash = _store_manifest(store, [row_hash])
+        tree_hash = _store_tree(store, [TreeEntry("d.jsonl", "manifest", manifest_hash)])
+        commit_hash = _store_commit(store, tree_hash, [])
+
+        result = walk_commit_objects(store, commit_hash)
+        assert result["blobs"] == set()
+
+    def test_walk_multiple_commits_collects_all_blobs(self, tmp_path: Path) -> None:
+        """Walking a commit chain collects blobs from all commits."""
+        store = _make_store(tmp_path)
+        blob1_hash = _make_blob(store, "first blob")
+        commit1_hash = _make_commit_with_blob(store, blob1_hash)
+
+        blob2_hash = _make_blob(store, "second blob")
+        commit2_hash = _make_commit_with_blob(store, blob2_hash, parent_hashes=[commit1_hash])
+
+        result = walk_commit_objects(store, commit2_hash)
+        assert blob1_hash in result["blobs"]
+        assert blob2_hash in result["blobs"]

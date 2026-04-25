@@ -13,6 +13,7 @@ def walk_commit_objects(
         "manifests": set(),
         "rows": set(),
         "sidecars": set(),
+        "blobs": set(),
     }
     _walk_commit(store, commit_hash, result)
     return result
@@ -50,6 +51,8 @@ def _walk_tree(
             _walk_manifest(store, entry.obj_hash, result)
         elif entry.obj_type == "tree":
             _walk_tree(store, entry.obj_hash, result)
+        elif entry.obj_type == "blob":
+            result["blobs"].add(entry.obj_hash)
 
 
 def _walk_manifest(
