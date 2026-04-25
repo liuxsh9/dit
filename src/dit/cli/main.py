@@ -1172,6 +1172,87 @@ def meta_show(
     typer.echo(f"  Languages:      {lang_str}")
 
 
+@meta_app.command("diff")
+def meta_diff(
+    commit1: str = typer.Argument(..., help="Old commit hash"),
+    commit2: str = typer.Argument(..., help="New commit hash"),
+    file: Optional[str] = typer.Option(None, "--file", help="Limit diff to this file"),
+):
+    """Compare sidecar stats between two commits."""
+    from dit.core.tree_walker import flatten_tree
+    from dit.core.objects import deserialize_sidecar
+
+    repo_root = find_repo_root()
+    dot = get_dot(repo_root)
+    store = ObjectStore(dot / "objects")
+
+    def _load_sidecars(commit_hash: str) -> dict:
+        """Return path -> Sidecar for all manifest entries in the commit."""
+        commit_data = store.read("commits", commit_hash)
+        if commit_data is None:
+            typer.echo(f"fatal: commit {commit_hash[:8]} not found", err=True)
+            raise typer.Exit(1)
+        commit = deserialize_commit(commit_data)
+        flat = flatten_tree(store, commit.tree_hash)
+        result = {}
+        for path, (obj_type, obj_hash, sidecar_hash) in flat.items():
+            if obj_type == "manifest" and sidecar_hash is not None:
+                sc_data = store.read("sidecars", sidecar_hash)
+                if sc_data is not None:
+                    result[path] = deserialize_sidecar(sc_data)
+        return result
+
+    old_sidecars = _load_sidecars(commit1)
+    new_sidecars = _load_sidecars(commit2)
+
+    all_paths = sorted(set(old_sidecars) | set(new_sidecars))
+    if file is not None:
+        clean = file.lstrip("/")
+        all_paths = [p for p in all_paths if p == clean]
+
+    any_output = False
+    for path in all_paths:
+        old_sc = old_sidecars.get(path)
+        new_sc = new_sidecars.get(path)
+
+        def _summary(sc):
+            if sc is None:
+                return {"rows": 0, "tokens": 0, "langs": {}}
+            rows = len(sc.entries)
+            tokens = sum(e.token_estimate for e in sc.entries)
+            lc: dict[str, int] = {}
+            for e in sc.entries:
+                k = e.lang or "unknown"
+                lc[k] = lc.get(k, 0) + 1
+            lang_pcts = {k: f"{v / rows * 100:.0f}%" for k, v in lc.items()} if rows > 0 else {}
+            return {"rows": rows, "tokens": tokens, "langs": lang_pcts}
+
+        os_ = _summary(old_sc)
+        ns = _summary(new_sc)
+
+        if os_ == ns:
+            continue
+
+        any_output = True
+        typer.echo(f"{path}:")
+
+        row_delta = ns["rows"] - os_["rows"]
+        sign = "+" if row_delta >= 0 else ""
+        typer.echo(f"  Rows:           {os_['rows']} → {ns['rows']} ({sign}{row_delta})")
+
+        tok_delta = ns["tokens"] - os_["tokens"]
+        sign = "+" if tok_delta >= 0 else ""
+        typer.echo(f"  Token estimate: {os_['tokens']:,} → {ns['tokens']:,} ({sign}{tok_delta:,})")
+
+        if os_["langs"] != ns["langs"]:
+            old_lang_str = ", ".join(f"{l} {p}" for l, p in os_["langs"].items())
+            new_lang_str = ", ".join(f"{l} {p}" for l, p in ns["langs"].items())
+            typer.echo(f"  Languages:      {old_lang_str} → {new_lang_str}")
+
+    if not any_output:
+        typer.echo("No metadata differences.")
+
+
 def _build_remote_client(dot: Path, remote_name: str = "origin") -> "RemoteClient":
     from dit.core.config import get_remote
     from dit.core.remote import RemoteClient

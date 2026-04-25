@@ -519,3 +519,61 @@ class TestMeta:
 
         result = runner.invoke(app, ["meta", "show", "nonexistent.jsonl"])
         assert result.exit_code != 0
+
+    def _make_two_commits_with_sidecars(self, tmp_path):
+        """Helper: create initial commit + meta compute, then add rows + second meta compute.
+        Returns (dot, commit1_hash, commit2_hash)."""
+        os.chdir(tmp_path)
+        runner.invoke(app, ["init"])
+        (tmp_path / "train.jsonl").write_text(
+            '{"messages": [{"role": "user", "content": "hello"}]}\n'
+        )
+        runner.invoke(app, ["add", "."])
+        runner.invoke(app, ["commit", "-m", "v1"])
+        runner.invoke(app, ["meta", "compute"])
+
+        dot = tmp_path / ".datahub"
+        refs = RefStore(dot)
+        commit1_hash = refs.resolve_head()
+
+        # Add more rows
+        (tmp_path / "train.jsonl").write_text(
+            '{"messages": [{"role": "user", "content": "hello"}]}\n'
+            '{"messages": [{"role": "user", "content": "world"}]}\n'
+        )
+        runner.invoke(app, ["add", "."])
+        runner.invoke(app, ["commit", "-m", "v2"])
+        runner.invoke(app, ["meta", "compute"])
+        commit2_hash = refs.resolve_head()
+
+        return dot, commit1_hash, commit2_hash
+
+    def test_meta_diff_shows_changes(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        dot, c1, c2 = self._make_two_commits_with_sidecars(tmp_path)
+
+        result = runner.invoke(app, ["meta", "diff", c1, c2])
+        assert result.exit_code == 0, result.output
+        assert "train.jsonl" in result.output
+        # Should show row count change: 1 → 2
+        assert "1" in result.output
+        assert "2" in result.output
+
+    def test_meta_diff_with_file_filter(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        dot, c1, c2 = self._make_two_commits_with_sidecars(tmp_path)
+
+        result = runner.invoke(app, ["meta", "diff", c1, c2, "--file", "train.jsonl"])
+        assert result.exit_code == 0, result.output
+        assert "train.jsonl" in result.output
+
+    def test_meta_diff_invalid_commit(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(app, ["init"])
+        (tmp_path / "train.jsonl").write_text('{"a": 1}\n')
+        runner.invoke(app, ["add", "."])
+        runner.invoke(app, ["commit", "-m", "v1"])
+        runner.invoke(app, ["meta", "compute"])
+
+        result = runner.invoke(app, ["meta", "diff", "z" * 64, "z" * 64])
+        assert result.exit_code != 0
