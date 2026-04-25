@@ -75,6 +75,25 @@ def get_dot(repo_root: Path) -> Path:
     return repo_root / ".dit"
 
 
+def resolve_commit_hash(dot: Path, commit_hash: str) -> str | None:
+    """Resolve a full or abbreviated commit hash to a unique stored commit."""
+    commits_dir = dot / "objects" / "commits"
+    if not commits_dir.exists():
+        return None
+
+    if len(commit_hash) == 64:
+        return commit_hash if ObjectStore(dot / "objects").exists("commits", commit_hash) else None
+
+    matches = sorted(
+        entry.name
+        for entry in commits_dir.glob("*/*/*")
+        if entry.is_file() and entry.name.startswith(commit_hash)
+    )
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
 @app.callback(invoke_without_command=True)
 def main(ctx: typer.Context):
     """Git-like version control for SFT training data."""
@@ -249,7 +268,9 @@ def commit(message: str = typer.Option(..., "-m", help="Commit message")):
 
 
 @app.command()
-def log():
+def log(
+    oneline: bool = typer.Option(False, "--oneline", help="Show each commit on a single line."),
+):
     """Show commit history."""
     repo_root = find_repo_root()
     dot = get_dot(repo_root)
@@ -264,6 +285,10 @@ def log():
     while commit_hash:
         data = store.read("commits", commit_hash)
         c = deserialize_commit(data)
+        if oneline:
+            typer.echo(f"{commit_hash[:8]} {c.message}")
+            commit_hash = c.parent_hashes[0] if c.parent_hashes else None
+            continue
         ts = datetime.fromtimestamp(c.timestamp, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
         typer.echo(f"commit {commit_hash}")
         typer.echo(f"Author: {c.author}")
@@ -695,7 +720,10 @@ def merge(
 
     if merge_result.conflicts:
         ours_commit = deserialize_commit(store.read("commits", ours_hash))
+        conflict_paths = {c.file_path for c in merge_result.conflicts}
         for path, mhash in merge_result.merged_tree_entries.items():
+            if path in conflict_paths:
+                continue
             m_data = store.read("manifests", mhash)
             manifest = deserialize_manifest(m_data)
             from dit.core.workspace import materialize_file
@@ -836,7 +864,8 @@ def cherry_pick(
         typer.echo("error: cherry-pick already in progress (use --continue or --abort)", err=True)
         raise typer.Exit(1)
 
-    target_data = store.read("commits", commit_hash)
+    resolved_commit_hash = resolve_commit_hash(dot, commit_hash)
+    target_data = store.read("commits", resolved_commit_hash) if resolved_commit_hash else None
     if target_data is None:
         typer.echo(f"error: commit '{commit_hash[:8]}' not found", err=True)
         raise typer.Exit(1)
@@ -850,21 +879,24 @@ def cherry_pick(
     ours_hash = refs.resolve_head()
 
     from dit.core.merge import three_way_merge
-    merge_result = three_way_merge(store, base_hash, ours_hash, commit_hash)
+    merge_result = three_way_merge(store, base_hash, ours_hash, resolved_commit_hash)
 
     if merge_result.conflicts:
+        conflict_paths = {c.file_path for c in merge_result.conflicts}
         for path, mhash in merge_result.merged_tree_entries.items():
+            if path in conflict_paths:
+                continue
             m_data = store.read("manifests", mhash)
             manifest = deserialize_manifest(m_data)
             from dit.core.workspace import materialize_file
             materialize_file(repo_root, path, manifest, store)
-        cherry_pick_head_file.write_text(commit_hash + "\n")
+        cherry_pick_head_file.write_text(resolved_commit_hash + "\n")
         pick_msg = message or f"cherry-pick: {target_commit.message}"
         merge_msg_file.write_text(pick_msg + "\n")
         conflict_data = {
             "base_commit": base_hash,
             "ours_commit": ours_hash,
-            "theirs_commit": commit_hash,
+            "theirs_commit": resolved_commit_hash,
             "conflicts": [
                 {"file_path": c.file_path, "conflict_type": c.conflict_type}
                 for c in merge_result.conflicts

@@ -127,6 +127,25 @@ class TestLog:
         assert "first commit" in result.stdout
         assert result.stdout.index("second") < result.stdout.index("first")
 
+    def test_log_oneline_shows_abbreviated_commits(self, tmp_path: Path):
+        os.chdir(tmp_path)
+        runner.invoke(app, ["init"])
+        (tmp_path / "a.jsonl").write_text('{"x":1}\n')
+        runner.invoke(app, ["add", "."])
+        runner.invoke(app, ["commit", "-m", "first commit"])
+        (tmp_path / "a.jsonl").write_text('{"x":1}\n{"y":2}\n')
+        runner.invoke(app, ["add", "."])
+        runner.invoke(app, ["commit", "-m", "second commit"])
+
+        result = runner.invoke(app, ["log", "--oneline"])
+
+        lines = [line for line in result.stdout.splitlines() if line.strip()]
+        assert result.exit_code == 0
+        assert len(lines) == 2
+        assert lines[0].endswith("second commit")
+        assert lines[1].endswith("first commit")
+        assert len(lines[0].split()[0]) == 8
+
     def test_log_empty_repo(self, tmp_path: Path):
         os.chdir(tmp_path)
         runner.invoke(app, ["init"])

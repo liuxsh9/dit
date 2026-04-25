@@ -119,6 +119,7 @@ class TestMergeConflict:
         assert (tmp_path / ".dit" / "MERGE_HEAD").exists()
         assert (tmp_path / ".dit" / "MERGE_MSG").exists()
         assert (tmp_path / ".dit" / "conflicts.json").exists()
+        assert "main answer" in (tmp_path / "data.jsonl").read_text()
 
     def test_merge_abort(self, tmp_path):
         _init_and_commit(tmp_path)

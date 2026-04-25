@@ -45,6 +45,22 @@ class TestCherryPick:
         assert len(commit.parent_hashes) == 1
         assert "cherry-pick" in commit.message.lower()
 
+    def test_cherry_pick_accepts_abbreviated_hash(self, tmp_path):
+        _init_and_commit(tmp_path)
+        runner.invoke(app, ["checkout", "-b", "feature"], catch_exceptions=False)
+        (tmp_path / "feature.jsonl").write_text(
+            json.dumps({"messages": [{"role": "user", "content": "feature data"}]}) + "\n"
+        )
+        runner.invoke(app, ["add", "."], catch_exceptions=False)
+        runner.invoke(app, ["commit", "-m", "add feature file"], catch_exceptions=False)
+        feature_hash = (tmp_path / ".dit" / "refs" / "heads" / "feature").read_text().strip()
+        runner.invoke(app, ["checkout", "main"], catch_exceptions=False)
+
+        result = runner.invoke(app, ["cherry-pick", feature_hash[:8]])
+
+        assert result.exit_code == 0
+        assert (tmp_path / "feature.jsonl").exists()
+
     def test_cherry_pick_conflict(self, tmp_path):
         _init_and_commit(tmp_path)
         runner.invoke(app, ["checkout", "-b", "feature"], catch_exceptions=False)
@@ -64,6 +80,7 @@ class TestCherryPick:
         assert result.exit_code != 0
         assert (tmp_path / ".dit" / "CHERRY_PICK_HEAD").exists()
         assert not (tmp_path / ".dit" / "MERGE_HEAD").exists()
+        assert "main" in (tmp_path / "data.jsonl").read_text()
 
     def test_cherry_pick_continue(self, tmp_path):
         _init_and_commit(tmp_path)
