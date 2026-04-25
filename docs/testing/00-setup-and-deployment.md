@@ -77,7 +77,8 @@ cd /path/to/dit
 uv sync --extra server
 
 # 安装 CLI，使后续可在任意目录直接运行 dit
-uv tool install --force .
+# 开发期验收推荐 editable 安装，确保 dit 与当前源码保持一致
+uv tool install --force --editable .
 ```
 
 ### 2.2 验证 CLI 可用
@@ -102,7 +103,7 @@ Commands:
 
 验证清单：
 - [ ] `uv sync --extra server` 无报错完成
-- [ ] `uv tool install --force .` 无报错完成
+- [ ] `uv tool install --force --editable .` 无报错完成
 - [ ] `dit --help` 显示帮助信息并包含 `serve` 命令
 - [ ] `dit version` 正常输出版本号（如 `dit 0.1.0`）
 

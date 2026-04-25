@@ -48,4 +48,11 @@ def diff_manifests(old: Manifest, new: Manifest) -> DiffResult:
     added = [e for e in raw_added if e.row_hash not in refreshed_new_hashes]
     removed = [e for e in raw_removed if e.row_hash not in refreshed_old_hashes]
 
+    # Manifest entry order is semantically significant for the stored file. If
+    # membership is unchanged but the entry sequence differs, surface it as a
+    # full-row replacement so `diff` matches `status`/`commit` behavior.
+    if not added and not removed and not refreshed and old.entries != new.entries:
+        added = list(new.entries)
+        removed = list(old.entries)
+
     return DiffResult(added=added, removed=removed, refreshed=refreshed)

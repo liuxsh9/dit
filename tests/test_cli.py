@@ -187,6 +187,26 @@ class TestDiff:
         assert result.exit_code == 0
         assert "refresh" in result.stdout.lower()
 
+    def test_diff_detects_row_reordering(self, tmp_path: Path):
+        os.chdir(tmp_path)
+        runner.invoke(app, ["init"])
+        first = {"messages": [{"role": "user", "content": "first"}]}
+        second = {"messages": [{"role": "user", "content": "second"}]}
+        (tmp_path / "data.jsonl").write_text(
+            json.dumps(first) + "\n" + json.dumps(second) + "\n"
+        )
+        runner.invoke(app, ["add", "."])
+        runner.invoke(app, ["commit", "-m", "initial"])
+
+        (tmp_path / "data.jsonl").write_text(
+            json.dumps(second) + "\n" + json.dumps(first) + "\n"
+        )
+        result = runner.invoke(app, ["diff"])
+
+        assert result.exit_code == 0
+        assert "data.jsonl" in result.stdout
+        assert "2 → 2 rows" in result.stdout
+
 
 class TestStatus:
     def test_status_clean(self, tmp_path: Path):

@@ -32,7 +32,7 @@ dit version
 - [ ] `dit --help` 显示帮助信息，列出 `init`、`add`、`commit`、`status`、`diff`、`log` 等子命令
 - [ ] `dit version` 输出版本号（如 `dit 0.1.0`）
 
-> 若当前终端还未安装 `dit`，请先完成指南 00 的 `uv tool install --force .` 步骤。后续测试需要在临时目录中直接运行 `dit`，不依赖仓库根目录下的 `uv run`。
+> 若当前终端还未安装 `dit`，请先完成指南 00 的 `uv tool install --force --editable .` 步骤。后续测试需要在临时目录中直接运行 `dit`，不依赖仓库根目录下的 `uv run`。
 
 ### 1.2 创建测试工作目录
 
@@ -43,6 +43,9 @@ cd "$TEST_DIR"
 ```
 
 > 所有后续步骤均在 `$TEST_DIR` 下执行。测试完成后可直接删除整个目录。
+>
+> 可选：如果你还想执行文档中的“源码级对象内省”片段，再额外设置 Dit 源码目录：
+> `export DIT_SOURCE_DIR=/path/to/dit`
 
 ### 1.3 准备测试用 JSONL 数据
 
@@ -323,17 +326,18 @@ ls "$TEST_DIR/.dit/objects/"
 # 预期含：commits/ manifests/ rows/ trees/
 ```
 
-**通过 Python 内省 commit 对象：**
+**可选：通过源码级 Python 内省 commit 对象（需已设置 `DIT_SOURCE_DIR`）**
 
 ```bash
-cd "$TEST_DIR"
-uv run python3 - << 'PYEOF'
+cd "$DIT_SOURCE_DIR"
+TEST_DIR="$TEST_DIR" uv run python3 - << 'PYEOF'
+import os
 from pathlib import Path
 from dit.core.store import ObjectStore
-from dit.core.objects import deserialize_commit, deserialize_tree, deserialize_manifest
+from dit.core.objects import deserialize_commit, deserialize_tree
 from dit.core.refs import RefStore
 
-dot = Path(".dit")
+dot = Path(os.environ["TEST_DIR"]) / ".dit"
 store = ObjectStore(dot / "objects")
 refs = RefStore(dot)
 
@@ -371,8 +375,8 @@ Tree:    <64 位哈希>
 - [ ] `.dit/refs/heads/main` 包含 64 位十六进制哈希
 - [ ] `.dit/index` 内容为 `{}`（index 已清空）
 - [ ] `objects/commits/` 目录下有对象文件（3 级子目录结构：`aa/bb/<全哈希>`）
-- [ ] 上述 Python 脚本输出中 `Parents: []`（根提交无父提交）
-- [ ] 根 tree 包含 `eval.jsonl` 和 `train.jsonl`，类型均为 `manifest`
+- [ ] 可选：上述 Python 脚本输出中 `Parents: []`（根提交无父提交）
+- [ ] 可选：根 tree 包含 `eval.jsonl` 和 `train.jsonl`，类型均为 `manifest`
 
 ### 5.2 空暂存区提交（错误场景）
 
@@ -482,7 +486,7 @@ dit diff
 
 预期输出：
 ```
-train.jsonl: 3 → 4 rows (+1, -0)
+train.jsonl: 3 → 4 rows (+1)
 ```
 
 验证清单：
@@ -511,15 +515,16 @@ dit diff
 
 预期输出（含行数变化 + refresh 提示）：
 ```
-eval.jsonl: 2 → 2 rows (+1, -1)
+eval.jsonl: 2 → 2 rows (~1 refreshed)
   Likely refreshed: 1 rows
-train.jsonl: 3 → 4 rows (+1, -0)
+train.jsonl: 3 → 4 rows (+1)
 ```
 
 > **说明**：当 user 问题（`query_fingerprint`）相同但 assistant 回答不同时，dit 将其识别为"刷新"（refresh），而非简单的删除 + 新增。
 
 验证清单：
-- [ ] `eval.jsonl` 出现，行数显示 `2 → 2`，差值含 `+1` 和 `-1`
+- [ ] `eval.jsonl` 出现，行数显示 `2 → 2`
+- [ ] `eval.jsonl` 该行包含 `~1 refreshed`
 - [ ] `eval.jsonl` 条目下出现 "Likely refreshed: 1 rows"
 - [ ] `train.jsonl` 显示 `3 → 4 rows`
 
@@ -535,10 +540,10 @@ dit diff
 
 预期输出（新文件 extra.jsonl 出现）：
 ```
-eval.jsonl: 2 → 2 rows (+1, -1)
+eval.jsonl: 2 → 2 rows (~1 refreshed)
   Likely refreshed: 1 rows
 extra.jsonl: new file (1 rows)
-train.jsonl: 3 → 4 rows (+1, -0)
+train.jsonl: 3 → 4 rows (+1)
 ```
 
 验证清单：
@@ -611,17 +616,18 @@ Date:   <时间戳> UTC
 - [ ] 最旧提交排在最后（含 "初始数据集"）
 - [ ] 每个 commit 块格式正确（commit / Author / Date / 消息四部分）
 
-**通过 Python 验证父子链：**
+**可选：通过源码级 Python 验证父子链（需已设置 `DIT_SOURCE_DIR`）**
 
 ```bash
-cd "$TEST_DIR"
-uv run python3 - << 'PYEOF'
+cd "$DIT_SOURCE_DIR"
+TEST_DIR="$TEST_DIR" uv run python3 - << 'PYEOF'
+import os
 from pathlib import Path
 from dit.core.store import ObjectStore
 from dit.core.objects import deserialize_commit
 from dit.core.refs import RefStore
 
-dot = Path(".dit")
+dot = Path(os.environ["TEST_DIR"]) / ".dit"
 store = ObjectStore(dot / "objects")
 refs = RefStore(dot)
 
@@ -648,9 +654,9 @@ PYEOF
 ```
 
 验证清单：
-- [ ] 链长度为 3
-- [ ] 第 0 个（最新）commit 的 `parent` 等于第 1 个 commit 的前 8 位哈希
-- [ ] 第 2 个（最旧）commit 的 `parent` 显示 "（根提交）"
+- [ ] 可选：链长度为 3
+- [ ] 可选：第 0 个（最新）commit 的 `parent` 等于第 1 个 commit 的前 8 位哈希
+- [ ] 可选：第 2 个（最旧）commit 的 `parent` 显示 "（根提交）"
 
 ### 8.4 提交后状态验证
 
@@ -718,14 +724,15 @@ dit commit -m "添加 README.md 文档"
 ```
 
 ```bash
-cd "$TEST_DIR"
-uv run python3 - << 'PYEOF'
+cd "$DIT_SOURCE_DIR"
+TEST_DIR="$TEST_DIR" uv run python3 - << 'PYEOF'
+import os
 from pathlib import Path
 from dit.core.store import ObjectStore
 from dit.core.objects import deserialize_commit, deserialize_tree
 from dit.core.refs import RefStore
 
-dot = Path(".dit")
+dot = Path(os.environ["TEST_DIR"]) / ".dit"
 store = ObjectStore(dot / "objects")
 refs = RefStore(dot)
 
@@ -788,18 +795,19 @@ dit commit -m "添加空数据文件"
 验证清单：
 - [ ] commit 成功，退出码为 0
 
-**查看空文件的 manifest 内容：**
+**可选：查看空文件的 manifest 内容（需已设置 `DIT_SOURCE_DIR`）**
 
 ```bash
-cd "$TEST_DIR"
-uv run python3 - << 'PYEOF'
+cd "$DIT_SOURCE_DIR"
+TEST_DIR="$TEST_DIR" uv run python3 - << 'PYEOF'
+import os
 from pathlib import Path
 from dit.core.store import ObjectStore
-from dit.core.objects import deserialize_commit, deserialize_tree, deserialize_manifest
+from dit.core.objects import deserialize_commit, deserialize_manifest
 from dit.core.refs import RefStore
 from dit.core.tree_walker import flatten_tree
 
-dot = Path(".dit")
+dot = Path(os.environ["TEST_DIR"]) / ".dit"
 store = ObjectStore(dot / "objects")
 refs = RefStore(dot)
 
@@ -814,7 +822,7 @@ PYEOF
 ```
 
 验证清单：
-- [ ] 输出 `empty.jsonl manifest entries: 0`
+- [ ] 可选：输出 `empty.jsonl manifest entries: 0`
 
 ### 10.2 包含中文和特殊字符的内容
 
@@ -858,17 +866,18 @@ dit commit -m "添加子目录数据：coding/advanced 和 review/style"
 - [ ] `add` 输出含 "staged data/review/style.jsonl (1 rows)"
 - [ ] `commit` 成功
 
-**验证子目录结构在 tree 中的嵌套：**
+**可选：验证子目录结构在 tree 中的嵌套（需已设置 `DIT_SOURCE_DIR`）**
 
 ```bash
-cd "$TEST_DIR"
-uv run python3 - << 'PYEOF'
+cd "$DIT_SOURCE_DIR"
+TEST_DIR="$TEST_DIR" uv run python3 - << 'PYEOF'
+import os
 from pathlib import Path
 from dit.core.store import ObjectStore
 from dit.core.objects import deserialize_commit, deserialize_tree
 from dit.core.refs import RefStore
 
-dot = Path(".dit")
+dot = Path(os.environ["TEST_DIR"]) / ".dit"
 store = ObjectStore(dot / "objects")
 refs = RefStore(dot)
 
@@ -901,13 +910,13 @@ data  [tree]
 ```
 
 验证清单：
-- [ ] `data` 为 `tree` 类型（不是扁平路径 `data/coding/advanced.jsonl`）
-- [ ] `data/coding` 和 `data/review` 均为嵌套 tree
-- [ ] 叶节点 `.jsonl` 文件类型为 `manifest`
+- [ ] 可选：`data` 为 `tree` 类型（不是扁平路径 `data/coding/advanced.jsonl`）
+- [ ] 可选：`data/coding` 和 `data/review` 均为嵌套 tree
+- [ ] 可选：叶节点 `.jsonl` 文件类型为 `manifest`
 
-### 10.4 修改行顺序不触发 diff（相同行集合）
+### 10.4 修改行顺序会触发 diff（相同行集合）
 
-dit 以行哈希集合为单位比较，相同的行集合产生相同的 manifest 哈希，不视为变更。
+dit 的 manifest 保留行顺序；即使行集合完全相同，只要顺序变化，仍会被视为文件内容变更。
 
 ```bash
 # 将 eval.jsonl 的两行顺序调换
