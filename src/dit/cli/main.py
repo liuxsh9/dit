@@ -130,9 +130,8 @@ def add(paths: list[str] = typer.Argument(..., help="Files or directories to sta
 
         for fp in jsonl_files:
             manifest, row_data = build_manifest_for_file(fp)
-            for hash_hex, data in row_data.items():
-                obj_type = "row_text" if data.endswith(b"\n") else "rows"
-                store.write(obj_type, data)
+            for rh, data in row_data.items():
+                store.write("rows", data)
             manifest_bytes = serialize_manifest(manifest)
             manifest_hash = store.write("manifests", manifest_bytes)
             rel = str(fp.relative_to(repo_root))
@@ -1353,7 +1352,7 @@ def push(
     else:
         new_objects = local_objects
 
-    upload_order = ["rows", "row_text", "manifests", "sidecars", "blobs", "trees", "commits"]
+    upload_order = ["rows", "manifests", "sidecars", "blobs", "trees", "commits"]
     to_upload: dict[str, list[str]] = {}
     for obj_type in upload_order:
         hashes = list(new_objects.get(obj_type, set()))
@@ -1395,7 +1394,7 @@ def _clone_tree_objects(
     manifest_hashes: set,
 ):
     """Recursively download all manifest, sidecar, and subtree objects for a tree hash."""
-    from dit.core.objects import deserialize_tree, deserialize_manifest
+    from dit.core.objects import deserialize_tree
 
     tree_data = rc.download_object("trees", tree_hash)
     if not tree_data:
@@ -1408,16 +1407,7 @@ def _clone_tree_objects(
             m_data = rc.download_object("manifests", entry.obj_hash)
             if m_data:
                 store.write("manifests", m_data)
-                manifest = deserialize_manifest(m_data)
                 manifest_hashes.add(entry.obj_hash)
-                for manifest_entry in manifest.entries:
-                    if (
-                        manifest_entry.raw_row_hash is not None
-                        and not store.exists("row_text", manifest_entry.raw_row_hash)
-                    ):
-                        raw_data = rc.download_object("row_text", manifest_entry.raw_row_hash)
-                        if raw_data:
-                            store.write("row_text", raw_data)
             if entry.sidecar_hash and not store.exists("sidecars", entry.sidecar_hash):
                 sc_data = rc.download_object("sidecars", entry.sidecar_hash)
                 if sc_data:
@@ -1557,35 +1547,13 @@ def _fetch_tree_objects(
                 if m_data:
                     store.write("manifests", m_data)
                     downloaded += 1
-                    m = deserialize_manifest(m_data)
                     manifest_hashes.add(entry.obj_hash)
+                    m = deserialize_manifest(m_data)
                     for me in m.entries:
-                        if (
-                            me.raw_row_hash is not None
-                            and not store.exists("row_text", me.raw_row_hash)
-                        ):
-                            raw_data = rc.download_object("row_text", me.raw_row_hash)
-                            if raw_data:
-                                store.write("row_text", raw_data)
-                                downloaded += 1
                         if not store.exists("rows", me.row_hash):
                             row_data = rc.download_object("rows", me.row_hash)
                             if row_data:
                                 store.write("rows", row_data)
-                                downloaded += 1
-            else:
-                m_data = store.read("manifests", entry.obj_hash)
-                if m_data:
-                    m = deserialize_manifest(m_data)
-                    manifest_hashes.add(entry.obj_hash)
-                    for me in m.entries:
-                        if (
-                            me.raw_row_hash is not None
-                            and not store.exists("row_text", me.raw_row_hash)
-                        ):
-                            raw_data = rc.download_object("row_text", me.raw_row_hash)
-                            if raw_data:
-                                store.write("row_text", raw_data)
                                 downloaded += 1
             if entry.sidecar_hash and not store.exists("sidecars", entry.sidecar_hash):
                 sc_data = rc.download_object("sidecars", entry.sidecar_hash)

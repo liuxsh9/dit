@@ -64,9 +64,7 @@ def _store_commit(
 def test_walk_single_commit(tmp_path: Path) -> None:
     store = _make_store(tmp_path)
     row_hash = _store_row(store, '{"a":1}')
-    raw_row_hash = store.write("row_text", b'{"a":1}\n')
-    manifest = Manifest(entries=[ManifestEntry(row_hash=row_hash, query_fingerprint=None, raw_row_hash=raw_row_hash)])
-    manifest_hash = store.write("manifests", serialize_manifest(manifest))
+    manifest_hash = _store_manifest(store, [row_hash])
     tree_hash = _store_tree(store, [TreeEntry(name="data.jsonl", obj_type="manifest", obj_hash=manifest_hash)])
     commit_hash = _store_commit(store, tree_hash, [])
 
@@ -75,7 +73,6 @@ def test_walk_single_commit(tmp_path: Path) -> None:
     assert tree_hash in result["trees"]
     assert manifest_hash in result["manifests"]
     assert row_hash in result["rows"]
-    assert raw_row_hash in result["row_text"]
 
 
 def test_walk_two_commits_shares_history(tmp_path: Path) -> None:

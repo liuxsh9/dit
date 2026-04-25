@@ -8,7 +8,6 @@ from typing import Optional
 class ManifestEntry:
     row_hash: str
     query_fingerprint: Optional[str]
-    raw_row_hash: Optional[str] = None
 
 
 @dataclass
@@ -89,13 +88,11 @@ class Commit:
 def serialize_manifest(m: Manifest) -> bytes:
     data = {
         "type": "manifest",
-        "entries": [],
+        "entries": [
+            {"row_hash": e.row_hash, "query_fingerprint": e.query_fingerprint}
+            for e in m.entries
+        ],
     }
-    for e in m.entries:
-        entry = {"row_hash": e.row_hash, "query_fingerprint": e.query_fingerprint}
-        if e.raw_row_hash is not None:
-            entry["raw_row_hash"] = e.raw_row_hash
-        data["entries"].append(entry)
     return json.dumps(data, separators=(",", ":"), sort_keys=True).encode("utf-8")
 
 
@@ -105,7 +102,6 @@ def deserialize_manifest(data: bytes) -> Manifest:
         ManifestEntry(
             row_hash=e["row_hash"],
             query_fingerprint=e.get("query_fingerprint"),
-            raw_row_hash=e.get("raw_row_hash"),
         )
         for e in obj["entries"]
     ]

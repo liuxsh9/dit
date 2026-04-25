@@ -1,5 +1,4 @@
 import json
-import hashlib
 from pathlib import Path
 
 from dit.core.hash import canonical_json, row_hash, query_fingerprint
@@ -45,32 +44,16 @@ def build_blob_for_file(path: Path) -> bytes:
 def build_manifest_for_file(path: Path) -> tuple[Manifest, dict[str, bytes]]:
     """Build a Manifest for a JSONL file.
 
-    Returns (manifest, row_data) where row_data maps:
-    - row_hash -> canonical row bytes
-    - raw_row_hash -> original line bytes including trailing newline
+    Returns (manifest, row_data) where row_data maps row_hash -> canonical bytes.
     """
     entries = []
     row_data: dict[str, bytes] = {}
-    with open(path, "r", encoding="utf-8") as f:
-        for line in f:
-            stripped = line.strip()
-            if not stripped:
-                continue
-            row = json.loads(stripped)
-            canon = canonical_json(row)
-            rh = row_hash(row)
-            qfp = query_fingerprint(row)
-            raw_bytes = line.encode("utf-8")
-            raw_row_hash = hashlib.sha256(raw_bytes).hexdigest()
-            entries.append(
-                ManifestEntry(
-                    row_hash=rh,
-                    query_fingerprint=qfp,
-                    raw_row_hash=raw_row_hash,
-                )
-            )
-            row_data[rh] = canon
-            row_data[raw_row_hash] = raw_bytes
+    for row in read_rows(path):
+        canon = canonical_json(row)
+        rh = row_hash(row)
+        qfp = query_fingerprint(row)
+        entries.append(ManifestEntry(row_hash=rh, query_fingerprint=qfp))
+        row_data[rh] = canon
     return Manifest(entries=entries), row_data
 
 
@@ -81,16 +64,10 @@ def materialize_file(
     dest.parent.mkdir(parents=True, exist_ok=True)
     rows = []
     for entry in manifest.entries:
-        if entry.raw_row_hash is not None:
-            raw_data = store.read("row_text", entry.raw_row_hash)
-            if raw_data is not None:
-                rows.append(raw_data)
-                continue
-
         data = store.read("rows", entry.row_hash)
         if data is None:
             raise KeyError(f"Row {entry.row_hash} not found in store")
-        rows.append(json.dumps(json.loads(data), ensure_ascii=False).encode("utf-8") + b"\n")
+        rows.append(json.loads(data))
     with open(dest, "w", encoding="utf-8") as f:
         for row in rows:
-            f.write(row.decode("utf-8"))
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
