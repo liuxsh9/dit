@@ -1836,6 +1836,92 @@ def stats(
         typer.echo(f"{missing} of {totals['file_count']} files have no sidecar metadata. Run 'dit meta compute' to fill gaps.")
 
 
+@app.command()
+def search(
+    query: str = typer.Argument(..., help="Substring to match (case-insensitive)"),
+    path: str = typer.Argument("", help="Optional file name or directory prefix to restrict the scan"),
+    ref: str = typer.Option("main", "--ref", help="Branch name or commit hash to search"),
+    field: Optional[str] = typer.Option(None, "--field", help="Dot-notation field path to match within"),
+    limit: int = typer.Option(50, "--limit", help="Maximum number of matches to return"),
+    format: str = typer.Option("table", "--format", help="Output format: table or json"),
+):
+    """Search for rows matching QUERY in a commit."""
+    import json as _json
+    from dit.core.search import search_rows
+
+    repo_root = find_repo_root()
+    dot = get_dot(repo_root)
+    store = ObjectStore(dot / "objects")
+    refs = RefStore(dot)
+
+    commit_hash = refs.get_branch(ref)
+    if commit_hash is None:
+        if len(ref) == 64 and all(c in "0123456789abcdef" for c in ref):
+            commit_hash = ref
+        else:
+            typer.echo(f"fatal: ref '{ref}' not found", err=True)
+            raise typer.Exit(1)
+
+    if commit_hash is None:
+        typer.echo(f"fatal: no commits on branch '{ref}'", err=True)
+        raise typer.Exit(1)
+
+    try:
+        result = search_rows(
+            store,
+            commit_hash,
+            query,
+            path_prefix=path or None,
+            field_path=field,
+            limit=limit,
+        )
+    except FileNotFoundError as exc:
+        typer.echo(f"fatal: {exc}", err=True)
+        raise typer.Exit(1)
+
+    if format == "json":
+        typer.echo(_json.dumps(result, indent=2))
+        return
+
+    # Table format header
+    ref_display = f"heads/{ref}" if refs.get_branch(ref) else ref
+    if field:
+        typer.echo(f'Searching {ref_display} (commit {commit_hash[:8]}) for "{query}" in field {field}')
+    elif path:
+        typer.echo(f'Searching {ref_display} (commit {commit_hash[:8]}) for "{query}" in {path}')
+    else:
+        typer.echo(f'Searching {ref_display} (commit {commit_hash[:8]}) for "{query}"')
+    typer.echo("")
+
+    matches = result["matches"]
+
+    if not matches:
+        typer.echo("0 matches")
+        typer.echo(f"(scanned {result['total_scanned']} rows)")
+        return
+
+    # Column widths
+    col_file = max(len(m["file"]) for m in matches)
+    col_file = max(col_file, 4)
+    sep = "\u2500" * (col_file + 8 + 50)
+
+    header = f"{'File':<{col_file}}  {'Row':>5}  Excerpt"
+    typer.echo(header)
+    typer.echo(sep)
+
+    for m in matches:
+        excerpt = m["highlight"].replace("\n", " ")
+        typer.echo(f"{m['file']:<{col_file}}  {m['row_index']:>5}  {excerpt}")
+
+    typer.echo(sep)
+
+    match_word = "match" if len(matches) == 1 else "matches"
+    typer.echo(f"{len(matches)} {match_word} (scanned {result['total_scanned']} rows)")
+
+    if result["limit_reached"]:
+        typer.echo(f"Limit reached. Pass --limit N to see more.")
+
+
 def _fmt_tokens(n: int | None) -> str:
     if n is None:
         return "\u2014"
