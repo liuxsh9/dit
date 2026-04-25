@@ -118,10 +118,6 @@ def add(paths: list[str] = typer.Argument(..., help="Files or directories to sta
             typer.echo(f"  staged {rel} (blob)")
 
 
-if __name__ == "__main__":
-    app()
-
-
 @app.command()
 def diff():
     """Show changes between working directory and HEAD."""
@@ -881,8 +877,8 @@ def cherry_pick(
 
 @app.command()
 def serve(
-    host: str = typer.Option("0.0.0.0", help="Host to bind"),
-    port: int = typer.Option(8000, help="Port to listen on"),
+    host: Optional[str] = typer.Option(None, help="Host to bind"),
+    port: Optional[int] = typer.Option(None, help="Port to listen on"),
 ):
     """Start the DataHub HTTP API server."""
     try:
@@ -895,10 +891,15 @@ def serve(
         raise typer.Exit(1)
 
     from dit.server.app import app as fastapi_app
+    from dit.server.config import ServerSettings
 
     import uvicorn as _uvicorn
 
-    _uvicorn.run(fastapi_app, host=host, port=port)
+    settings = ServerSettings()
+    resolved_host = host if host is not None else settings.host
+    resolved_port = port if port is not None else settings.port
+
+    _uvicorn.run(fastapi_app, host=resolved_host, port=resolved_port)
 
 
 remote_app = typer.Typer(name="remote", help="Manage remote repositories.")
@@ -2426,3 +2427,7 @@ def dedup(
         typer.echo(f"  Query duplicates: {s['query_dup_groups']} groups ({s['query_dup_rows']} rows) INFO")
 
     raise typer.Exit(exit_code)
+
+
+if __name__ == "__main__":
+    app()

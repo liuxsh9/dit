@@ -42,20 +42,15 @@ async def get_session() -> AsyncSession:
 
 
 def _synthetic_admin_token() -> Token:
-    from sqlalchemy.orm import InstanceState
-    t = object.__new__(Token)
-    # Bootstrap SQLAlchemy instrumentation without hitting the DB
-    state = InstanceState(t, Token.__mapper__)  # type: ignore[arg-type]
-    object.__setattr__(t, "_sa_instance_state", state)
-    object.__setattr__(t, "id", -1)
-    object.__setattr__(t, "token_hash", "")
-    object.__setattr__(t, "label", "service-token")
-    object.__setattr__(t, "repo_scope", None)
-    object.__setattr__(t, "permissions", "admin")
-    object.__setattr__(t, "role", "owner")
-    object.__setattr__(t, "created_at", datetime.now(timezone.utc))
-    object.__setattr__(t, "expires_at", None)
-    return t
+    return Token(
+        token_hash="",
+        label="service-token",
+        repo_scope=None,
+        permissions="admin",
+        role="owner",
+        created_at=datetime.now(timezone.utc),
+        expires_at=None,
+    )
 
 
 async def verify_token(

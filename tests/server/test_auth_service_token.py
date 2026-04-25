@@ -1,9 +1,11 @@
 import hashlib
+from datetime import datetime, timezone
+
 import pytest
 from httpx import AsyncClient, ASGITransport
 
 from dit.server.app import create_app
-from dit.server.auth import get_session
+from dit.server.auth import _synthetic_admin_token, get_session
 from dit.server.config import ServerSettings
 from dit.server.database import create_db_engine, create_session_factory
 from dit.server.models import Base, Token
@@ -56,12 +58,34 @@ async def service_client(service_token_engine, tmp_path):
 
 
 class TestServiceTokenAuth:
+    def test_synthetic_admin_token_has_admin_role(self):
+        token = _synthetic_admin_token()
+        assert token.label == "service-token"
+        assert token.permissions == "admin"
+        assert token.role == "owner"
+        assert token.repo_scope is None
+        assert token.expires_at is None
+        assert isinstance(token.created_at, datetime)
+        assert token.created_at.tzinfo == timezone.utc
+
     async def test_service_token_grants_admin_access(self, service_client):
         resp = await service_client.get(
             "/api/v1/repos",
             headers={"X-Service-Token": SERVICE_TOKEN},
         )
         assert resp.status_code == 200
+
+    async def test_service_token_can_bootstrap_first_admin_token(self, service_client):
+        resp = await service_client.post(
+            "/api/v1/admin/tokens",
+            json={"label": "bootstrap-admin", "permissions": "admin"},
+            headers={"X-Service-Token": SERVICE_TOKEN},
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["label"] == "bootstrap-admin"
+        assert data["permissions"] == "admin"
+        assert data["token"].startswith("dit_")
 
     async def test_service_token_wrong_secret_rejected(self, service_client):
         resp = await service_client.get(
