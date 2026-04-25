@@ -406,3 +406,75 @@ class TestNestedTreeDiffStatus:
         result = runner.invoke(app, ["status"])
         assert result.exit_code == 0
         assert "train/sft.jsonl" in result.output
+
+
+class TestMeta:
+    def _make_repo_with_data(self, tmp_path):
+        """Helper: init repo, add two JSONL files, commit them, return dot path."""
+        os.chdir(tmp_path)
+        runner.invoke(app, ["init"])
+        (tmp_path / "train.jsonl").write_text(
+            '{"messages": [{"role": "user", "content": "hello world"}]}\n'
+            '{"messages": [{"role": "user", "content": "foo bar baz"}]}\n'
+        )
+        (tmp_path / "eval.jsonl").write_text(
+            '{"messages": [{"role": "user", "content": "test"}]}\n'
+        )
+        runner.invoke(app, ["add", "."])
+        runner.invoke(app, ["commit", "-m", "initial data"])
+        return tmp_path / ".datahub"
+
+    def test_meta_compute_all(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        dot = self._make_repo_with_data(tmp_path)
+
+        result = runner.invoke(app, ["meta", "compute"])
+        assert result.exit_code == 0, result.output
+        assert "train.jsonl" in result.output
+        assert "eval.jsonl" in result.output
+        assert "Created commit" in result.output
+
+        store = ObjectStore(dot / "objects")
+        refs = RefStore(dot)
+        head = refs.resolve_head()
+        commit_data = store.read("commits", head)
+        commit = deserialize_commit(commit_data)
+
+        from dit.core.tree_walker import flatten_tree
+        flat = flatten_tree(store, commit.tree_hash)
+        for path, (obj_type, obj_hash, sidecar_hash) in flat.items():
+            if obj_type == "manifest":
+                assert sidecar_hash is not None, f"sidecar_hash missing for {path}"
+                assert store.read("sidecars", sidecar_hash) is not None
+
+    def test_meta_compute_single_file(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        dot = self._make_repo_with_data(tmp_path)
+
+        result = runner.invoke(app, ["meta", "compute", "--file", "train.jsonl"])
+        assert result.exit_code == 0, result.output
+        assert "train.jsonl" in result.output
+        assert "eval.jsonl" not in result.output
+        assert "Created commit" in result.output
+
+    def test_meta_compute_idempotent(self, tmp_path, monkeypatch):
+        """Running meta compute twice produces identical commit trees (no duplicate objects)."""
+        monkeypatch.chdir(tmp_path)
+        dot = self._make_repo_with_data(tmp_path)
+
+        runner.invoke(app, ["meta", "compute"])
+        store = ObjectStore(dot / "objects")
+        refs = RefStore(dot)
+        h1 = refs.resolve_head()
+
+        result2 = runner.invoke(app, ["meta", "compute"])
+        assert result2.exit_code == 0
+        h2 = refs.resolve_head()
+        assert h1 == h2, "Second meta compute should be a no-op (same HEAD)"
+
+    def test_meta_compute_no_commits(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(app, ["init"])
+        result = runner.invoke(app, ["meta", "compute"])
+        assert result.exit_code != 0
+        assert "No commits" in result.output or "fatal" in result.output.lower()

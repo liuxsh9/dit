@@ -1003,6 +1003,80 @@ def auth_login(
     typer.echo(f"Logged in to {url}")
 
 
+meta_app = typer.Typer(name="meta", help="Manage sidecar metadata.")
+app.add_typer(meta_app)
+
+
+@meta_app.command("compute")
+def meta_compute(
+    file: Optional[str] = typer.Option(None, "--file", help="Limit to a specific file path"),
+):
+    """Compute sidecar metadata for manifests that lack it, create a new commit."""
+    from dit.core.tree_builder import build_nested_tree
+    from dit.core.tree_walker import flatten_tree
+    from dit.core.sidecar import compute_sidecar
+    from dit.core.objects import serialize_sidecar
+
+    repo_root = find_repo_root()
+    dot = get_dot(repo_root)
+    store = ObjectStore(dot / "objects")
+    refs = RefStore(dot)
+
+    head_hash = refs.resolve_head()
+    if head_hash is None:
+        typer.echo("fatal: no commits in this repository", err=True)
+        raise typer.Exit(1)
+
+    commit_data = store.read("commits", head_hash)
+    head_commit = deserialize_commit(commit_data)
+
+    flat = flatten_tree(store, head_commit.tree_hash)
+
+    computed_count = 0
+    updated: dict[str, tuple[str, str, Optional[str]]] = {}
+
+    for path, (obj_type, obj_hash, sidecar_hash) in flat.items():
+        if obj_type != "manifest":
+            updated[path] = (obj_type, obj_hash, sidecar_hash)
+            continue
+        if file is not None and path != file.lstrip("/"):
+            updated[path] = (obj_type, obj_hash, sidecar_hash)
+            continue
+        if sidecar_hash is not None:
+            updated[path] = (obj_type, obj_hash, sidecar_hash)
+            continue
+
+        sidecar = compute_sidecar(store, obj_hash)
+        sidecar_bytes = serialize_sidecar(sidecar)
+        new_sidecar_hash = store.write("sidecars", sidecar_bytes)
+
+        row_count = len(sidecar.entries)
+        typer.echo(f"Computing metadata for {path} ({row_count} rows)... done (sidecar: {new_sidecar_hash[:8]})")
+        updated[path] = (obj_type, obj_hash, new_sidecar_hash)
+        computed_count += 1
+
+    if computed_count == 0:
+        typer.echo("Nothing to compute (all manifests already have sidecar metadata).")
+        raise typer.Exit(0)
+
+    new_tree_hash = build_nested_tree(store, updated)
+
+    parent_hashes = [head_hash]
+    new_commit = Commit(
+        tree_hash=new_tree_hash,
+        parent_hashes=parent_hashes,
+        author=_get_author(),
+        message="meta: compute sidecar metadata",
+        timestamp=int(time.time()),
+    )
+    commit_bytes = serialize_commit(new_commit)
+    new_commit_hash = store.write("commits", commit_bytes)
+
+    branch = refs.current_branch()
+    refs.set_branch(branch, new_commit_hash)
+    typer.echo(f'Created commit: {new_commit_hash[:8]} "meta: compute sidecar metadata"')
+
+
 def _build_remote_client(dot: Path, remote_name: str = "origin") -> "RemoteClient":
     from dit.core.config import get_remote
     from dit.core.remote import RemoteClient
