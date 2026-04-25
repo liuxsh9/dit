@@ -33,6 +33,9 @@ def create_app(settings: ServerSettings | None = None) -> FastAPI:
     application.state.settings = settings
     application.state.data_dir = Path(settings.data_dir)
 
+    from dit.server.middleware.metrics import MetricsMiddleware
+    application.add_middleware(MetricsMiddleware)
+
     @application.get("/health")
     async def health():
         return {"status": "ok"}

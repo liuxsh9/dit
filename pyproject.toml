@@ -23,6 +23,7 @@ server = [
     "asyncpg>=0.30",
     "pydantic-settings>=2.0",
     "alembic>=1.14",
+    "prometheus-client>=0.21",
 ]
 
 [build-system]
