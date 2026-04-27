@@ -28,16 +28,28 @@
 ### 1.1 确认服务端运行
 
 ```bash
-curl -s http://localhost:8000/api/health
+curl -s http://localhost:8000/health | python3 -m json.tool
 ```
 
 预期输出：
 ```json
-{"status": "ok"}
+{
+    "status": "healthy",
+    "checks": {
+        "database": {
+            "status": "healthy",
+            "latency_ms": 1.23
+        },
+        "data_dir": {
+            "status": "healthy"
+        }
+    }
+}
 ```
 
 验证清单：
-- [ ] 返回 HTTP 200，含 `"status": "ok"`
+- [ ] 返回 HTTP 200，`status` 为 `"healthy"`
+- [ ] `checks.database.status` 和 `checks.data_dir.status` 均为 `"healthy"`
 
 ### 1.2 设置环境变量
 
@@ -235,12 +247,16 @@ curl -s -X POST "$BASE/api/v1/repos/$REPO/refs/heads/feature-api-test" \
 ### 3.4 CAS 更新引用
 
 将刚创建的 `feature-api-test` 分支的引用更新，模拟推送新提交。  
-这里用一个假哈希演示（实际使用中应传入真实的新 commit hash）。
+`new` 应使用真实存在的 commit hash。若当前测试仓库只有一个提交，可暂时复用 `$COMMIT_HASH` 验证 CAS 机制；不要使用随机构造的哈希，避免把引用指向不存在的对象。
 
 ```bash
-# 将旧值设为当前 COMMIT_HASH，新值设为一个新哈希
 export OLD_HASH="$COMMIT_HASH"
-export NEW_HASH="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+# 优先从日志中取另一个真实 commit；如果没有，就回退为当前 COMMIT_HASH
+export NEW_HASH=$(curl -s -H "Authorization: Bearer $TOKEN" \
+     "$BASE/api/v1/repos/$REPO/log?ref=heads/main&limit=2" \
+     | python3 -c "import sys,json; c=json.load(sys.stdin)['commits']; print(c[0]['commit_hash'] if c else '')")
+export NEW_HASH="${NEW_HASH:-$COMMIT_HASH}"
 
 curl -s -X POST "$BASE/api/v1/repos/$REPO/refs/heads/feature-api-test" \
      -H "Authorization: Bearer $TOKEN" \
@@ -252,7 +268,7 @@ curl -s -X POST "$BASE/api/v1/repos/$REPO/refs/heads/feature-api-test" \
 ```json
 {
     "name": "heads/feature-api-test",
-    "target_hash": "bbbbbbbb..."
+    "target_hash": "<NEW_HASH>"
 }
 ```
 
@@ -458,12 +474,14 @@ curl -s -H "Authorization: Bearer $TOKEN" \
         {
             "name": "train",
             "obj_type": "tree",
-            "hash": "e3f4a5b6..."
+            "obj_hash": "e3f4a5b6...",
+            "sidecar_hash": null
         },
         {
             "name": "README.md",
             "obj_type": "blob",
-            "hash": "c7d8e9f0..."
+            "obj_hash": "c7d8e9f0...",
+            "sidecar_hash": null
         }
     ]
 }
@@ -471,7 +489,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 
 验证清单：
 - [ ] 返回 HTTP 200
-- [ ] `entries` 为数组，每项包含 `name`、`obj_type`、`hash`
+- [ ] `entries` 为数组，每项包含 `name`、`obj_type`、`obj_hash`、`sidecar_hash`
 - [ ] 目录显示为 `obj_type: "tree"`，文件为 `"blob"` 或 `"manifest"`
 
 ### 5.2 浏览子目录
@@ -492,7 +510,8 @@ curl -s -H "Authorization: Bearer $TOKEN" \
         {
             "name": "sft.jsonl",
             "obj_type": "manifest",
-            "hash": "d1e2f3a4..."
+            "obj_hash": "d1e2f3a4...",
+            "sidecar_hash": null
         }
     ]
 }
@@ -1068,9 +1087,12 @@ curl -s -X POST "$BASE/api/v1/repos/$REPO/diff" \
 
 ### 10.9 并发 CAS 冲突（409）
 
-模拟两个并发写入者同时尝试更新同一引用，只有一个应该成功：
+模拟两个并发写入者同时尝试更新同一引用，只有一个应该成功。该场景需要两个真实存在、且不同于 `$COMMIT_HASH` 的目标 commit hash；如果当前仓库只有一个提交，可跳过本小节，或先通过 CLI/对象 API 创建两个真实提交后再执行。
 
 ```bash
+export NEW_HASH_1="<真实存在的 commit hash 1>"
+export NEW_HASH_2="<真实存在的 commit hash 2>"
+
 # 先创建一个测试引用
 curl -s -X POST "$BASE/api/v1/repos/$REPO/refs/heads/cas-concurrent-test" \
      -H "Authorization: Bearer $TOKEN" \
@@ -1081,13 +1103,13 @@ curl -s -X POST "$BASE/api/v1/repos/$REPO/refs/heads/cas-concurrent-test" \
 curl -s -X POST "$BASE/api/v1/repos/$REPO/refs/heads/cas-concurrent-test" \
      -H "Authorization: Bearer $TOKEN" \
      -H "Content-Type: application/json" \
-     -d "{\"old\": \"$COMMIT_HASH\", \"new\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}" \
+     -d "{\"old\": \"$COMMIT_HASH\", \"new\": \"$NEW_HASH_1\"}" \
      -o /tmp/cas_result_1.json &
 
 curl -s -X POST "$BASE/api/v1/repos/$REPO/refs/heads/cas-concurrent-test" \
      -H "Authorization: Bearer $TOKEN" \
      -H "Content-Type: application/json" \
-     -d "{\"old\": \"$COMMIT_HASH\", \"new\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}" \
+     -d "{\"old\": \"$COMMIT_HASH\", \"new\": \"$NEW_HASH_2\"}" \
      -o /tmp/cas_result_2.json &
 
 wait
@@ -1123,7 +1145,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 | `/api/v1/repos/{repo}/refs` | GET | reader | 引用列表 |
 | `/api/v1/repos/{repo}/refs/{type}/{name}` | GET | reader | 单个引用，404 不存在 |
 | `/api/v1/repos/{repo}/refs/{type}/{name}` | POST | committer | CAS 更新，409 冲突 |
-| `/api/v1/repos/{repo}/refs/{type}/{name}` | DELETE | admin | 204 删除，404 不存在 |
+| `/api/v1/repos/{repo}/refs/{type}/{name}` | DELETE | admin | 200 删除，404 不存在 |
 | `/api/v1/repos/{repo}/objects/batch-exists` | POST | 任意令牌 | 批量存在性检查 |
 | `/api/v1/repos/{repo}/objects/{type}/{hash}` | GET | 任意令牌 | 对象下载，404 不存在 |
 | `/api/v1/repos/{repo}/objects/{type}/{hash}` | POST | 任意令牌 | 上传（哈希验证），幂等 |
