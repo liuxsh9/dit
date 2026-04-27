@@ -149,16 +149,20 @@ class BranchProtection(Base):
 
 class PrApproval(Base):
     __tablename__ = "pr_approval"
-    __table_args__ = {"schema": "dit"}
+    __table_args__ = (
+        sa.UniqueConstraint("repo_id", "pull_request_id", "token_id", name="uq_pr_approval_repo_pr_token"),
+        {"schema": "dit"},
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    repo_id: Mapped[int] = mapped_column(ForeignKey("dit.repos.id"), nullable=False)
     pull_request_id: Mapped[int] = mapped_column(nullable=False)
     token_id: Mapped[int] = mapped_column(ForeignKey("dit.tokens.id"), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False)  # 'approved' | 'changes_requested'
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self) -> str:
-        return f"PrApproval(id={self.id}, pr={self.pull_request_id}, status={self.status!r})"
+        return f"PrApproval(id={self.id}, repo_id={self.repo_id}, pr={self.pull_request_id}, status={self.status!r})"
 
 
 class CICheck(Base):

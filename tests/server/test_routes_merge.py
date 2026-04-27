@@ -189,7 +189,14 @@ class TestMergeApprovalEnforcement:
         )
         assert resp.status_code == 201
 
-        # Attempt merge with pull_request_id=999 but no approvals submitted
+        pr_resp = await client.post(
+            f"/api/v1/repos/{repo_name}/pulls",
+            json={"title": "Merge PR", "source_branch": "feature", "target_branch": "main", "author": "tester"},
+        )
+        assert pr_resp.status_code == 201
+        pr_id = pr_resp.json()["pull_request_id"]
+
+        # Attempt merge with a real PR but no approvals submitted
         resp = await client.post(
             f"/api/v1/repos/{repo_name}/merge",
             json={
@@ -197,7 +204,7 @@ class TestMergeApprovalEnforcement:
                 "target_branch": "main",
                 "message": "Merge feature",
                 "author": "tester",
-                "pull_request_id": 999,
+                "pull_request_id": pr_id,
             },
         )
         assert resp.status_code == 403
@@ -214,9 +221,16 @@ class TestMergeApprovalEnforcement:
         )
         assert resp.status_code == 201
 
-        # Submit 1 approval for PR 100
+        pr_resp = await client.post(
+            f"/api/v1/repos/{repo_name}/pulls",
+            json={"title": "Merge PR", "source_branch": "feature", "target_branch": "main", "author": "tester"},
+        )
+        assert pr_resp.status_code == 201
+        pr_id = pr_resp.json()["pull_request_id"]
+
+        # Submit 1 approval for a real PR
         resp = await client.post(
-            f"/api/v1/repos/{repo_name}/pulls/100/reviews",
+            f"/api/v1/repos/{repo_name}/pulls/{pr_id}/reviews",
             json={"status": "approved"},
         )
         assert resp.status_code == 201
@@ -229,10 +243,53 @@ class TestMergeApprovalEnforcement:
                 "target_branch": "main",
                 "message": "Merge feature",
                 "author": "tester",
-                "pull_request_id": 100,
+                "pull_request_id": pr_id,
             },
         )
         assert resp.status_code == 200
+
+    async def test_merge_ignores_approvals_from_other_repos(self, client, tmp_path):
+        approved_repo = "merge-approval-source"
+        protected_repo = "merge-approval-target"
+        await _setup_diverged_repo_named(client, tmp_path, approved_repo)
+        await _setup_diverged_repo_named(client, tmp_path, protected_repo)
+
+        await client.post(
+            f"/api/v1/repos/{protected_repo}/branch-protection",
+            json={"branch_pattern": "main", "required_approvals": 1},
+        )
+
+        approved_pr = await client.post(
+            f"/api/v1/repos/{approved_repo}/pulls",
+            json={"title": "Source PR", "source_branch": "feature", "target_branch": "main", "author": "tester"},
+        )
+        assert approved_pr.status_code == 201
+
+        protected_pr = await client.post(
+            f"/api/v1/repos/{protected_repo}/pulls",
+            json={"title": "Target PR", "source_branch": "feature", "target_branch": "main", "author": "tester"},
+        )
+        assert protected_pr.status_code == 201
+        protected_pr_id = protected_pr.json()["pull_request_id"]
+
+        resp = await client.post(
+            f"/api/v1/repos/{approved_repo}/pulls/{approved_pr.json()['pull_request_id']}/reviews",
+            json={"status": "approved"},
+        )
+        assert resp.status_code == 201
+
+        resp = await client.post(
+            f"/api/v1/repos/{protected_repo}/merge",
+            json={
+                "source_branch": "feature",
+                "target_branch": "main",
+                "message": "Merge feature",
+                "author": "tester",
+                "pull_request_id": protected_pr_id,
+            },
+        )
+        assert resp.status_code == 403
+        assert "only 0 found" in resp.json()["detail"]
 
     async def test_merge_to_unprotected_branch_no_approvals_needed(self, client, tmp_path):
         repo_name = "merge-approval-noprotect"

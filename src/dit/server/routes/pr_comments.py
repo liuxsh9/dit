@@ -51,7 +51,7 @@ class UpdateCommentRequest(BaseModel):
 async def create_comment(
     repo: str, pr_id: int, body: CreateCommentRequest,
     session: AsyncSession = Depends(get_session),
-    _token=Depends(require_permission("read")),
+    _token=Depends(require_permission("reviewer")),
 ):
     r = await _get_repo(repo, session)
     pr_meta = await _get_pr_meta(session, r.id, pr_id)
@@ -84,7 +84,7 @@ async def list_comments(
 async def update_comment(
     repo: str, pr_id: int, comment_id: int, body: UpdateCommentRequest,
     session: AsyncSession = Depends(get_session),
-    _token=Depends(require_permission("read")),
+    _token=Depends(require_permission("reviewer")),
 ):
     r = await _get_repo(repo, session)
     pr_meta = await _get_pr_meta(session, r.id, pr_id)

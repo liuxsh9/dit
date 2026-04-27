@@ -10,7 +10,7 @@ from sqlalchemy import func as sa_func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dit.server.auth import get_session, require_permission
-from dit.server.models import BranchProtection, PrApproval, Ref, Repo
+from dit.server.models import BranchProtection, PrApproval, PullRequestMeta, Ref, Repo
 
 router = APIRouter(prefix="/api/v1/repos/{repo}", tags=["merge"])
 
@@ -75,8 +75,18 @@ async def _check_merge_approvals(
             detail=f"Branch '{target_branch}' requires {matched_rule.required_approvals} approval(s). Provide pull_request_id.",
         )
 
+    pr_result = await session.execute(
+        select(PullRequestMeta).where(
+            PullRequestMeta.repo_id == repo_id,
+            PullRequestMeta.pull_request_id == pull_request_id,
+        )
+    )
+    if pr_result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail=f"Pull request #{pull_request_id} not found")
+
     count_result = await session.execute(
         select(sa_func.count()).select_from(PrApproval).where(
+            PrApproval.repo_id == repo_id,
             PrApproval.pull_request_id == pull_request_id,
             PrApproval.status == "approved",
         )

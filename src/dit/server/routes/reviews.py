@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dit.server.auth import get_session, require_permission
-from dit.server.models import PrApproval
+from dit.server.models import PrApproval, PullRequestMeta
 from dit.server.routes._helpers import _get_repo
 
 router = APIRouter(prefix="/api/v1/repos/{repo}", tags=["reviews"])
@@ -19,11 +19,25 @@ class SubmitReviewRequest(BaseModel):
 def _approval_to_dict(a: PrApproval) -> dict:
     return {
         "id": a.id,
+        "repo_id": a.repo_id,
         "pull_request_id": a.pull_request_id,
         "token_id": a.token_id,
         "status": a.status,
         "created_at": a.created_at.isoformat() if a.created_at else None,
     }
+
+
+async def _get_pr_meta(session: AsyncSession, repo_id: int, pull_request_id: int) -> PullRequestMeta:
+    result = await session.execute(
+        select(PullRequestMeta).where(
+            PullRequestMeta.repo_id == repo_id,
+            PullRequestMeta.pull_request_id == pull_request_id,
+        )
+    )
+    pr = result.scalar_one_or_none()
+    if pr is None:
+        raise HTTPException(status_code=404, detail=f"PR #{pull_request_id} not found")
+    return pr
 
 @router.post("/pulls/{pull_request_id}/reviews", status_code=201)
 async def submit_review(
@@ -33,10 +47,13 @@ async def submit_review(
     session: AsyncSession = Depends(get_session),
     token=Depends(require_permission("reviewer")),
 ):
-    await _get_repo(repo, session)
+    r = await _get_repo(repo, session)
+    await _get_pr_meta(session, r.id, pull_request_id)
+
     # Upsert: if same token already reviewed this PR, update status
     existing = await session.execute(
         select(PrApproval).where(
+            PrApproval.repo_id == r.id,
             PrApproval.pull_request_id == pull_request_id,
             PrApproval.token_id == token.id,
         )
@@ -48,6 +65,7 @@ async def submit_review(
         await session.refresh(approval)
     else:
         approval = PrApproval(
+            repo_id=r.id,
             pull_request_id=pull_request_id,
             token_id=token.id,
             status=body.status,
@@ -64,10 +82,15 @@ async def list_reviews(
     session: AsyncSession = Depends(get_session),
     _token=Depends(require_permission("read")),
 ):
-    await _get_repo(repo, session)
+    r = await _get_repo(repo, session)
+    await _get_pr_meta(session, r.id, pull_request_id)
+
     result = await session.execute(
         select(PrApproval)
-        .where(PrApproval.pull_request_id == pull_request_id)
+        .where(
+            PrApproval.repo_id == r.id,
+            PrApproval.pull_request_id == pull_request_id,
+        )
         .order_by(PrApproval.created_at)
     )
     return [_approval_to_dict(a) for a in result.scalars().all()]

@@ -1,12 +1,18 @@
 import time
 import pytest
 from pathlib import Path
+import hashlib
+
+from httpx import ASGITransport, AsyncClient
+
 from dit.core.store import ObjectStore
 from dit.core.objects import (
     Commit, Manifest, ManifestEntry,
     serialize_commit, serialize_manifest,
 )
 from dit.core.tree_builder import build_nested_tree
+from dit.server.auth import get_session
+from dit.server.models import Token
 
 async def _setup_comment_pr(client, tmp_path):
     resp = await client.post("/api/v1/repos", json={"name": "comment-repo"})
@@ -67,6 +73,56 @@ class TestCreateComment:
         )
         assert resp.status_code == 404
 
+    async def test_reader_cannot_create_comment(self, client, tmp_path, session):
+        pr_id = await _setup_comment_pr(client, tmp_path)
+        raw = "comment-reader-token"
+        session.add(
+            Token(
+                token_hash=hashlib.sha256(raw.encode()).hexdigest(),
+                label="comment-reader",
+                permissions="read",
+                role="reader",
+            )
+        )
+        await session.commit()
+
+        async with AsyncClient(
+            transport=ASGITransport(app=client._transport.app),
+            base_url="http://test",
+            headers={"Authorization": f"Bearer {raw}"},
+        ) as reader_client:
+            resp = await reader_client.post(
+                f"/api/v1/repos/comment-repo/pulls/{pr_id}/comments",
+                json={"author": "reader", "body": "should not write"},
+            )
+
+        assert resp.status_code == 403
+
+    async def test_reviewer_can_create_comment(self, client, tmp_path, session):
+        pr_id = await _setup_comment_pr(client, tmp_path)
+        raw = "comment-reviewer-token"
+        session.add(
+            Token(
+                token_hash=hashlib.sha256(raw.encode()).hexdigest(),
+                label="comment-reviewer",
+                permissions="read",
+                role="reviewer",
+            )
+        )
+        await session.commit()
+
+        async with AsyncClient(
+            transport=ASGITransport(app=client._transport.app),
+            base_url="http://test",
+            headers={"Authorization": f"Bearer {raw}"},
+        ) as reviewer_client:
+            resp = await reviewer_client.post(
+                f"/api/v1/repos/comment-repo/pulls/{pr_id}/comments",
+                json={"author": "reviewer", "body": "can write"},
+            )
+
+        assert resp.status_code == 201
+
 class TestListComments:
     async def test_list_all_comments(self, client, tmp_path):
         pr_id = await _setup_comment_pr(client, tmp_path)
@@ -100,6 +156,37 @@ class TestUpdateComment:
         )
         assert resp.status_code == 200
         assert resp.json()["body"] == "Updated body"
+
+    async def test_reader_cannot_update_comment(self, client, tmp_path, session):
+        pr_id = await _setup_comment_pr(client, tmp_path)
+        create_resp = await client.post(
+            f"/api/v1/repos/comment-repo/pulls/{pr_id}/comments",
+            json={"author": "r1", "body": "Old body"},
+        )
+        comment_id = create_resp.json()["id"]
+
+        raw = "comment-update-reader-token"
+        session.add(
+            Token(
+                token_hash=hashlib.sha256(raw.encode()).hexdigest(),
+                label="comment-update-reader",
+                permissions="read",
+                role="reader",
+            )
+        )
+        await session.commit()
+
+        async with AsyncClient(
+            transport=ASGITransport(app=client._transport.app),
+            base_url="http://test",
+            headers={"Authorization": f"Bearer {raw}"},
+        ) as reader_client:
+            resp = await reader_client.patch(
+                f"/api/v1/repos/comment-repo/pulls/{pr_id}/comments/{comment_id}",
+                json={"body": "Updated by reader"},
+            )
+
+        assert resp.status_code == 403
 
 class TestDeleteComment:
     async def test_delete_comment(self, client, tmp_path):

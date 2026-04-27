@@ -1,5 +1,6 @@
 import hashlib
 import secrets
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -8,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from dit.server.auth import get_session, verify_token
 from dit.server.models import Token
+
+TokenRole = Literal["reader", "reviewer", "committer", "maintainer", "admin", "owner"]
 
 router = APIRouter(prefix="/api/v1/admin/tokens", tags=["tokens"])
 
@@ -21,6 +24,7 @@ def _require_admin(token: Token = Depends(verify_token)) -> Token:
 class TokenCreate(BaseModel):
     label: str
     permissions: str = "push"
+    role: TokenRole = "reader"
     repo_scope: int | None = None
 
 
@@ -28,6 +32,7 @@ class TokenCreated(BaseModel):
     id: int
     label: str
     permissions: str
+    role: str
     token: str  # raw token — returned only on creation
 
 
@@ -48,6 +53,7 @@ async def create_token(
         token_hash=token_hash,
         label=body.label,
         permissions=body.permissions,
+        role=body.role,
         repo_scope=body.repo_scope,
     )
     session.add(token)
@@ -57,6 +63,7 @@ async def create_token(
         id=token.id,
         label=token.label,
         permissions=token.permissions,
+        role=token.role,
         token=raw,
     )
 

@@ -219,6 +219,7 @@ INFO  [alembic.runtime.migration] Running upgrade 003 -> 004, pr comment
 INFO  [alembic.runtime.migration] Running upgrade 004 -> 005, branch protection
 INFO  [alembic.runtime.migration] Running upgrade 005 -> 006, pr approval
 INFO  [alembic.runtime.migration] Running upgrade 006 -> 007, reviewer rules
+INFO  [alembic.runtime.migration] Running upgrade 007 -> 008, scope PR approvals by repository
 ```
 
 验证迁移结果：
@@ -247,7 +248,7 @@ psql -U postgres -d dit -c "\dt dit.*"
 验证清单：
 - [ ] 数据库 `dit` 创建成功
 - [ ] Schema `dit` 创建成功
-- [ ] `alembic upgrade head` 无报错完成（显示 007 号迁移）
+- [ ] `alembic upgrade head` 无报错完成（显示 008 号迁移）
 - [ ] `\dt dit.*` 列出至少 `tokens`、`repos`、`refs` 等表
 - [ ] 数据目录 `/tmp/dit-data` 存在
 
@@ -409,6 +410,7 @@ curl -s -X POST http://localhost:8000/api/v1/admin/tokens \
     "id": 1,
     "label": "admin-token",
     "permissions": "admin",
+    "role": "reader",
     "token": "dit_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 }
 ```

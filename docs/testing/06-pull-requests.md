@@ -33,7 +33,7 @@
 # Admin 令牌（执行所有操作）
 export TOKEN="<你的 admin token>"
 
-# Reviewer 令牌（提交 review 需要 reviewer 权限）
+# Reviewer 令牌（提交 review 或 PR 评论需要 reviewer 权限）
 # 若没有单独的 reviewer 令牌，admin 令牌同样满足要求
 export REVIEWER_TOKEN="<你的 reviewer token，或与 TOKEN 相同>"
 
@@ -43,6 +43,21 @@ export BASE="http://localhost:8000"
 # 用于本指南测试的仓库名（将在下方创建）
 export REPO="pr-test-repo"
 ```
+
+如果需要单独创建 reviewer 令牌，可用 admin 令牌调用 token 管理接口：
+
+```bash
+export REVIEWER_TOKEN=$(curl -s -X POST "$BASE/api/v1/admin/tokens" \
+     -H "Authorization: Bearer $TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"label": "pr-reviewer", "permissions": "read", "role": "reviewer"}' \
+     | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+echo "reviewer token 已创建"
+```
+
+验证清单：
+- [ ] 返回的新 token 可用于提交 PR 评论和 review
+- [ ] 该 token 不能 push 或 merge
 
 ### 1.2 创建测试仓库
 
@@ -342,12 +357,13 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ## 4. PR 评论
 
 PR 评论支持四种粒度：通用评论、文件级、行级（row_hash）、字段级（field_path）。
+创建和更新评论需要 `reviewer` 权限；读取评论只需要 `read` 权限，删除评论需要 `push` 权限。
 
 ### 4.1 创建通用评论
 
 ```bash
 curl -s -X POST "$BASE/api/v1/repos/$REPO/pulls/$PR_ID/comments" \
-     -H "Authorization: Bearer $TOKEN" \
+     -H "Authorization: Bearer $REVIEWER_TOKEN" \
      -H "Content-Type: application/json" \
      -d '{
        "author": "reviewer1",
@@ -387,7 +403,7 @@ export COMMENT_ID=1
 
 ```bash
 curl -s -X POST "$BASE/api/v1/repos/$REPO/pulls/$PR_ID/comments" \
-     -H "Authorization: Bearer $TOKEN" \
+     -H "Authorization: Bearer $REVIEWER_TOKEN" \
      -H "Content-Type: application/json" \
      -d '{
        "author": "reviewer1",
@@ -420,7 +436,7 @@ curl -s -X POST "$BASE/api/v1/repos/$REPO/pulls/$PR_ID/comments" \
 
 ```bash
 curl -s -X POST "$BASE/api/v1/repos/$REPO/pulls/$PR_ID/comments" \
-     -H "Authorization: Bearer $TOKEN" \
+     -H "Authorization: Bearer $REVIEWER_TOKEN" \
      -H "Content-Type: application/json" \
      -d '{
        "author": "reviewer2",
@@ -456,7 +472,7 @@ curl -s -X POST "$BASE/api/v1/repos/$REPO/pulls/$PR_ID/comments" \
 
 ```bash
 curl -s -X POST "$BASE/api/v1/repos/$REPO/pulls/$PR_ID/comments" \
-     -H "Authorization: Bearer $TOKEN" \
+     -H "Authorization: Bearer $REVIEWER_TOKEN" \
      -H "Content-Type: application/json" \
      -d '{
        "author": "reviewer2",
@@ -535,7 +551,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```bash
 curl -s -X PATCH \
      "$BASE/api/v1/repos/$REPO/pulls/$PR_ID/comments/$COMMENT_ID" \
-     -H "Authorization: Bearer $TOKEN" \
+     -H "Authorization: Bearer $REVIEWER_TOKEN" \
      -H "Content-Type: application/json" \
      -d '{"body": "整体数据质量不错，建议再次人工抽检 10% 的样本。"}' \
      | python3 -m json.tool
@@ -561,7 +577,7 @@ curl -s -X PATCH \
 # 先创建一条待删除的评论
 export DEL_COMMENT_ID=$(curl -s -X POST \
      "$BASE/api/v1/repos/$REPO/pulls/$PR_ID/comments" \
-     -H "Authorization: Bearer $TOKEN" \
+     -H "Authorization: Bearer $REVIEWER_TOKEN" \
      -H "Content-Type: application/json" \
      -d '{"author": "tmp", "body": "临时评论，待删除"}' \
      | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
@@ -603,6 +619,8 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 
 ### 5.1 提交 approved 审查
 
+> **前提**：`$PR_ID` 必须指向当前仓库中已存在的 PR。服务端会按 `repo + pull_request_id` 归属审查记录；不同仓库中相同编号的 PR 不会共享 review 或 approval。
+
 ```bash
 curl -s -X POST "$BASE/api/v1/repos/$REPO/pulls/$PR_ID/reviews" \
      -H "Authorization: Bearer $REVIEWER_TOKEN" \
@@ -625,6 +643,7 @@ curl -s -X POST "$BASE/api/v1/repos/$REPO/pulls/$PR_ID/reviews" \
 - [ ] 返回 HTTP 201
 - [ ] `status` 为 `"approved"`
 - [ ] `pull_request_id` 与 `$PR_ID` 一致
+- [ ] `repo_id` 与当前仓库一致
 - [ ] `token_id` 为提交审查的令牌 ID
 
 ### 5.2 列出 PR 的所有审查
@@ -690,7 +709,27 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 - [ ] 审查列表仍只有 1 条（覆盖而非追加）
 - [ ] 状态为 `"changes_requested"`
 
-### 5.4 改回 approved
+### 5.4 对不存在的 PR 提交审查（404）
+
+```bash
+curl -s -X POST "$BASE/api/v1/repos/$REPO/pulls/9999/reviews" \
+     -H "Authorization: Bearer $REVIEWER_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"status": "approved"}' | python3 -m json.tool
+```
+
+预期输出（HTTP 404）：
+```json
+{
+    "detail": "PR #9999 not found"
+}
+```
+
+验证清单：
+- [ ] 返回 HTTP 404
+- [ ] 不会为不存在的 PR 写入 approval
+
+### 5.5 改回 approved
 
 审查者审核修改后，恢复 approved：
 
@@ -704,7 +743,7 @@ curl -s -X POST "$BASE/api/v1/repos/$REPO/pulls/$PR_ID/reviews" \
 验证清单：
 - [ ] 返回 HTTP 201，`status` 重新变为 `"approved"`
 
-### 5.5 无效 status 值（422）
+### 5.6 无效 status 值（422）
 
 ```bash
 curl -s -X POST "$BASE/api/v1/repos/$REPO/pulls/$PR_ID/reviews" \
@@ -1138,7 +1177,7 @@ curl -s -X POST "$BASE/api/v1/repos/$REPO/merge" \
 - [ ] 返回 HTTP 403（Forbidden）
 - [ ] 错误信息说明需要提供 `pull_request_id`
 
-提供 `pull_request_id` 但没有 approved 审查时：
+提供当前仓库中真实存在的 `pull_request_id` 但没有 approved 审查时：
 
 ```bash
 curl -s -X POST "$BASE/api/v1/repos/$REPO/merge" \
@@ -1163,6 +1202,32 @@ curl -s -X POST "$BASE/api/v1/repos/$REPO/merge" \
 验证清单：
 - [ ] 返回 HTTP 403
 - [ ] 错误信息包含 `"requires 1 approval(s), but only 0 found"`
+
+如果传入当前仓库不存在的 `pull_request_id`，服务端会返回 HTTP 404，而不是把其他仓库同编号 PR 的 approval 算入当前仓库：
+
+```bash
+curl -s -X POST "$BASE/api/v1/repos/$REPO/merge" \
+     -H "Authorization: Bearer $TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "source_branch": "feature",
+       "target_branch": "main",
+       "message": "尝试使用不存在的 PR 合并",
+       "author": "tester",
+       "pull_request_id": 9999
+     }' | python3 -m json.tool
+```
+
+预期输出（HTTP 404）：
+```json
+{
+    "detail": "Pull request #9999 not found"
+}
+```
+
+验证清单：
+- [ ] 返回 HTTP 404
+- [ ] approval 只按当前仓库内的 PR 统计
 
 ### 8.4 提交 approved 审查后合并成功
 
@@ -1802,9 +1867,9 @@ curl -s -X POST "$BASE/api/v1/repos/$REPO/pulls/9999/comments" \
 | `/api/v1/repos/{repo}/pulls/{id}` | PATCH | push | 更新标题/状态，400 不可更新 merged |
 | `/api/v1/repos/{repo}/pulls/{id}/merge` | POST | push | 合并（快进/三路），409 有冲突，400 已合并/关闭 |
 | `/api/v1/repos/{repo}/pulls/{id}/resolve` | POST | push | 解决冲突后合并，400 无冲突时报错 |
-| `/api/v1/repos/{repo}/pulls/{id}/comments` | POST | read | 创建评论，支持通用/文件/行/字段粒度 |
+| `/api/v1/repos/{repo}/pulls/{id}/comments` | POST | reviewer | 创建评论，支持通用/文件/行/字段粒度 |
 | `/api/v1/repos/{repo}/pulls/{id}/comments` | GET | read | 列表，支持 `?file_path=` 过滤 |
-| `/api/v1/repos/{repo}/pulls/{id}/comments/{cid}` | PATCH | read | 更新评论内容 |
+| `/api/v1/repos/{repo}/pulls/{id}/comments/{cid}` | PATCH | reviewer | 更新评论内容 |
 | `/api/v1/repos/{repo}/pulls/{id}/comments/{cid}` | DELETE | push | 删除评论 |
 | `/api/v1/repos/{repo}/pulls/{id}/reviews` | POST | reviewer | 提交审查（upsert），422 非法 status |
 | `/api/v1/repos/{repo}/pulls/{id}/reviews` | GET | read | 列出审查 |

@@ -31,6 +31,25 @@ async def test_create_token_with_scope(client: AsyncClient) -> None:
     assert response.json()["permissions"] == "read"
 
 
+async def test_create_reviewer_role_token(client: AsyncClient) -> None:
+    response = await client.post(
+        "/api/v1/admin/tokens",
+        json={"label": "reviewer-bot", "permissions": "read", "role": "reviewer"},
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert data["permissions"] == "read"
+    assert data["role"] == "reviewer"
+
+
+async def test_create_token_rejects_unknown_role(client: AsyncClient) -> None:
+    response = await client.post(
+        "/api/v1/admin/tokens",
+        json={"label": "bad-role", "permissions": "read", "role": "reviewr"},
+    )
+    assert response.status_code == 422
+
+
 async def test_revoke_token(client: AsyncClient) -> None:
     create_resp = await client.post(
         "/api/v1/admin/tokens",
