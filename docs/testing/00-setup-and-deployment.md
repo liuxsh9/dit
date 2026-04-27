@@ -249,7 +249,7 @@ psql -U postgres -d dit -c "\dt dit.*"
 验证清单：
 - [ ] 数据库 `dit` 创建成功
 - [ ] Schema `dit` 创建成功
-- [ ] `alembic upgrade head` 无报错完成（显示 008 号迁移）
+- [ ] `alembic upgrade head` 无报错完成（显示 009 号迁移或最新迁移号）
 - [ ] `\dt dit.*` 列出至少 `tokens`、`repos`、`refs` 等表
 - [ ] 数据目录 `/tmp/dit-data` 存在
 
@@ -527,10 +527,8 @@ services:
         condition: service_healthy
     environment:
       DIT_SERVER_DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres/dit
-    working_dir: /app/src/dit/server
-    command: >
-      sh -c "pip install alembic asyncpg sqlalchemy &&
-             alembic -c alembic.ini upgrade head"
+      DIT_SERVER_AUTO_MIGRATE: "0"
+    command: alembic -c /app/src/dit/server/alembic.ini upgrade head
     restart: "no"
 
   dit:
@@ -546,6 +544,8 @@ services:
       DIT_SERVER_HOST: 0.0.0.0
       DIT_SERVER_PORT: 8000
       DIT_SERVER_SERVICE_TOKEN: change-me-in-production
+      # 若使用独立 dit-migrate 服务，可关闭应用容器启动时自动迁移。
+      DIT_SERVER_AUTO_MIGRATE: "0"
     ports:
       - "8000:8000"
     volumes:
@@ -599,13 +599,28 @@ curl -s http://localhost:8000/health | python3 -m json.tool
 docker logs dit-core --tail 50
 ```
 
-### 7.5 在容器内运行迁移
+### 7.5 容器迁移策略
 
-若单独运行容器（未使用 compose 的 migrate 服务），需手动在容器内运行迁移：
+默认镜像会在启动服务前执行：
 
 ```bash
-docker exec dit-core \
-  sh -c "cd /app/src/dit/server && alembic -c alembic.ini upgrade head"
+alembic -c /app/src/dit/server/alembic.ini upgrade head
+```
+
+如果你的生产环境希望由独立发布步骤执行迁移，可以设置：
+
+```bash
+DIT_SERVER_AUTO_MIGRATE=0
+```
+
+然后在启动应用前单独运行：
+
+```bash
+docker run --rm \
+  -e DIT_SERVER_DATABASE_URL="postgresql+asyncpg://postgres:postgres@host.docker.internal/dit" \
+  -e DIT_SERVER_AUTO_MIGRATE=0 \
+  dit-core:latest \
+  alembic -c /app/src/dit/server/alembic.ini upgrade head
 ```
 
 验证清单：
@@ -614,6 +629,38 @@ docker exec dit-core \
 - [ ] Docker 健康检查通过（`STATUS` 中含 `(healthy)`）
 - [ ] `curl http://localhost:8000/health` 返回 200 且 `status: healthy`
 - [ ] `docker logs dit-core` 无致命错误
+
+### 7.6 部署 smoke 脚本
+
+仓库提供了一个只读为主的部署验收脚本，用于真实服务器切流前快速确认核心链路：
+
+```bash
+CORE_URL=http://localhost:8000 ./scripts/deployment-smoke.sh
+```
+
+如需同时验证首次 admin 令牌引导路径：
+
+```bash
+CORE_URL=http://localhost:8000 \
+DIT_SERVER_SERVICE_TOKEN="my-secret" \
+CREATE_BOOTSTRAP_TOKEN=1 \
+./scripts/deployment-smoke.sh
+```
+
+如果同时部署了 Forgejo Gateway：
+
+```bash
+CORE_URL=http://localhost:8000 \
+GATEWAY_URL=http://localhost:3000 \
+./scripts/deployment-smoke.sh
+```
+
+验证清单：
+- [ ] core `/health` 为 healthy
+- [ ] core `/metrics` 可访问
+- [ ] 未认证访问 `/api/v1/repos` 返回 401
+- [ ] 可选：`X-Service-Token` 能创建并验证 admin token
+- [ ] 可选：gateway `/api/healthz` 返回 200
 
 ---
 
