@@ -1,20 +1,42 @@
 # 08 — Export、Stats、Search、Validate 与 CI Checks
 
-> **前置条件：** 已完成指南 07，仓库中存在至少一次提交，且 `dit meta compute` 已为 JSONL 文件生成 sidecar 元数据。  
-> **测试环境：** `~/repos/myproject`（本地 dit 仓库）、API Server 运行于 `http://localhost:8000`。
+> **前置条件：** 已完成指南 07，理解 sidecar 的生成流程；API 章节需要 API Server 运行于 `http://localhost:8000` 并准备好有效 Token。
+> **测试环境：** 本指南使用独立本地仓库 `~/dit-08-test`，避免复用前面指南留下的提交状态。
 
 ---
 
 ## 1. 前置条件确认
 
-### 1.1 仓库状态
+### 1.1 创建测试仓库
 
 ```bash
-cd ~/repos/myproject
+rm -rf ~/dit-08-test
+mkdir -p ~/dit-08-test && cd ~/dit-08-test
+dit init
+
+cat > train.jsonl << 'EOF'
+{"instruction":"实现一个LRU缓存，支持get和put操作","response":"可以用哈希表加双向链表实现LRU缓存。get和put操作都可以保持O(1)。"}
+{"instruction":"什么是快速排序","response":"快速排序是一种分治排序算法，通过选择基准值将数组划分为较小和较大的两部分。"}
+EOF
+
+cat > eval.jsonl << 'EOF'
+{"instruction":"LRU缓存的时间复杂度","response":"LRU缓存通常要求get和put都是O(1)。"}
+EOF
+
+dit add train.jsonl eval.jsonl
+dit commit -m "add training data v1"
+dit meta compute
+
+# 形成第二个有 sidecar 的版本，供 stats --compare 和 --ref 测试使用
+echo '{"instruction":"LRU缓存淘汰策略是什么","response":"当容量满时，LRU缓存会淘汰最近最少使用的条目。"}' >> train.jsonl
+dit add train.jsonl
+dit commit -m "add LRU eviction sample"
+dit meta compute
+
 dit log
 ```
 
-预期输出（至少两次提交，最新一条为 meta 提交）：
+预期输出（至少四次提交，最新一条为 meta 提交）：
 
 ```
 commit a1b2c3d4e5f6...
@@ -27,10 +49,10 @@ commit 8f9e7d6c5b4a...
 Author: alice
 Date:   2026-04-25 09:30:00 UTC
 
-    add training data v1
+    add LRU eviction sample
 ```
 
-- [ ] `dit log` 至少显示两条提交
+- [ ] `dit log` 至少显示四条提交
 - [ ] 最新提交消息包含 `meta: compute sidecar metadata`
 
 ### 1.2 确认 sidecar 已就绪
@@ -42,13 +64,13 @@ dit meta show train.jsonl
 预期输出（示例）：
 
 ```
-File: train.jsonl (500 rows)
+File: train.jsonl (3 rows)
 Sidecar: 3a7bc1f2
 
-  Total chars:    250,000
-  Token estimate: 62,500
-  Avg fields/row: 3.0
-  Languages:      zh (80%), en (20%)
+  Total chars:    <N>
+  Token estimate: <N/4 左右>
+  Avg fields/row: 2.0
+  Languages:      zh (100%)
 ```
 
 - [ ] 输出中包含 `Sidecar:` 行，不报 `run 'dit meta compute' first`
@@ -56,16 +78,17 @@ Sidecar: 3a7bc1f2
 ### 1.3 记录关键哈希
 
 ```bash
-# 记录当前 HEAD 的 commit hash，供后续测试使用
-COMMIT_HEAD=$(dit log | head -1 | awk '{print $2}')
-echo $COMMIT_HEAD
+# 记录当前 HEAD 的 meta commit，供后续测试使用
+COMMIT_HEAD=$(dit log --format json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d[0]['hash'])")
+echo "COMMIT_HEAD=$COMMIT_HEAD"
 
-# 记录父 commit hash（用于 stats --compare）
-COMMIT_PARENT=$(dit log | sed -n '8p' | awk '{print $2}')
-echo $COMMIT_PARENT
+# 记录上一轮 meta commit（用于 stats --compare 和 export --ref）
+COMMIT_PARENT=$(dit log --format json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d[2]['hash'])")
+echo "COMMIT_PARENT=$COMMIT_PARENT"
 ```
 
 - [ ] `COMMIT_HEAD` 为 64 位十六进制字符串
+- [ ] `COMMIT_PARENT` 为 64 位十六进制字符串，且不等于 `COMMIT_HEAD`
 
 ---
 
@@ -78,12 +101,12 @@ mkdir -p /tmp/dit-export-test
 dit export --output /tmp/dit-export-test
 ```
 
-预期输出：
+预期输出示例：
 
 ```
 Exporting from main (commit a1b2c3d4)
-  train.jsonl (500 rows)... done
-  eval.jsonl (100 rows)... done
+  eval.jsonl (1 row)... done
+  train.jsonl (3 rows)... done
 Exported 2 files to /tmp/dit-export-test/
 ```
 
@@ -91,7 +114,13 @@ Exported 2 files to /tmp/dit-export-test/
 
 ```bash
 wc -l /tmp/dit-export-test/train.jsonl
-head -1 /tmp/dit-export-test/train.jsonl | python3 -m json.tool
+python3 - <<'PY'
+import json
+from pathlib import Path
+for line in Path("/tmp/dit-export-test/train.jsonl").read_text().splitlines():
+    json.loads(line)
+print("JSONL OK")
+PY
 ```
 
 - [ ] `Exported N files` 消息出现
@@ -106,12 +135,12 @@ mkdir -p /tmp/dit-export-csv
 dit export --format csv --output /tmp/dit-export-csv
 ```
 
-预期输出：
+预期输出示例：
 
 ```
 Exporting from main (commit a1b2c3d4)
-  train.jsonl (500 rows)... done
-  eval.jsonl (100 rows)... done
+  eval.jsonl (1 row)... done
+  train.jsonl (3 rows)... done
 Exported 2 files to /tmp/dit-export-csv/
 ```
 
@@ -139,11 +168,11 @@ mkdir -p /tmp/dit-export-single
 dit export --file train.jsonl --output /tmp/dit-export-single
 ```
 
-预期输出：
+预期输出示例：
 
 ```
 Exporting from main (commit a1b2c3d4)
-  train.jsonl (500 rows)... done
+  train.jsonl (3 rows)... done
 Exported 1 file to /tmp/dit-export-single/
 ```
 
@@ -162,13 +191,14 @@ mkdir -p /tmp/dit-export-meta
 dit export --include-meta --output /tmp/dit-export-meta
 ```
 
-预期输出：
+预期输出示例：
 
 ```
 Exporting from main (commit a1b2c3d4)
-  train.jsonl (500 rows)... done
+  eval.jsonl (1 row)... done
+  eval.jsonl.meta.json... done
+  train.jsonl (3 rows)... done
   train.jsonl.meta.json... done
-  eval.jsonl (100 rows)... done
 Exported 2 files to /tmp/dit-export-meta/
 ```
 
@@ -185,17 +215,17 @@ cat /tmp/dit-export-meta/train.jsonl.meta.json
   "file": "train.jsonl",
   "manifest_hash": "abc123...",
   "sidecar_hash": "def456...",
-  "row_count": 500,
-  "char_count": 250000,
-  "token_estimate": 62500,
-  "avg_fields": 3.0,
-  "lang_distribution": {"zh": 400, "en": 100}
+  "row_count": 3,
+  "char_count": 300,
+  "token_estimate": 75,
+  "avg_fields": 2.0,
+  "lang_distribution": {"zh": 3}
 }
 ```
 
 - [ ] `train.jsonl.meta.json` 文件存在
 - [ ] 包含 `manifest_hash`、`sidecar_hash`、`row_count` 字段
-- [ ] 无 sidecar 的文件不生成 `.meta.json`（如 eval.jsonl 若无 sidecar）
+- [ ] 无 sidecar 的文件不生成 `.meta.json`（见 12.3）
 
 ### 2.5 --ref 指定分支或 commit hash
 
@@ -232,17 +262,17 @@ fatal: 'nonexistent.jsonl' not found in commit a1b2c3d4
 dit stats
 ```
 
-预期输出（示例）：
+预期输出示例：
 
 ```
 Repo stats at main (commit a1b2c3d4)
 
 File           Rows    Tokens      Chars  Avg fields  Lang
 ────────────────────────────────────────────────────────────
-train.jsonl     500    ~62K      250K         3.0  zh 80%
-eval.jsonl      100    ~12K       50K         2.5  en 60%
+eval.jsonl        1      ~24       99         2.0  zh 100%
+train.jsonl       3      ~91      365         2.0  zh 100%
 ────────────────────────────────────────────────────────────
-TOTAL           600    ~74K      300K               zh 72%
+TOTAL             4     ~115      464               zh 100%
 ```
 
 - [ ] 表头包含 `File`、`Rows`、`Tokens`、`Chars`、`Avg fields`、`Lang`
@@ -275,16 +305,16 @@ dit stats data/
 dit stats --compare $COMMIT_PARENT $COMMIT_HEAD
 ```
 
-预期输出：
+预期输出示例：
 
 ```
 Stats delta: 8f9e7d6c -> a1b2c3d4
 
 File           Rows (delta)        Tokens (delta)    Chars (delta)
 ────────────────────────────────────────────────────────────────────
-train.jsonl   400 -> 500 (+100)   50K -> 62K (+12K)  200K -> 250K (+50K)
+train.jsonl        2 -> 3 (+1)      ~65 -> ~91 (+~26)  260 -> 365 (+105)
 ────────────────────────────────────────────────────────────────────
-TOTAL                       +100                +12K              +50K
+TOTAL                         +1                 +~26              +105
 ```
 
 - [ ] 标题行显示两个 commit 的前 8 位
@@ -362,7 +392,7 @@ train.jsonl       0  ...实现一个LRU缓存，支持get和put...
 train.jsonl       1  ...LRU缓存淘汰策略...
 eval.jsonl        0  ...LRU缓存的时间复杂度...
 ───────────────────────────────────────────────────────
-3 matches (scanned 600 rows)
+3 matches (scanned 4 rows)
 ```
 
 - [ ] 标题行包含查询词 `LRU缓存`
@@ -428,7 +458,7 @@ dit search "zzznomatch_xyz"
 
 ```
 0 matches
-(scanned 600 rows)
+(scanned 4 rows)
 ```
 
 - [ ] 退出码为 0（无匹配不是错误）
@@ -473,7 +503,7 @@ print('search JSON OK')
 在仓库根目录创建规则文件：
 
 ```bash
-cat > ~/repos/myproject/.ditvalidate.yaml << 'EOF'
+cat > ~/dit-08-test/.ditvalidate.yaml << 'EOF'
 required_fields:
   - instruction
   - response
@@ -501,7 +531,7 @@ dit validate
 Validating heads/main (commit a1b2c3d4)
 Rules: required_fields=[instruction, response]  forbidden_keywords=2  max_row_chars=10000  min_row_chars=20
 
-Checked 600 rows across 2 files.
+Checked 4 rows across 2 files.
 PASS
 ```
 
@@ -517,7 +547,7 @@ PASS
 # 创建包含违规的测试数据（缺少 response 字段，含禁止词）
 echo '{"instruction":"test missing response"}' > /tmp/bad_data.jsonl
 echo '{"instruction":"正常指令","response":"包含PLACEHOLDER的回答"}' >> /tmp/bad_data.jsonl
-cp /tmp/bad_data.jsonl ~/repos/myproject/bad.jsonl
+cp /tmp/bad_data.jsonl ~/dit-08-test/bad.jsonl
 
 dit add bad.jsonl
 dit commit -m "add bad data for validate test"
@@ -542,7 +572,7 @@ File        Row   Rule                Detail
 bad.jsonl     0   required_fields     missing field: response
 bad.jsonl     1   forbidden_keywords  keyword "PLACEHOLDER" found
 ────────────────────────────────────────────────────────────────────────────────
-Checked 602 rows across 3 files.
+Checked 6 rows across 3 files.
 ```
 
 - [ ] 退出码为 1
@@ -555,8 +585,8 @@ Checked 602 rows across 3 files.
 删除违规文件，提交修复：
 
 ```bash
-rm ~/repos/myproject/bad.jsonl
-dit add bad.jsonl  # 注：若 dit add 不接受已删除文件，用 dit status 确认已删除后手动处理
+rm ~/dit-08-test/bad.jsonl
+dit add bad.jsonl
 dit commit -m "remove bad data"
 
 dit validate
@@ -599,13 +629,26 @@ print('validate JSON OK, status:', data['status'])
 
 ## 6. API: export
 
-> **准备工作：** 确认 API Server 运行，获取有效 Token。  
-> 将以下变量替换为实际值：
-> ```bash
-> REPO="myproject"
-> TOKEN="your-api-token"
-> BASE="http://localhost:8000/api/v1/repos"
-> ```
+> **准备工作：** 确认 API Server 运行，获取有效 Token，并将本地 `~/dit-08-test` 推送到服务端。
+
+```bash
+export TOKEN="<你的 admin 或 committer token>"
+export BASE_URL="http://localhost:8000"
+export BASE="$BASE_URL/api/v1/repos"
+export REPO="dit-08-test"
+
+curl -s -X POST "$BASE_URL/api/v1/repos" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"$REPO\"}" | python3 -m json.tool
+
+cd ~/dit-08-test
+dit remote add origin "$BASE_URL/$REPO" --token "$TOKEN"
+dit push origin main
+```
+
+- [ ] 服务端仓库创建成功，或已存在时确认后续 push 可用
+- [ ] `dit push origin main` 成功，服务端 `heads/main` 指向当前本地 HEAD
 
 ### 6.1 导出为 JSONL
 
@@ -618,7 +661,7 @@ curl -s \
 预期：返回原始 JSONL 内容（每行一个 JSON 对象），Content-Type 为 `application/x-ndjson`。
 
 ```bash
-curl -s -I \
+curl -s -D - -o /tmp/dit-api-export.jsonl \
   -H "Authorization: Bearer $TOKEN" \
   "$BASE/$REPO/export/$COMMIT_HEAD/train.jsonl?format=jsonl" | grep content-type
 ```
@@ -637,6 +680,12 @@ curl -s \
 
 - [ ] 首行为 CSV 表头
 - [ ] Content-Type 为 `text/csv`
+
+```bash
+curl -s -D - -o /tmp/dit-api-export.csv \
+  -H "Authorization: Bearer $TOKEN" \
+  "$BASE/$REPO/export/$COMMIT_HEAD/train.jsonl?format=csv" | grep content-type
+```
 
 ### 6.3 导出不存在的文件
 
@@ -839,7 +888,7 @@ import json,sys; d=json.load(sys.stdin); print('commit hash ref OK, matches:', l
 ### 9.1 提交规则文件到仓库
 
 ```bash
-cd ~/repos/myproject
+cd ~/dit-08-test
 
 # 确保 .ditvalidate.yaml 存在
 cat .ditvalidate.yaml
@@ -847,9 +896,10 @@ cat .ditvalidate.yaml
 # 将规则文件加入版本控制
 dit add .ditvalidate.yaml
 dit commit -m "add validate rules"
+dit push origin main
 
 # 更新 COMMIT_HEAD
-COMMIT_HEAD=$(dit log | head -1 | awk '{print $2}')
+COMMIT_HEAD=$(dit log --format json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d[0]['hash'])")
 echo $COMMIT_HEAD
 ```
 
@@ -1166,7 +1216,7 @@ dit search ""
 
 ```bash
 # 临时移走规则文件
-mv ~/repos/myproject/.ditvalidate.yaml /tmp/.ditvalidate.yaml.bak
+mv ~/dit-08-test/.ditvalidate.yaml /tmp/.ditvalidate.yaml.bak
 dit validate
 ```
 
@@ -1175,7 +1225,7 @@ dit validate
 ```
 Validating heads/main (commit a1b2c3d4)
 
-Checked 600 rows across 2 files.
+Checked 4 rows across 2 files.
 PASS
 ```
 
@@ -1185,34 +1235,44 @@ PASS
 
 ```bash
 # 恢复规则文件
-mv /tmp/.ditvalidate.yaml.bak ~/repos/myproject/.ditvalidate.yaml
+mv /tmp/.ditvalidate.yaml.bak ~/dit-08-test/.ditvalidate.yaml
 ```
 
 ### 12.3 export：导出没有 sidecar 的文件仍可成功
 
+先创建一个尚未运行 `dit meta compute` 的 JSONL 文件：
+
+```bash
+cat > nosidecar.jsonl << 'EOF'
+{"instruction":"No sidecar yet","response":"This row is intentionally not processed."}
+EOF
+dit add nosidecar.jsonl
+dit commit -m "add file without sidecar"
+```
+
 ```bash
 mkdir -p /tmp/dit-export-nosidecar
-dit export --file eval.jsonl --output /tmp/dit-export-nosidecar
+dit export --file nosidecar.jsonl --output /tmp/dit-export-nosidecar
 ```
 
 - [ ] 导出成功，退出码为 0
-- [ ] `eval.jsonl` 文件正常导出（export 不依赖 sidecar）
+- [ ] `nosidecar.jsonl` 文件正常导出（export 不依赖 sidecar）
 - [ ] `--include-meta` 时无 sidecar 的文件不生成 `.meta.json`
 
 ### 12.4 stats：文件无 sidecar
 
 ```bash
-dit stats eval.jsonl
+dit stats nosidecar.jsonl
 ```
 
 预期输出：
 
 ```
-Repo stats at main (commit a1b2c3d4) — eval.jsonl
+Repo stats at main (commit a1b2c3d4) — nosidecar.jsonl
 
 File        Rows    Tokens    Chars  Avg fields  Lang
 ───────────────────────────────────────────────────────
-eval.jsonl     —         —       —           —  —
+nosidecar.jsonl     —         —       —           —  —
 ───────────────────────────────────────────────────────
 TOTAL          —         —       —               —
 
