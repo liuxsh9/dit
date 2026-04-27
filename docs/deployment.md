@@ -140,3 +140,4 @@ deployment smoke checks passed
 - [ ] 创建 data repo 会同步创建 core backing repo。
 - [ ] JSONL 文件浏览、dataset overview、diff 结构化展示通过。
 - [ ] `DIT_SERVER_DATA_DIR`、Forgejo `/data`、PostgreSQL volume 均为持久化存储。
+- [ ] 已完成一次备份和恢复演练，见 [灾难恢复与兼容性策略](./disaster-recovery.md)。
