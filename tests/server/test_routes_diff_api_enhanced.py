@@ -198,6 +198,8 @@ class TestDiffPerFileDetail:
         assert "old_row_hash" in ref
         assert "new_row_hash" in ref
         assert "query_fingerprint" in ref
+        assert ref["old_content"]["messages"][1]["content"] == "old answer"
+        assert ref["new_content"]["messages"][1]["content"] == "new better answer"
 
 
 class TestDiffPagination:

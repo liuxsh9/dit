@@ -170,6 +170,8 @@ async def diff_commits(
                     "old_row_hash": old_rh,
                     "new_row_hash": new_rh,
                     "query_fingerprint": qfp,
+                    "old_content": _row_entry(old_rh, 0)["content"],
+                    "new_content": _row_entry(new_rh, 0)["content"],
                 }
                 for old_rh, new_rh, qfp in refreshed_page
             ]
