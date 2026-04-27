@@ -38,7 +38,12 @@ dit add eval.jsonl
 dit commit -m "feat: 添加 eval 数据集"
 
 # 记录各 commit hash
-dit log
+export C3_HASH=$(dit log --format json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d[0]['hash'])")
+export C2_HASH=$(dit log --format json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d[1]['hash'])")
+export C1_HASH=$(dit log --format json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d[2]['hash'])")
+echo "C1=$C1_HASH"
+echo "C2=$C2_HASH"
+echo "C3=$C3_HASH"
 ```
 
 预期状态（`dit log` 输出示意）：
@@ -59,7 +64,7 @@ commit <C1_HASH>
     feat: 初始训练数据 (3 rows)
 ```
 
-> **约定**：后续步骤中 `<C1>` `<C2>` `<C3>` 分别代表上述三个 commit 的完整 64 位哈希，`<REPO>` 代表服务端仓库名，`$TOKEN` 代表有效 API Token，`$ADMIN_TOKEN` 代表拥有 admin 权限的 Token。
+> **约定**：后续步骤中 `$C1_HASH`、`$C2_HASH`、`$C3_HASH` 分别代表上述三个 commit 的完整 64 位哈希。API 章节会额外设置 `$REPO`、`$TOKEN`、`$ADMIN_TOKEN`。
 
 ---
 
@@ -169,10 +174,10 @@ dit blame train.jsonl --row 0 --format json | python3 -m json.tool
 
 ```bash
 # 基于较早的 commit 做 blame
-dit blame train.jsonl --ref <C2_HASH>
+dit blame train.jsonl --ref "$C2_HASH"
 ```
 
-- [ ] 输出仅显示 3 行（C2 时 train.jsonl 有 4 行…若追加在 C2 则显示 4 行；根据实际提交验证行数）
+- [ ] 输出显示 4 行（C2 已包含追加的第 4 行，尚未包含 eval.jsonl）
 - [ ] 退出码为 0
 
 ---
@@ -227,14 +232,14 @@ Garbage collection (dry run) — grace period: 24h
 
 Object type    Live   Unreachable   Would delete
 ──────────────────────────────────────────────────
-commits           3             0              0
-trees             3             0              0
-manifests         3             0              0
+commits           N             0              0
+trees             N             0              0
+manifests         N             0              0
 rows              5             1              1
-sidecars          0             0              0
+sidecars          N             0              0
 blobs             0             0              0
 ──────────────────────────────────────────────────
-TOTAL            14             1              1
+TOTAL             N             1              1
 ```
 
 验证检查点：
@@ -340,6 +345,9 @@ PY
 
 dit add eval.jsonl
 dit commit -m "test: 注入重复数据"
+
+export C4_HASH=$(dit log --format json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d[0]['hash'])")
+echo "C4=$C4_HASH"
 ```
 
 ### 4.2 默认检测（全部类型）
@@ -461,12 +469,12 @@ dit fsck
 Object store integrity check
 
 Hash verification:
-  commits          3  ✓
-  trees            3  ✓
-  manifests        3  ✓
-  rows            10  ✓
-  sidecars         0  ✓
-  blobs            0  ✓
+  commits          N  ✓
+  trees            N  ✓
+  manifests        N  ✓
+  rows             N  ✓
+  sidecars         N  ✓
+  blobs            N  ✓
 
 Graph verification:
   Refs checked: 1 (1 branch(es), 0 tag(s))
@@ -531,14 +539,33 @@ dit fsck --format json | python3 -m json.tool
 
 ## 6. API: blame
 
-> 前提：服务器已启动，`$TOKEN` 有 read 权限。
+> 前提：服务器已启动，`$TOKEN` 有 read 权限，`$ADMIN_TOKEN` 有 admin 权限。先把本地 `/tmp/dit-ops-test` 推送到服务端测试仓库：
+
+```bash
+export BASE_URL="http://localhost:8000"
+export REPO="dit-ops-test"
+export TOKEN="<你的 reader/committer token>"
+export ADMIN_TOKEN="<你的 admin token>"
+
+curl -s -X POST "$BASE_URL/api/v1/repos" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"$REPO\"}" | python3 -m json.tool
+
+cd /tmp/dit-ops-test
+dit remote add origin "$BASE_URL/$REPO" --token "$ADMIN_TOKEN"
+dit push origin main
+```
+
+- [ ] 服务端仓库创建成功，或已存在时确认后续 push 可用
+- [ ] `dit push origin main` 成功
 
 ### 6.1 全文件 blame
 
 ```bash
 curl -s \
   -H "Authorization: Bearer $TOKEN" \
-  "http://localhost:8000/api/v1/repos/<REPO>/blame/<C3_HASH>/train.jsonl" \
+  "$BASE_URL/api/v1/repos/$REPO/blame/$C3_HASH/train.jsonl" \
   | python3 -m json.tool
 ```
 
@@ -552,7 +579,7 @@ curl -s \
 ```bash
 curl -s \
   -H "Authorization: Bearer $TOKEN" \
-  "http://localhost:8000/api/v1/repos/<REPO>/blame/<C3_HASH>/train.jsonl?row=3" \
+  "$BASE_URL/api/v1/repos/$REPO/blame/$C3_HASH/train.jsonl?row=3" \
   | python3 -m json.tool
 ```
 
@@ -566,7 +593,7 @@ curl -s \
 ```bash
 curl -s -o /dev/null -w "%{http_code}" \
   -H "Authorization: Bearer $TOKEN" \
-  "http://localhost:8000/api/v1/repos/<REPO>/blame/<C3_HASH>/train.jsonl?row=9999"
+  "$BASE_URL/api/v1/repos/$REPO/blame/$C3_HASH/train.jsonl?row=9999"
 ```
 
 - [ ] HTTP 状态码为 `400`
@@ -576,7 +603,7 @@ curl -s -o /dev/null -w "%{http_code}" \
 ```bash
 curl -s -o /dev/null -w "%{http_code}" \
   -H "Authorization: Bearer $TOKEN" \
-  "http://localhost:8000/api/v1/repos/<REPO>/blame/<C3_HASH>/nonexistent.jsonl"
+  "$BASE_URL/api/v1/repos/$REPO/blame/$C3_HASH/nonexistent.jsonl"
 ```
 
 - [ ] HTTP 状态码为 `404`
@@ -594,7 +621,7 @@ curl -s -X POST \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"grace_hours": 24, "dry_run": true}' \
-  "http://localhost:8000/api/v1/repos/<REPO>/gc" \
+  "$BASE_URL/api/v1/repos/$REPO/gc" \
   | python3 -m json.tool
 ```
 
@@ -624,7 +651,7 @@ curl -s -X POST \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"grace_hours": 0, "dry_run": false}' \
-  "http://localhost:8000/api/v1/repos/<REPO>/gc" \
+  "$BASE_URL/api/v1/repos/$REPO/gc" \
   | python3 -m json.tool
 ```
 
@@ -640,7 +667,7 @@ curl -s -o /dev/null -w "%{http_code}" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"dry_run": true}' \
-  "http://localhost:8000/api/v1/repos/<REPO>/gc"
+  "$BASE_URL/api/v1/repos/$REPO/gc"
 ```
 
 - [ ] HTTP 状态码为 `403`
@@ -654,7 +681,7 @@ curl -s -o /dev/null -w "%{http_code}" \
 ```bash
 curl -s \
   -H "Authorization: Bearer $TOKEN" \
-  "http://localhost:8000/api/v1/repos/<REPO>/dedup/<C4_HASH>" \
+  "$BASE_URL/api/v1/repos/$REPO/dedup/$C4_HASH" \
   | python3 -m json.tool
 ```
 
@@ -668,7 +695,7 @@ curl -s \
 ```bash
 curl -s \
   -H "Authorization: Bearer $TOKEN" \
-  "http://localhost:8000/api/v1/repos/<REPO>/dedup/<C4_HASH>?path=train.jsonl" \
+  "$BASE_URL/api/v1/repos/$REPO/dedup/$C4_HASH?path=train.jsonl" \
   | python3 -m json.tool
 ```
 
@@ -681,7 +708,7 @@ curl -s \
 ```bash
 curl -s -o /dev/null -w "%{http_code}" \
   -H "Authorization: Bearer $TOKEN" \
-  "http://localhost:8000/api/v1/repos/<REPO>/dedup/$( python3 -c 'print("0"*64)')"
+  "$BASE_URL/api/v1/repos/$REPO/dedup/$( python3 -c 'print("0"*64)')"
 ```
 
 - [ ] HTTP 状态码为 `404`
@@ -699,7 +726,7 @@ curl -s -X POST \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"check_hashes": true, "check_graph": true}' \
-  "http://localhost:8000/api/v1/repos/<REPO>/fsck" \
+  "$BASE_URL/api/v1/repos/$REPO/fsck" \
   | python3 -m json.tool
 ```
 
@@ -728,7 +755,7 @@ curl -s -X POST \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"check_hashes": true, "check_graph": false}' \
-  "http://localhost:8000/api/v1/repos/<REPO>/fsck" \
+  "$BASE_URL/api/v1/repos/$REPO/fsck" \
   | python3 -m json.tool
 ```
 
@@ -741,7 +768,7 @@ curl -s -X POST \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"check_hashes": false, "check_graph": true}' \
-  "http://localhost:8000/api/v1/repos/<REPO>/fsck" \
+  "$BASE_URL/api/v1/repos/$REPO/fsck" \
   | python3 -m json.tool
 ```
 
@@ -755,7 +782,7 @@ curl -s -o /dev/null -w "%{http_code}" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{}' \
-  "http://localhost:8000/api/v1/repos/<REPO>/fsck"
+  "$BASE_URL/api/v1/repos/$REPO/fsck"
 ```
 
 - [ ] HTTP 状态码为 `403`
@@ -808,7 +835,7 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health
 
 ```bash
 # 启动时指定不存在的 data_dir（测试用）
-DATA_DIR=/nonexistent/path dit serve &
+DIT_SERVER_DATA_DIR=/nonexistent/path dit serve &
 curl -s http://localhost:8000/health | python3 -m json.tool
 ```
 
@@ -827,7 +854,7 @@ curl -s http://localhost:8000/health | python3 -m json.tool
 # 先制造若干请求
 curl -s http://localhost:8000/health > /dev/null
 curl -s -H "Authorization: Bearer $TOKEN" \
-  "http://localhost:8000/api/v1/repos/<REPO>/blame/<C3_HASH>/train.jsonl" > /dev/null
+  "$BASE_URL/api/v1/repos/$REPO/blame/$C3_HASH/train.jsonl" > /dev/null
 
 # 获取 metrics
 curl -s http://localhost:8000/metrics
@@ -859,7 +886,7 @@ dit_http_requests_total{method="GET",path="/api/v1/repos/{repo}/blame/{hash}/tra
 
 ```bash
 curl -s -H "Authorization: Bearer $TOKEN" \
-  "http://localhost:8000/api/v1/repos/<REPO>/blame/<C3_HASH>/train.jsonl" > /dev/null
+  "$BASE_URL/api/v1/repos/$REPO/blame/$C3_HASH/train.jsonl" > /dev/null
 
 curl -s http://localhost:8000/metrics | grep "blame.*{hash}"
 ```
@@ -1031,7 +1058,7 @@ dit gc --grace 0 --dry-run
 ```
 
 验证检查点：
-- [ ] `--grace 24` dry-run：新鲜孤立对象在 `skipped` 列，`would delete` 为 0
+- [ ] `--grace 24` dry-run：新鲜孤立对象计入 `Unreachable`，但 `Would delete` 为 0，并显示 `within grace period (skipped)`
 - [ ] `--grace 0` dry-run：新鲜孤立对象出现在 `would delete` 列
 
 > 警告：生产环境**切勿**使用 `--grace 0`，会删除正在写入中的对象。
@@ -1165,7 +1192,7 @@ dit blame train.jsonl --ref 0000000000000000000000000000000000000000000000000000
 
 ```bash
 curl -s -o /dev/null -w "%{http_code}" \
-  "http://localhost:8000/api/v1/repos/<REPO>/blame/<C3_HASH>/train.jsonl"
+  "$BASE_URL/api/v1/repos/$REPO/blame/$C3_HASH/train.jsonl"
 ```
 
 - [ ] 状态码为 `401` 或 `403`（无 token 时）
