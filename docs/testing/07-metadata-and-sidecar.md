@@ -388,11 +388,32 @@ curl -s -X POST "$BASE/api/v1/repos" \
 验证清单：
 - [ ] 返回 HTTP 201，`name` 与 `$REPO` 一致
 
-使用 `dit` 推送数据（假设本地仓库已在前面章节创建好）：
+为 API 测试准备一个独立的本地仓库。不要复用第 1-4 节的 `~/dit-meta-test`，因为前面已经在本地计算过 sidecar；若复用，服务端 `meta/compute` 会发现 sidecar 已随 push 上传，返回 `sidecars: []`，无法验证服务端计算路径。
 
 ```bash
-cd ~/dit-meta-test
-dit remote add origin "$BASE/api/v1/repos/$REPO"
+rm -rf ~/dit-meta-api-test
+mkdir -p ~/dit-meta-api-test && cd ~/dit-meta-api-test
+dit init
+
+cat > train_en.jsonl << 'EOF'
+{"instruction": "What is the capital of France?", "response": "The capital of France is Paris. It is located in the northern part of the country and serves as the political, economic, and cultural center."}
+{"instruction": "Explain Python list comprehension.", "response": "A list comprehension provides a concise way to create lists. It consists of brackets containing an expression followed by a for clause, then optionally more for or if clauses."}
+{"instruction": "What is machine learning?", "response": "Machine learning is a subset of artificial intelligence that enables systems to learn and improve from experience without being explicitly programmed."}
+EOF
+
+cat > train_zh.jsonl << 'EOF'
+{"instruction": "请介绍一下深度学习的基本概念。", "response": "深度学习是机器学习的一个分支，通过构建多层神经网络来学习数据的表示。它在图像识别、自然语言处理等领域取得了突破性进展。"}
+{"instruction": "什么是卷积神经网络？", "response": "卷积神经网络（CNN）是一种专为处理网格结构数据（如图像）设计的深度学习模型，通过卷积层、池化层和全连接层的组合来提取特征。"}
+EOF
+
+cat > chat_multi.jsonl << 'EOF'
+{"messages": [{"role": "system", "content": "You are a helpful coding assistant."}, {"role": "user", "content": "How do I read a file in Python?"}, {"role": "assistant", "content": "You can use the built-in open() function to read a file in Python."}, {"role": "user", "content": "Can you show me an example?"}, {"role": "assistant", "content": "Sure! Here is an example: with open('file.txt', 'r') as f: content = f.read()"}]}
+{"messages": [{"role": "user", "content": "What is 2 + 2?"}, {"role": "assistant", "content": "2 + 2 equals 4."}]}
+EOF
+
+dit add train_en.jsonl train_zh.jsonl chat_multi.jsonl
+dit commit -m "initial: add API metadata test data"
+dit remote add origin "$BASE/$REPO" --token "$TOKEN"
 dit push origin main
 ```
 
@@ -684,15 +705,18 @@ print('请与 /summary 接口返回的值比较，应一致。')
 ### 8.1 创建第二个数据 commit 并重新计算 sidecar
 
 ```bash
-# 若本地已有新数据，推送并在服务端计算
-# 假设已在本地追加一行到 train_en.jsonl 并执行了 dit push
-
 # 先获取当前 HEAD（旧 commit）
 export OLD_COMMIT=$META_COMMIT
 echo "旧 commit: $OLD_COMMIT"
 
-# 推送新数据（若尚未推送）
-cd ~/dit-meta-test
+# 服务端 meta/compute 已创建一个远端 meta commit，先把本地快进到该提交
+cd ~/dit-meta-api-test
+dit pull origin main
+
+# 追加一行并推送新的数据 commit
+echo '{"instruction": "What is a neural network?", "response": "A neural network is a computational model inspired by the structure of the human brain, consisting of interconnected nodes organized in layers."}' >> train_en.jsonl
+dit add train_en.jsonl
+dit commit -m "data: add API neural network sample"
 dit push origin main
 
 # 在服务端计算新 sidecar
@@ -872,14 +896,21 @@ Nothing to compute (all manifests already have sidecar metadata).
 
 ```bash
 # 创建并提交空 JSONL 文件
-cd ~/dit-meta-test
+cd ~/dit-meta-api-test
+dit pull origin main
 touch empty.jsonl
 dit add empty.jsonl
 dit commit -m "add empty jsonl"
-dit meta compute
+dit push origin main
+
+EMPTY_COMMIT=$(curl -s -X POST "$BASE/api/v1/repos/$REPO/meta/compute" \
+     -H "Authorization: Bearer $TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{}' | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['commit_hash'])")
 ```
 
 ```bash
+dit pull origin main
 dit meta show empty.jsonl
 ```
 
@@ -894,8 +925,6 @@ File: empty.jsonl (0 rows)
 
 ```bash
 # API 摘要
-EMPTY_COMMIT=$(dit log --format json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d[0]['hash'])")
-# 推送并在服务端计算后：
 curl -s -H "Authorization: Bearer $TOKEN" \
      "$BASE/api/v1/repos/$REPO/meta/$EMPTY_COMMIT/empty.jsonl/summary" \
      | python3 -m json.tool

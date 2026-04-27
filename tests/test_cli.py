@@ -185,6 +185,29 @@ class TestLog:
         assert lines[1].endswith("first commit")
         assert len(lines[0].split()[0]) == 8
 
+    def test_log_json_outputs_machine_readable_commits(self, tmp_path: Path):
+        os.chdir(tmp_path)
+        runner.invoke(app, ["init"])
+        (tmp_path / "a.jsonl").write_text('{"x":1}\n')
+        runner.invoke(app, ["add", "."])
+        runner.invoke(app, ["commit", "-m", "first commit"])
+        first_hash = (tmp_path / ".dit" / "refs" / "heads" / "main").read_text().strip()
+
+        (tmp_path / "a.jsonl").write_text('{"x":1}\n{"y":2}\n')
+        runner.invoke(app, ["add", "."])
+        runner.invoke(app, ["commit", "-m", "second commit"])
+        second_hash = (tmp_path / ".dit" / "refs" / "heads" / "main").read_text().strip()
+
+        result = runner.invoke(app, ["log", "--format", "json"])
+
+        assert result.exit_code == 0
+        commits = json.loads(result.stdout)
+        assert [c["hash"] for c in commits] == [second_hash, first_hash]
+        assert commits[0]["commit_hash"] == second_hash
+        assert commits[0]["message"] == "second commit"
+        assert commits[0]["parent_hashes"] == [first_hash]
+        assert commits[1]["parent_hashes"] == []
+
     def test_log_empty_repo(self, tmp_path: Path):
         os.chdir(tmp_path)
         runner.invoke(app, ["init"])

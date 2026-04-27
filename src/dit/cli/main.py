@@ -290,6 +290,7 @@ def commit(message: str = typer.Option(..., "-m", help="Commit message")):
 @app.command()
 def log(
     oneline: bool = typer.Option(False, "--oneline", help="Show each commit on a single line."),
+    format: str = typer.Option("table", "--format", help="Output format: table or json."),
 ):
     """Show commit history."""
     repo_root = find_repo_root()
@@ -300,6 +301,29 @@ def log(
     commit_hash = refs.resolve_head()
     if not commit_hash:
         typer.echo("No commits yet.")
+        return
+
+    if format not in {"table", "json"}:
+        typer.echo("fatal: unsupported log format (expected 'table' or 'json')", err=True)
+        raise typer.Exit(1)
+
+    if format == "json":
+        commits = []
+        while commit_hash:
+            data = store.read("commits", commit_hash)
+            c = deserialize_commit(data)
+            commits.append(
+                {
+                    "hash": commit_hash,
+                    "commit_hash": commit_hash,
+                    "author": c.author,
+                    "message": c.message,
+                    "timestamp": c.timestamp,
+                    "parent_hashes": c.parent_hashes,
+                }
+            )
+            commit_hash = c.parent_hashes[0] if c.parent_hashes else None
+        typer.echo(json.dumps(commits, indent=2))
         return
 
     while commit_hash:
