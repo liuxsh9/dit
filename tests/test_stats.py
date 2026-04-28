@@ -124,9 +124,15 @@ class TestRepoStats:
         result = repo_stats(store, commit_hash)
         files_by_path = {f["path"]: f for f in result["files"]}
         train = files_by_path["train.jsonl"]
+        expected_size = sum(len(r.encode("utf-8")) for r in [
+            json.dumps({"instruction": "hello", "response": "world"}),
+            json.dumps({"instruction": "foo", "response": "bar"}),
+            json.dumps({"instruction": "baz", "response": "qux"}),
+        ])
         assert train["has_sidecar"] is True
         assert train["row_count"] == 3
         assert train["char_count"] == 120       # 3 rows * 40 chars
+        assert train["size_bytes"] == expected_size
         assert train["token_estimate"] == 30    # 3 rows * 10 tokens
         assert train["avg_fields"] == pytest.approx(2.0, rel=0.01)
         assert train["lang_distribution"] == {"en": 3}
@@ -139,6 +145,7 @@ class TestRepoStats:
         assert eval_f["has_sidecar"] is False
         assert eval_f["row_count"] is None
         assert eval_f["char_count"] is None
+        assert eval_f["size_bytes"] == len(json.dumps({"instruction": "hi", "response": "hey"}).encode("utf-8"))
         assert eval_f["token_estimate"] is None
         assert eval_f["avg_fields"] is None
         assert eval_f["lang_distribution"] is None
@@ -159,6 +166,7 @@ class TestRepoStats:
         totals = result["totals"]
         assert totals["row_count"] == 3
         assert totals["char_count"] == 120
+        assert totals["size_bytes"] == sum(f["size_bytes"] for f in result["files"])
         assert totals["token_estimate"] == 30
         assert totals["lang_distribution"] == {"en": 3}
 

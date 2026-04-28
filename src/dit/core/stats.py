@@ -2,7 +2,7 @@
 """Repo-level stats aggregated from sidecar objects."""
 from __future__ import annotations
 
-from dit.core.objects import deserialize_commit, deserialize_sidecar
+from dit.core.objects import deserialize_commit, deserialize_manifest, deserialize_sidecar
 from dit.core.sidecar import sidecar_summary
 from dit.core.store import ObjectStore
 from dit.core.tree_walker import flatten_tree
@@ -53,6 +53,19 @@ def repo_stats(
 
     clean_prefix = path_prefix.lstrip("/") if path_prefix else None
 
+    def _manifest_size_bytes(manifest_hash: str) -> int | None:
+        manifest_data = store.read("manifests", manifest_hash)
+        if manifest_data is None:
+            return None
+        manifest = deserialize_manifest(manifest_data)
+        total = 0
+        for entry in manifest.entries:
+            row_data = store.read("rows", entry.row_hash)
+            if row_data is None:
+                return None
+            total += len(row_data)
+        return total
+
     files: list[dict] = []
     for path, (obj_type, obj_hash, sidecar_hash) in sorted(flat.items()):
         if obj_type != "manifest":
@@ -60,11 +73,14 @@ def repo_stats(
         if clean_prefix is not None and not path.startswith(clean_prefix):
             continue
 
+        size_bytes = _manifest_size_bytes(obj_hash)
+
         if sidecar_hash is None:
             files.append({
                 "path": path,
                 "row_count": None,
                 "char_count": None,
+                "size_bytes": size_bytes,
                 "token_estimate": None,
                 "avg_fields": None,
                 "lang_distribution": None,
@@ -78,6 +94,7 @@ def repo_stats(
                 "path": path,
                 "row_count": None,
                 "char_count": None,
+                "size_bytes": size_bytes,
                 "token_estimate": None,
                 "avg_fields": None,
                 "lang_distribution": None,
@@ -91,6 +108,7 @@ def repo_stats(
             "path": path,
             "row_count": summary["row_count"],
             "char_count": summary["char_count"],
+            "size_bytes": size_bytes,
             "token_estimate": summary["token_estimate"],
             "avg_fields": summary["avg_fields"],
             "lang_distribution": summary["lang_distribution"],
@@ -109,6 +127,7 @@ def repo_stats(
         "files_with_sidecar": len(with_sidecar),
         "row_count": sum(f["row_count"] for f in with_sidecar) if with_sidecar else None,
         "char_count": sum(f["char_count"] for f in with_sidecar) if with_sidecar else None,
+        "size_bytes": sum(f["size_bytes"] for f in files if f["size_bytes"] is not None),
         "token_estimate": sum(f["token_estimate"] for f in with_sidecar) if with_sidecar else None,
         "lang_distribution": total_lang if with_sidecar else {},
     }
