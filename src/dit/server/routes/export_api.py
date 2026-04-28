@@ -58,6 +58,8 @@ async def export_file(
             raise HTTPException(status_code=400, detail=str(exc))
 
         dest = output_dir / clean_path
+        if format == "csv":
+            dest = dest.with_suffix(".csv")
         if not dest.exists():
             raise HTTPException(status_code=404, detail=f"Export produced no file for '{clean_path}'")
 

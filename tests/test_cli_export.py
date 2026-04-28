@@ -100,8 +100,8 @@ class TestExportCommand:
 
         result = runner.invoke(app, ["export", "--format", "csv", "--output", str(out)])
         assert result.exit_code == 0
-        assert (out / "train.jsonl").exists()
-        content = (out / "train.jsonl").read_text()
+        assert (out / "train.csv").exists()
+        content = (out / "train.csv").read_text()
         assert "messages" in content
 
     def test_export_ref_flag(self, tmp_path: Path):
