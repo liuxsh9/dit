@@ -313,3 +313,27 @@ class TestWalkBlobs:
         result = walk_commit_objects(store, commit2_hash)
         assert blob1_hash in result["blobs"]
         assert blob2_hash in result["blobs"]
+
+
+class TestIterativeWalker:
+    def test_deep_commit_chain_no_recursion_error(self, tmp_path: Path) -> None:
+        """A commit chain deeper than Python's recursion limit must not crash."""
+        store = _make_store(tmp_path)
+        tree_hash = _store_tree(store, [])
+        prev = _store_commit(store, tree_hash, [])
+        for i in range(1500):
+            prev = _store_commit(store, tree_hash, [prev])
+        # Should not raise RecursionError
+        result = walk_commit_objects(store, prev)
+        assert len(result["commits"]) == 1501  # 1 initial + 1500 loop
+
+    def test_is_ancestor_deep_chain(self, tmp_path: Path) -> None:
+        """is_ancestor must work on chains deeper than recursion limit."""
+        store = _make_store(tmp_path)
+        tree_hash = _store_tree(store, [])
+        root = _store_commit(store, tree_hash, [])
+        prev = root
+        for i in range(1500):
+            prev = _store_commit(store, tree_hash, [prev])
+        assert is_ancestor(store, root, prev) is True
+        assert is_ancestor(store, prev, root) is False
