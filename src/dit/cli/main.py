@@ -1953,8 +1953,16 @@ def stats(
 
     if comparing:
         commit1, commit2 = compare
+        resolved1 = resolve_commit_hash(dot, commit1) or refs.get_branch(commit1)
+        resolved2 = resolve_commit_hash(dot, commit2) or refs.get_branch(commit2)
+        if resolved1 is None:
+            typer.echo(f"fatal: cannot resolve '{commit1}'", err=True)
+            raise typer.Exit(1)
+        if resolved2 is None:
+            typer.echo(f"fatal: cannot resolve '{commit2}'", err=True)
+            raise typer.Exit(1)
         try:
-            result = compare_stats(store, commit1, commit2, path_prefix=path or None)
+            result = compare_stats(store, resolved1, resolved2, path_prefix=path or None)
         except FileNotFoundError as exc:
             typer.echo(f"fatal: {exc}", err=True)
             raise typer.Exit(1)
@@ -1963,7 +1971,7 @@ def stats(
             typer.echo(_json.dumps(result, indent=2))
             return
 
-        typer.echo(f"Stats delta: {commit1[:8]} -> {commit2[:8]}")
+        typer.echo(f"Stats delta: {resolved1[:8]} -> {resolved2[:8]}")
         typer.echo("")
         if not result["files"]:
             typer.echo("No files with sidecars on both sides.")
