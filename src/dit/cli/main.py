@@ -26,7 +26,7 @@ from dit.core.objects import (
 )
 from dit.core.refs import RefStore
 from dit.core.store import ObjectStore
-from dit.core.workspace import build_manifest_for_file, find_jsonl_files
+from dit.core.workspace import build_manifest_for_file, build_manifest_for_file_streaming, find_jsonl_files
 
 app = typer.Typer(name="dit", help="Git-like version control for SFT training data.")
 
@@ -163,9 +163,7 @@ def add(paths: list[str] = typer.Argument(..., help="Files or directories to sta
             raise typer.Exit(1)
 
         for fp in jsonl_files:
-            manifest, row_data = build_manifest_for_file(fp)
-            for rh, data in row_data.items():
-                store.write("rows", data)
+            manifest = build_manifest_for_file_streaming(fp, store)
             manifest_bytes = serialize_manifest(manifest)
             manifest_hash = store.write("manifests", manifest_bytes)
             rel = str(fp.relative_to(repo_root))

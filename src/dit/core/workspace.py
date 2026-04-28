@@ -57,6 +57,21 @@ def build_manifest_for_file(path: Path) -> tuple[Manifest, dict[str, bytes]]:
     return Manifest(entries=entries), row_data
 
 
+def build_manifest_for_file_streaming(path: Path, store: ObjectStore) -> Manifest:
+    """Build a Manifest for a JSONL file, streaming rows directly to the store.
+
+    Unlike build_manifest_for_file, this does not accumulate row data in memory.
+    """
+    entries = []
+    for row in read_rows(path):
+        canon = canonical_json(row)
+        rh = row_hash(row)
+        qfp = query_fingerprint(row)
+        store.write("rows", canon)
+        entries.append(ManifestEntry(row_hash=rh, query_fingerprint=qfp))
+    return Manifest(entries=entries)
+
+
 def materialize_file(
     repo_root: Path, rel_path: str, manifest: Manifest, store: ObjectStore
 ) -> None:

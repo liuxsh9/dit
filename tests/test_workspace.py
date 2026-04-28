@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from dit.core.workspace import find_jsonl_files, build_manifest_for_file, materialize_file
-from dit.core.objects import deserialize_manifest
+from dit.core.workspace import find_jsonl_files, build_manifest_for_file, build_manifest_for_file_streaming, materialize_file
+from dit.core.objects import deserialize_manifest, Manifest
 from dit.core.store import ObjectStore
 from dit.utils.jsonl import write_rows
 
@@ -127,3 +127,64 @@ def test_materialize_creates_parent_dirs(tmp_path: Path) -> None:
 
     materialize_file(tmp_path / "clone", "nested/deep/data.jsonl", manifest, store)
     assert (tmp_path / "clone" / "nested" / "deep" / "data.jsonl").exists()
+
+
+class TestBuildManifestStreaming:
+    """Tests for the streaming manifest builder that avoids OOM."""
+
+    def _make_jsonl(self, tmp_path: Path, rows: list[dict]) -> Path:
+        fp = tmp_path / "test.jsonl"
+        fp.write_text("".join(json.dumps(r) + "\n" for r in rows))
+        return fp
+
+    def test_streaming_produces_same_manifest(self, tmp_path: Path) -> None:
+        """Streaming version produces the exact same Manifest as the original."""
+        rows = [{"id": i, "text": f"row-{i}"} for i in range(20)]
+        fp = self._make_jsonl(tmp_path, rows)
+        store = ObjectStore(tmp_path / ".dit" / "objects")
+
+        original_manifest, _ = build_manifest_for_file(fp)
+        streaming_manifest = build_manifest_for_file_streaming(fp, store)
+
+        assert len(streaming_manifest.entries) == len(original_manifest.entries)
+        for orig, stream in zip(original_manifest.entries, streaming_manifest.entries):
+            assert orig.row_hash == stream.row_hash
+            assert orig.query_fingerprint == stream.query_fingerprint
+
+    def test_streaming_writes_rows_to_store(self, tmp_path: Path) -> None:
+        """After streaming, all row hashes exist in the store."""
+        rows = [{"id": i, "text": f"row-{i}"} for i in range(10)]
+        fp = self._make_jsonl(tmp_path, rows)
+        store = ObjectStore(tmp_path / ".dit" / "objects")
+
+        manifest = build_manifest_for_file_streaming(fp, store)
+
+        for entry in manifest.entries:
+            assert store.exists("rows", entry.row_hash), (
+                f"Row {entry.row_hash[:8]} not found in store"
+            )
+
+    def test_streaming_rows_match_original(self, tmp_path: Path) -> None:
+        """Row data in the store matches what build_manifest_for_file returns."""
+        rows = [{"id": i, "text": f"row-{i}"} for i in range(10)]
+        fp = self._make_jsonl(tmp_path, rows)
+        store = ObjectStore(tmp_path / ".dit" / "objects")
+
+        original_manifest, original_row_data = build_manifest_for_file(fp)
+        build_manifest_for_file_streaming(fp, store)
+
+        for rh, expected_bytes in original_row_data.items():
+            actual_bytes = store.read("rows", rh)
+            assert actual_bytes == expected_bytes
+
+    def test_streaming_does_not_accumulate_row_data(self, tmp_path: Path) -> None:
+        """Streaming version returns only Manifest, not row_data."""
+        rows = [{"id": 1}]
+        fp = self._make_jsonl(tmp_path, rows)
+        store = ObjectStore(tmp_path / ".dit" / "objects")
+
+        result = build_manifest_for_file_streaming(fp, store)
+
+        assert isinstance(result, Manifest)
+        # Should NOT be a tuple — no row_data dict returned
+        assert not isinstance(result, tuple)
