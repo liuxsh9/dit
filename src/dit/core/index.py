@@ -10,14 +10,18 @@ class StagingIndex:
         self._lock_path = path.with_suffix(".lock")
         self._lock_timeout = 10  # seconds
 
-    def _acquire_lock(self):
-        """Acquire an exclusive file lock, with timeout."""
+    def _acquire_lock(self, *, shared: bool = False):
+        """Acquire a file lock, with timeout.
+
+        shared=True acquires a shared (read) lock; shared=False acquires exclusive (write).
+        """
         self._lock_path.parent.mkdir(parents=True, exist_ok=True)
         self._lock_fd = open(self._lock_path, "w")
+        lock_op = fcntl.LOCK_SH if shared else fcntl.LOCK_EX
         deadline = time.monotonic() + self._lock_timeout
         while True:
             try:
-                fcntl.flock(self._lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(self._lock_fd, lock_op | fcntl.LOCK_NB)
                 return
             except (IOError, OSError):
                 if time.monotonic() >= deadline:
@@ -73,11 +77,19 @@ class StagingIndex:
 
     def entries(self) -> dict[str, str]:
         """Return rel_path → obj_hash (backward compat)."""
-        return {k: v["hash"] for k, v in self._load().items()}
+        self._acquire_lock(shared=True)
+        try:
+            return {k: v["hash"] for k, v in self._load().items()}
+        finally:
+            self._release_lock()
 
     def entries_typed(self) -> dict[str, tuple[str, str]]:
         """Return rel_path → (obj_type, obj_hash)."""
-        return {k: (v["type"], v["hash"]) for k, v in self._load().items()}
+        self._acquire_lock(shared=True)
+        try:
+            return {k: (v["type"], v["hash"]) for k, v in self._load().items()}
+        finally:
+            self._release_lock()
 
     def unstage(self, rel_path: str) -> None:
         self._acquire_lock()

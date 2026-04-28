@@ -170,7 +170,7 @@ def add(paths: list[str] = typer.Argument(..., help="Files or directories to sta
             manifest_hash = store.write("manifests", manifest_bytes)
             rel = str(fp.relative_to(repo_root))
             index.stage(rel, manifest_hash, obj_type="manifest")
-            stat_cache.update(rel, fp, object_hash(manifest_bytes))
+            stat_cache.update(rel, fp, manifest_hash)
             typer.echo(f"  staged {rel} ({len(manifest.entries)} rows)")
 
         for fp in blob_files:

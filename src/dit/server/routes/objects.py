@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dit.core.store import ObjectStore
-from dit.server.auth import get_session, verify_token
+from dit.server.auth import get_session, require_permission, verify_token
 from dit.server.models import Repo, Token
 
 router = APIRouter(prefix="/api/v1/repos", tags=["objects"])
@@ -50,6 +50,9 @@ class BatchExistsOut(BaseModel):
     exists: dict[str, bool]
 
 
+_MAX_BATCH_EXISTS_HASHES = 10_000
+
+
 @router.post("/{repo}/objects/batch-exists", response_model=BatchExistsOut)
 async def batch_exists(
     repo: str,
@@ -59,6 +62,11 @@ async def batch_exists(
     _token: Token = Depends(verify_token),
 ) -> BatchExistsOut:
     _validate_obj_type(body.obj_type)
+    if len(body.hashes) > _MAX_BATCH_EXISTS_HASHES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many hashes: {len(body.hashes)} exceeds limit of {_MAX_BATCH_EXISTS_HASHES}",
+        )
     await _get_repo(repo, session)
     store = _store_for_repo(request, repo)
     result = store.batch_exists(body.obj_type, body.hashes)
@@ -74,6 +82,11 @@ class BatchUploadIn(BaseModel):
     obj_type: str
     items: list[BatchUploadItem]
 
+    class Config:
+        max_anystr_length = 20_000_000  # ~15MB base64 payload per item
+
+_MAX_BATCH_ITEMS = 200
+
 
 class BatchUploadOut(BaseModel):
     accepted: int
@@ -86,9 +99,14 @@ async def batch_upload(
     body: BatchUploadIn,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    _token: Token = Depends(verify_token),
+    _token: Token = Depends(require_permission("push")),
 ) -> BatchUploadOut:
     _validate_obj_type(body.obj_type)
+    if len(body.items) > _MAX_BATCH_ITEMS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many items: {len(body.items)} exceeds limit of {_MAX_BATCH_ITEMS}",
+        )
     await _get_repo(repo, session)
     store = _store_for_repo(request, repo)
 
@@ -134,7 +152,7 @@ async def upload_object(
     hash: str,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    _token: Token = Depends(verify_token),
+    _token: Token = Depends(require_permission("push")),
 ) -> None:
     _validate_obj_type(obj_type)
     await _get_repo(repo, session)
