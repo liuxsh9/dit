@@ -52,6 +52,8 @@ def export_commit(
         manifest = deserialize_manifest(manifest_data)
 
         dest = output_dir / path
+        if fmt == "csv":
+            dest = dest.with_suffix(".csv")
         dest.parent.mkdir(parents=True, exist_ok=True)
 
         if fmt == "jsonl":
@@ -61,8 +63,11 @@ def export_commit(
         else:
             raise ValueError(f"Unknown format '{fmt}'. Expected 'jsonl' or 'csv'.")
 
+        report_path = path
+        if fmt == "csv":
+            report_path = str(Path(path).with_suffix(".csv"))
         row_count = len(manifest.entries)
-        report.append({"path": path, "rows": row_count, "bytes": total_bytes})
+        report.append({"path": report_path, "rows": row_count, "bytes": total_bytes})
 
         if include_meta and sidecar_hash is not None:
             _write_meta(store, path, obj_hash, sidecar_hash, output_dir)

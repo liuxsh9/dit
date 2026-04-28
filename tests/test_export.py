@@ -166,7 +166,7 @@ class TestExportCommitCsv:
 
         export_commit(store, commit_hash, out, fmt="csv", file_filter="train.jsonl")
 
-        lines = (out / "train.jsonl").read_text().splitlines()
+        lines = (out / "train.csv").read_text().splitlines()
         assert len(lines) >= 2
         assert "messages" in lines[0]
 
@@ -177,7 +177,7 @@ class TestExportCommitCsv:
 
         report = export_commit(store, commit_hash, out, fmt="csv", file_filter="train.jsonl")
 
-        lines = (out / "train.jsonl").read_text().splitlines()
+        lines = (out / "train.csv").read_text().splitlines()
         assert len(lines) == 3  # header + 2 data rows
         assert report[0]["rows"] == 2
 
@@ -189,7 +189,7 @@ class TestExportCommitCsv:
         export_commit(store, commit_hash, out, fmt="csv", file_filter="train.jsonl")
 
         import csv as _csv
-        with (out / "train.jsonl").open() as fh:
+        with (out / "train.csv").open() as fh:
             reader = _csv.DictReader(fh)
             rows = list(reader)
         val = rows[0]["messages"]
