@@ -165,7 +165,11 @@ def add(paths: list[str] = typer.Argument(..., help="Files or directories to sta
 
         stat_cache = StatCache(dot / "stat-cache")
         for fp in jsonl_files:
-            manifest = build_manifest_for_file_streaming(fp, store)
+            try:
+                manifest = build_manifest_for_file_streaming(fp, store)
+            except ValueError as exc:
+                typer.echo(f"error: {exc}", err=True)
+                raise typer.Exit(1)
             manifest_bytes = serialize_manifest(manifest)
             manifest_hash = store.write("manifests", manifest_bytes)
             rel = str(fp.relative_to(repo_root))
