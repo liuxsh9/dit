@@ -1,4 +1,6 @@
 import multiprocessing
+import threading
+import time
 from pathlib import Path
 
 from dit.core.index import StagingIndex
@@ -74,3 +76,47 @@ class TestIndexConcurrency:
         assert len(entries) == 2 * n, (
             f"Expected {2 * n} entries, got {len(entries)}: {sorted(entries.keys())}"
         )
+
+
+class TestIndexSharedLock:
+    def test_entries_uses_shared_lock(self, tmp_repo: Path):
+        """Two concurrent readers must not block each other."""
+        idx = StagingIndex(tmp_repo / ".dit" / "index")
+        idx.stage("a.jsonl", "aa" * 32)
+
+        results: list[str] = []
+        barrier = threading.Barrier(2, timeout=5)
+
+        def reader(name: str) -> None:
+            # Each thread gets its own StagingIndex so _lock_fd is not shared
+            local_idx = StagingIndex(tmp_repo / ".dit" / "index")
+            local_idx._acquire_lock(shared=True)
+            try:
+                barrier.wait()  # both hold the shared lock at the same time
+                results.append(name)
+                time.sleep(0.1)
+            finally:
+                local_idx._release_lock()
+
+        t1 = threading.Thread(target=reader, args=("r1",))
+        t2 = threading.Thread(target=reader, args=("r2",))
+        t1.start()
+        t2.start()
+        t1.join(timeout=10)
+        t2.join(timeout=10)
+        assert len(results) == 2
+
+    def test_entries_typed_returns_type_info(self, tmp_repo: Path):
+        """entries_typed() must return (type, hash) tuples."""
+        idx = StagingIndex(tmp_repo / ".dit" / "index")
+        idx.stage("a.jsonl", "aa" * 32, obj_type="manifest")
+        typed = idx.entries_typed()
+        assert typed == {"a.jsonl": ("manifest", "aa" * 32)}
+
+    def test_stage_delete_marks_deletion(self, tmp_repo: Path):
+        """stage_delete() must record an entry with empty hash and type 'delete'."""
+        idx = StagingIndex(tmp_repo / ".dit" / "index")
+        idx.stage("a.jsonl", "aa" * 32)
+        idx.stage_delete("a.jsonl")
+        typed = idx.entries_typed()
+        assert typed["a.jsonl"] == ("delete", "")
