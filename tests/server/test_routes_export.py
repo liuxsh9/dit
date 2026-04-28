@@ -85,7 +85,7 @@ class TestExportEndpoint:
 
     async def test_export_commit_not_found(self, client: AsyncClient, tmp_path: Path):
         await _create_repo_with_data(client, tmp_path)
-        resp = await client.get(f"/api/v1/repos/export-repo/export/{'z' * 64}/train.jsonl")
+        resp = await client.get(f"/api/v1/repos/export-repo/export/{'a' * 64}/train.jsonl")
         assert resp.status_code == 404
 
     async def test_export_file_not_found(self, client: AsyncClient, tmp_path: Path):

@@ -118,7 +118,7 @@ class TestStatsEndpoint:
 
     async def test_stats_commit_not_found_returns_404(self, client: AsyncClient, tmp_path: Path):
         await _create_repo_with_sidecars(client, tmp_path)
-        resp = await client.get(f"/api/v1/repos/stats-repo/stats/{'z' * 64}")
+        resp = await client.get(f"/api/v1/repos/stats-repo/stats/{'a' * 64}")
         assert resp.status_code == 404
 
     async def test_stats_repo_not_found_returns_404(self, client: AsyncClient, tmp_path: Path):

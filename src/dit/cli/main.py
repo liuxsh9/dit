@@ -522,21 +522,34 @@ def _materialize_tree(repo_root: Path, store: ObjectStore, tree_hash: str, old_t
     from dit.core.tree_walker import flatten_tree
 
     new_flat = flatten_tree(store, tree_hash)
-    new_files = {path: obj_hash for path, (obj_type, obj_hash, _sc) in new_flat.items() if obj_type == "manifest"}
+    new_manifests = {path: obj_hash for path, (obj_type, obj_hash, _sc) in new_flat.items() if obj_type == "manifest"}
+    new_blobs = {path: obj_hash for path, (obj_type, obj_hash, _sc) in new_flat.items() if obj_type == "blob"}
 
-    old_files: dict[str, str] = {}
+    old_manifests: dict[str, str] = {}
+    old_blobs: dict[str, str] = {}
     if old_tree_hash:
         old_flat = flatten_tree(store, old_tree_hash)
-        old_files = {path: obj_hash for path, (obj_type, obj_hash, _sc) in old_flat.items() if obj_type == "manifest"}
+        old_manifests = {path: obj_hash for path, (obj_type, obj_hash, _sc) in old_flat.items() if obj_type == "manifest"}
+        old_blobs = {path: obj_hash for path, (obj_type, obj_hash, _sc) in old_flat.items() if obj_type == "blob"}
 
-    for name, mhash in new_files.items():
-        if old_files.get(name) != mhash:
+    for name, mhash in new_manifests.items():
+        if old_manifests.get(name) != mhash:
             m_data = store.read("manifests", mhash)
             manifest = deserialize_manifest(m_data)
             materialize_file(repo_root, name, manifest, store)
 
-    for name in old_files:
-        if name not in new_files:
+    for name, bhash in new_blobs.items():
+        if old_blobs.get(name) != bhash:
+            blob_data = store.read("blobs", bhash)
+            if blob_data is not None:
+                dest = repo_root / name
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(blob_data)
+
+    old_all = set(old_manifests) | set(old_blobs)
+    new_all = set(new_manifests) | set(new_blobs)
+    for name in old_all:
+        if name not in new_all:
             file_path = repo_root / name
             if file_path.exists():
                 file_path.unlink()
@@ -593,6 +606,49 @@ def checkout(
 
     refs.head_file.write_text(f"ref:{target}\n")
     typer.echo(f"Switched to branch '{target}'.")
+
+
+@app.command()
+def reset(
+    paths: list[str] = typer.Argument(None, help="Files to unstage"),
+    hard: bool = typer.Option(False, "--hard", help="Reset working directory to HEAD"),
+):
+    """Unstage files or reset working directory to HEAD."""
+    repo_root = find_repo_root()
+    dot = get_dot(repo_root)
+    store = ObjectStore(dot / "objects")
+    index = StagingIndex(dot / "index")
+    refs = RefStore(dot)
+
+    if hard:
+        index.clear()
+        head_hash = refs.resolve_head()
+        if head_hash:
+            head_commit = deserialize_commit(store.read("commits", head_hash))
+            _materialize_tree(repo_root, store, head_commit.tree_hash)
+            # Remove files not in HEAD
+            from dit.core.tree_walker import flatten_tree
+            flat = flatten_tree(store, head_commit.tree_hash)
+            head_paths = set(flat.keys())
+            for fp in find_jsonl_files(repo_root):
+                rel = str(fp.relative_to(repo_root))
+                if rel not in head_paths:
+                    fp.unlink()
+        else:
+            # No commits: remove all JSONL files
+            for fp in find_jsonl_files(repo_root):
+                fp.unlink()
+        typer.echo("HEAD is now at " + (refs.resolve_head() or "(empty)")[:8])
+        return
+
+    # Soft reset
+    if paths:
+        for p in paths:
+            index.unstage(p)
+            typer.echo(f"  unstaged {p}")
+    else:
+        index.clear()
+        typer.echo("Staging area cleared.")
 
 
 @app.command()
@@ -794,8 +850,21 @@ def merge(
         raise typer.Exit(1)
 
     # No conflicts — create merge commit
+    from dit.core.tree_walker import flatten_tree
+    ours_commit_obj = deserialize_commit(store.read("commits", ours_hash))
+    theirs_commit_obj = deserialize_commit(store.read("commits", theirs_hash))
+    target_flat = flatten_tree(store, ours_commit_obj.tree_hash)
+    source_flat = flatten_tree(store, theirs_commit_obj.tree_hash)
+    sidecar_lookup: dict[str, str | None] = {}
+    for path, (_t, _h, sc) in source_flat.items():
+        if sc is not None:
+            sidecar_lookup[path] = sc
+    for path, (_t, _h, sc) in target_flat.items():
+        if sc is not None:
+            sidecar_lookup[path] = sc
+
     merged_tree_entries = [
-        TreeEntry(name=name, obj_type="manifest", obj_hash=mhash)
+        TreeEntry(name=name, obj_type="manifest", obj_hash=mhash, sidecar_hash=sidecar_lookup.get(name))
         for name, mhash in merge_result.merged_tree_entries.items()
     ]
     tree = Tree(entries=merged_tree_entries)
@@ -956,8 +1025,21 @@ def cherry_pick(
         raise typer.Exit(1)
 
     # No conflicts
+    from dit.core.tree_walker import flatten_tree as _flatten_tree
+    ours_commit_obj = deserialize_commit(store.read("commits", ours_hash))
+    theirs_commit_obj = deserialize_commit(store.read("commits", resolved_commit_hash))
+    target_flat = _flatten_tree(store, ours_commit_obj.tree_hash)
+    source_flat = _flatten_tree(store, theirs_commit_obj.tree_hash)
+    cp_sidecar_lookup: dict[str, str | None] = {}
+    for path, (_t, _h, sc) in source_flat.items():
+        if sc is not None:
+            cp_sidecar_lookup[path] = sc
+    for path, (_t, _h, sc) in target_flat.items():
+        if sc is not None:
+            cp_sidecar_lookup[path] = sc
+
     merged_tree_entries = [
-        TreeEntry(name=name, obj_type="manifest", obj_hash=mhash)
+        TreeEntry(name=name, obj_type="manifest", obj_hash=mhash, sidecar_hash=cp_sidecar_lookup.get(name))
         for name, mhash in merge_result.merged_tree_entries.items()
     ]
     tree = Tree(entries=merged_tree_entries)
@@ -1583,14 +1665,7 @@ def clone(
 
     head_commit_data = store.read("commits", remote_hash)
     head_commit = deserialize_commit(head_commit_data)
-    tree_data = store.read("trees", head_commit.tree_hash)
-    tree = deserialize_tree(tree_data)
-    for entry in tree.entries:
-        if entry.obj_type == "manifest":
-            m_data = store.read("manifests", entry.obj_hash)
-            manifest = deserialize_manifest(m_data)
-            materialize_file(dest_dir, entry.name, manifest, store)
-            typer.echo(f"  {entry.name}")
+    _materialize_tree(dest_dir, store, head_commit.tree_hash)
 
     typer.echo(f"Clone complete. {len(commits_to_fetch)} commit(s).")
 
@@ -1757,13 +1832,12 @@ def pull(
 
     head_commit_data = store.read("commits", remote_hash)
     head_commit = deserialize_commit(head_commit_data)
-    tree_data = store.read("trees", head_commit.tree_hash)
-    tree = deserialize_tree(tree_data)
-    for entry in tree.entries:
-        if entry.obj_type == "manifest":
-            m_data = store.read("manifests", entry.obj_hash)
-            manifest = deserialize_manifest(m_data)
-            materialize_file(repo_root, entry.name, manifest, store)
+    old_tree_hash = None
+    if local_hash:
+        old_commit_data = store.read("commits", local_hash)
+        if old_commit_data:
+            old_tree_hash = deserialize_commit(old_commit_data).tree_hash
+    _materialize_tree(repo_root, store, head_commit.tree_hash, old_tree_hash)
 
     typer.echo(f"Pulled {count} new objects. Now at {remote_hash[:8]}.")
 

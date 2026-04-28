@@ -40,7 +40,11 @@ async def get_log(
     )
     ref_obj = result.scalar_one_or_none()
     if ref_obj is None:
-        if store.read("commits", ref) is None:
+        try:
+            commit_data = store.read("commits", ref)
+        except ValueError:
+            commit_data = None
+        if commit_data is None:
             raise HTTPException(status_code=404, detail=f"Ref '{ref}' not found")
         start_hash = ref
     else:

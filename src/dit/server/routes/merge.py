@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import fnmatch
 import time
 from pathlib import Path
@@ -66,7 +67,17 @@ async def _check_merge_approvals(
             matched_rule = rule
             break
 
-    if matched_rule is None or matched_rule.required_approvals == 0:
+    if matched_rule is None:
+        return
+
+    # Block direct merge if require_pr is set
+    if matched_rule.require_pr and pull_request_id is None:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Branch '{target_branch}' is protected and requires a pull request. Direct merge is not allowed.",
+        )
+
+    if matched_rule.required_approvals == 0:
         return
 
     if pull_request_id is None:
@@ -116,8 +127,12 @@ async def merge_preview(
     from dit.core.merge_base import find_merge_base
     from dit.core.merge import three_way_merge
 
-    base_hash = find_merge_base(store, target_hash, source_hash)
-    merge_result = three_way_merge(store, base_hash, target_hash, source_hash)
+    def _do_merge_preview():
+        base = find_merge_base(store, target_hash, source_hash)
+        result = three_way_merge(store, base, target_hash, source_hash)
+        return base, result
+
+    base_hash, merge_result = await asyncio.to_thread(_do_merge_preview)
 
     return {
         "mergeable": len(merge_result.conflicts) == 0,
@@ -155,22 +170,69 @@ async def merge(
 
     await _check_merge_approvals(session, r.id, body.target_branch, body.pull_request_id)
 
-    base_hash = find_merge_base(store, target_hash, source_hash)
+    base_hash = await asyncio.to_thread(find_merge_base, store, target_hash, source_hash)
 
     # Fast-forward check
     if base_hash == target_hash:
         target_ref_name = f"heads/{body.target_branch}"
-        result = await session.execute(
-            select(Ref).where(Ref.repo_id == r.id, Ref.name == target_ref_name)
+        from sqlalchemy import update as sa_update
+
+        stmt = (
+            sa_update(Ref)
+            .where(
+                Ref.repo_id == r.id,
+                Ref.name == target_ref_name,
+                Ref.target_hash == target_hash,
+            )
+            .values(target_hash=source_hash)
+            .execution_options(synchronize_session=False)
         )
-        ref = result.scalar_one_or_none()
-        if ref is None:
-            raise HTTPException(status_code=404, detail="Target branch ref not found")
-        ref.target_hash = source_hash
+        result = await session.execute(stmt)
+        if result.rowcount == 0:
+            raise HTTPException(status_code=409, detail="Target branch was updated concurrently")
         await session.commit()
         return {"commit_hash": source_hash, "fast_forward": True}
 
-    merge_result = three_way_merge(store, base_hash, target_hash, source_hash)
+    def _do_merge():
+        from dit.core.tree_walker import flatten_tree
+        from dit.core.objects import deserialize_commit
+
+        mr = three_way_merge(store, base_hash, target_hash, source_hash)
+        if mr.conflicts:
+            return mr, None
+
+        # Build sidecar_hash lookup: source (theirs) first, target (ours) wins
+        target_commit_obj = deserialize_commit(store.read("commits", target_hash))
+        source_commit_obj = deserialize_commit(store.read("commits", source_hash))
+        target_flat = flatten_tree(store, target_commit_obj.tree_hash)
+        source_flat = flatten_tree(store, source_commit_obj.tree_hash)
+        sidecar_lookup: dict[str, str | None] = {}
+        for path, (_t, _h, sc) in source_flat.items():
+            if sc is not None:
+                sidecar_lookup[path] = sc
+        for path, (_t, _h, sc) in target_flat.items():
+            if sc is not None:
+                sidecar_lookup[path] = sc
+
+        tree_entries = [
+            TreeEntry(name=name, obj_type="manifest", obj_hash=mhash, sidecar_hash=sidecar_lookup.get(name))
+            for name, mhash in mr.merged_tree_entries.items()
+        ]
+        tree = Tree(entries=tree_entries)
+        tree_bytes = serialize_tree(tree)
+        t_hash = store.write("trees", tree_bytes)
+        commit = Commit(
+            tree_hash=t_hash,
+            parent_hashes=[target_hash, source_hash],
+            author=body.author,
+            message=body.message,
+            timestamp=int(time.time()),
+        )
+        commit_bytes = serialize_commit(commit)
+        c_hash = store.write("commits", commit_bytes)
+        return mr, c_hash
+
+    merge_result, commit_hash = await asyncio.to_thread(_do_merge)
 
     if merge_result.conflicts:
         raise HTTPException(
@@ -183,25 +245,6 @@ async def merge(
                 ],
             },
         )
-
-    # Create merge commit
-    tree_entries = [
-        TreeEntry(name=name, obj_type="manifest", obj_hash=mhash)
-        for name, mhash in merge_result.merged_tree_entries.items()
-    ]
-    tree = Tree(entries=tree_entries)
-    tree_bytes = serialize_tree(tree)
-    tree_hash = store.write("trees", tree_bytes)
-
-    commit = Commit(
-        tree_hash=tree_hash,
-        parent_hashes=[target_hash, source_hash],
-        author=body.author,
-        message=body.message,
-        timestamp=int(time.time()),
-    )
-    commit_bytes = serialize_commit(commit)
-    commit_hash = store.write("commits", commit_bytes)
 
     # CAS update target branch: SELECT then UPDATE pattern for SQLite compatibility
     target_ref_name = f"heads/{body.target_branch}"

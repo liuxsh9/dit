@@ -1,9 +1,12 @@
 import hashlib
 import os
+import re
 import uuid
 from pathlib import Path
 
 import pyzstd
+
+_HASH_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 class ObjectStore:
@@ -11,6 +14,8 @@ class ObjectStore:
         self.root = root
 
     def _object_path(self, obj_type: str, hash_hex: str) -> Path:
+        if not _HASH_RE.match(hash_hex):
+            raise ValueError("Invalid object hash: must be 64 lowercase hex characters")
         return self.root / obj_type / hash_hex[0:2] / hash_hex[2:4] / hash_hex
 
     def write(self, obj_type: str, data: bytes) -> str:

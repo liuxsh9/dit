@@ -1,7 +1,8 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from dit.server.config import ServerSettings
 from dit.server.database import create_db_engine, create_session_factory
@@ -32,6 +33,10 @@ def create_app(settings: ServerSettings | None = None) -> FastAPI:
     application = FastAPI(title="Dit", version="0.1.0", lifespan=lifespan)
     application.state.settings = settings
     application.state.data_dir = Path(settings.data_dir)
+
+    @application.exception_handler(ValueError)
+    async def value_error_handler(request: Request, exc: ValueError):
+        return JSONResponse(status_code=400, content={"detail": str(exc)})
 
     from dit.server.middleware.metrics import MetricsMiddleware
     application.add_middleware(MetricsMiddleware)

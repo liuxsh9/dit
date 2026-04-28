@@ -13,6 +13,16 @@ from dit.server.models import Repo, Token
 
 router = APIRouter(prefix="/api/v1/repos", tags=["objects"])
 
+_VALID_OBJ_TYPES = {"commits", "trees", "manifests", "rows", "sidecars", "blobs"}
+
+
+def _validate_obj_type(obj_type: str) -> None:
+    if obj_type not in _VALID_OBJ_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid object type: must be one of {sorted(_VALID_OBJ_TYPES)}",
+        )
+
 
 async def _get_repo(repo_name: str, session: AsyncSession) -> Repo:
     result = await session.execute(select(Repo).where(Repo.name == repo_name))
@@ -23,8 +33,11 @@ async def _get_repo(repo_name: str, session: AsyncSession) -> Repo:
 
 
 def _store_for_repo(request: Request, repo_name: str) -> ObjectStore:
-    data_dir = request.app.state.data_dir
-    return ObjectStore(Path(data_dir) / "repos" / repo_name / "objects")
+    data_dir = Path(request.app.state.data_dir).resolve()
+    repo_path = (data_dir / "repos" / repo_name / "objects").resolve()
+    if not str(repo_path).startswith(str(data_dir) + "/"):
+        raise HTTPException(status_code=400, detail="Invalid repository name")
+    return ObjectStore(repo_path)
 
 
 class BatchExistsIn(BaseModel):
@@ -44,6 +57,7 @@ async def batch_exists(
     session: AsyncSession = Depends(get_session),
     _token: Token = Depends(verify_token),
 ) -> BatchExistsOut:
+    _validate_obj_type(body.obj_type)
     await _get_repo(repo, session)
     store = _store_for_repo(request, repo)
     result = store.batch_exists(body.obj_type, body.hashes)
@@ -59,6 +73,7 @@ async def download_object(
     session: AsyncSession = Depends(get_session),
     _token: Token = Depends(verify_token),
 ) -> Response:
+    _validate_obj_type(obj_type)
     await _get_repo(repo, session)
     store = _store_for_repo(request, repo)
     data = store.read(obj_type, hash)
@@ -76,6 +91,7 @@ async def upload_object(
     session: AsyncSession = Depends(get_session),
     _token: Token = Depends(verify_token),
 ) -> None:
+    _validate_obj_type(obj_type)
     await _get_repo(repo, session)
     body = await request.body()
     computed = hashlib.sha256(body).hexdigest()

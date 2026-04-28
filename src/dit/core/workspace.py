@@ -62,12 +62,9 @@ def materialize_file(
 ) -> None:
     dest = repo_root / rel_path
     dest.parent.mkdir(parents=True, exist_ok=True)
-    rows = []
-    for entry in manifest.entries:
-        data = store.read("rows", entry.row_hash)
-        if data is None:
-            raise KeyError(f"Row {entry.row_hash} not found in store")
-        rows.append(json.loads(data))
     with open(dest, "w", encoding="utf-8") as f:
-        for row in rows:
-            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+        for entry in manifest.entries:
+            data = store.read("rows", entry.row_hash)
+            if data is None:
+                raise KeyError(f"Row {entry.row_hash} not found in store")
+            f.write(data.decode("utf-8") + "\n")

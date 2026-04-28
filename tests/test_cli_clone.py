@@ -134,6 +134,55 @@ def test_clone_creates_jsonl_files(server_app, tmp_path: Path, monkeypatch) -> N
     assert cloned_rows[1]["messages"][0]["content"] == "q2"
 
 
+def test_clone_materializes_nested_directories(server_app, tmp_path: Path, monkeypatch) -> None:
+    """Clone must recursively materialize files in subdirectories."""
+    src = tmp_path / "src"
+    src.mkdir()
+    monkeypatch.chdir(src)
+    runner.invoke(app, ["init"], catch_exceptions=False)
+
+    # Create nested directory structure
+    subdir = src / "bug-fix"
+    subdir.mkdir()
+    nested_jsonl = subdir / "train.jsonl"
+    rows = [
+        {"messages": [{"role": "user", "content": "nested-q"}, {"role": "assistant", "content": "nested-a"}]},
+    ]
+    with open(nested_jsonl, "w") as f:
+        for row in rows:
+            f.write(json.dumps(row) + "\n")
+
+    # Also a top-level file
+    top_jsonl = src / "top.jsonl"
+    top_jsonl.write_text(json.dumps({"messages": [{"role": "user", "content": "top"}, {"role": "assistant", "content": "top-a"}]}) + "\n")
+
+    runner.invoke(app, ["add", "bug-fix/train.jsonl"], catch_exceptions=False)
+    runner.invoke(app, ["add", "top.jsonl"], catch_exceptions=False)
+    runner.invoke(app, ["commit", "-m", "nested"], catch_exceptions=False)
+
+    _patch_remote_client(monkeypatch, server_app)
+    _push_to_server(server_app, src, monkeypatch)
+
+    clone_dir = tmp_path / "clone_nested"
+    result = runner.invoke(
+        app,
+        ["clone", "http://testserver/dataset", str(clone_dir), "--token", "dit_admin"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    assert "Clone complete" in result.output
+
+    # Verify nested file exists
+    cloned_nested = clone_dir / "bug-fix" / "train.jsonl"
+    assert cloned_nested.exists(), f"Nested file not materialized. Dir contents: {list(clone_dir.rglob('*'))}"
+    cloned_rows = [json.loads(line) for line in cloned_nested.read_text().splitlines() if line.strip()]
+    assert len(cloned_rows) == 1
+    assert cloned_rows[0]["messages"][0]["content"] == "nested-q"
+
+    # Verify top-level file also exists
+    assert (clone_dir / "top.jsonl").exists()
+
+
 def test_clone_sets_up_remote_config(server_app, tmp_path: Path, monkeypatch) -> None:
     src = tmp_path / "src"
     src.mkdir()

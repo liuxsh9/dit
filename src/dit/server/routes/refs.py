@@ -1,5 +1,6 @@
 import asyncio
 import fnmatch
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -153,6 +154,17 @@ async def cas_update_ref(
                 status_code=403,
                 detail=f"Branch '{name}' is protected and requires a pull request. Direct push is not allowed.",
             )
+        if protection is not None and protection.block_force_push:
+            from dit.core.merge_base import find_merge_base
+            from dit.core.store import ObjectStore
+            data_dir = request.app.state.data_dir
+            store = ObjectStore(data_dir / "repos" / repo / "objects")
+            merge_base = find_merge_base(store, body.old, body.new)
+            if merge_base != body.old:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Branch '{name}' is protected: force push (non-fast-forward) is not allowed.",
+                )
 
     if body.old is None or body.old == "":
         # INSERT new ref

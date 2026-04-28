@@ -93,7 +93,7 @@ class TestDiffApi:
         await client.post("/api/v1/repos", json={"name": "diff-repo2"})
         resp = await client.post(
             "/api/v1/repos/diff-repo2/diff",
-            json={"old_commit": "z" * 64, "new_commit": "y" * 64},
+            json={"old_commit": "a" * 64, "new_commit": "b" * 64},
         )
         assert resp.status_code == 404
 

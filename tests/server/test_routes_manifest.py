@@ -76,7 +76,7 @@ class TestManifestRoute:
     async def test_commit_not_found(self, client, tmp_path):
         await client.post("/api/v1/repos", json={"name": "manifest-repo2"})
         resp = await client.get(
-            f"/api/v1/repos/manifest-repo2/manifest/{'z' * 64}/data.jsonl"
+            f"/api/v1/repos/manifest-repo2/manifest/{'a' * 64}/data.jsonl"
         )
         assert resp.status_code == 404
 

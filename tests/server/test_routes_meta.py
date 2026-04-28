@@ -130,7 +130,7 @@ class TestMetaGet:
 
     async def test_get_commit_not_found(self, client: AsyncClient, tmp_path: Path):
         store, commit_hash, _ = await _build_repo_with_sidecar(client, tmp_path)
-        resp = await client.get(f"/api/v1/repos/meta-repo/meta/{'z' * 64}/train.jsonl")
+        resp = await client.get(f"/api/v1/repos/meta-repo/meta/{'a' * 64}/train.jsonl")
         assert resp.status_code == 404
 
     async def test_get_file_no_sidecar(self, client: AsyncClient, tmp_path: Path):
@@ -260,5 +260,5 @@ class TestMetaDiff:
 
     async def test_diff_commit_not_found(self, client: AsyncClient, tmp_path: Path):
         await _create_repo(client, "diff-meta-repo3")
-        resp = await client.get(f"/api/v1/repos/diff-meta-repo3/meta/diff/{'z' * 64}/{'y' * 64}")
+        resp = await client.get(f"/api/v1/repos/diff-meta-repo3/meta/diff/{'a' * 64}/{'b' * 64}")
         assert resp.status_code == 404

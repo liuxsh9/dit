@@ -692,5 +692,5 @@ class TestMeta:
         runner.invoke(app, ["commit", "-m", "v1"])
         runner.invoke(app, ["meta", "compute"])
 
-        result = runner.invoke(app, ["meta", "diff", "z" * 64, "z" * 64])
+        result = runner.invoke(app, ["meta", "diff", "a" * 64, "a" * 64])
         assert result.exit_code != 0

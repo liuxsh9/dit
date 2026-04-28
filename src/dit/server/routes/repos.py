@@ -1,3 +1,5 @@
+import re
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -7,6 +9,8 @@ from dit.server.auth import get_session, require_permission
 from dit.server.models import Repo
 
 router = APIRouter(prefix="/api/v1/repos", tags=["repos"])
+
+_REPO_NAME_RE = re.compile(r"^[a-zA-Z0-9._-]+$")
 
 
 class CreateRepoRequest(BaseModel):
@@ -27,6 +31,11 @@ async def create_repo(
     session: AsyncSession = Depends(get_session),
     _token=Depends(require_permission("admin")),
 ):
+    if not body.name or len(body.name) > 128 or not _REPO_NAME_RE.match(body.name):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid repo name: must be 1-128 characters, only [a-zA-Z0-9._-] allowed",
+        )
     existing = await session.execute(select(Repo).where(Repo.name == body.name))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail=f"Repo '{body.name}' already exists")

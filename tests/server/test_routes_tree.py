@@ -63,7 +63,7 @@ class TestTreeRoute:
 
     async def test_invalid_commit(self, client, tmp_path):
         await _setup_repo_with_tree(client, tmp_path)
-        resp = await client.get(f"/api/v1/repos/tree-repo/tree/{'z' * 64}/")
+        resp = await client.get(f"/api/v1/repos/tree-repo/tree/{'a' * 64}/")
         assert resp.status_code == 404
 
     async def test_invalid_path(self, client, tmp_path):

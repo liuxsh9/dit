@@ -89,6 +89,22 @@ async def verify_token(
     return token
 
 
+def verify_repo_scope(token: "Token", repo_id: int) -> None:
+    """Check that *token* is allowed to operate on the given repo.
+
+    Rules:
+    - repo_scope=None → global token, access all repos.
+    - repo_scope=<id> → only that repo is accessible; otherwise 403.
+    """
+    if token.repo_scope is None:
+        return
+    if token.repo_scope != repo_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Token repo scope does not permit access to this repo",
+        )
+
+
 def require_permission(required: str):
     required_level = ROLE_LEVELS.get(required)
     if required_level is None:

@@ -151,6 +151,64 @@ def test_pull_updates_local_data(server_app, tmp_path: Path, monkeypatch) -> Non
     assert "v2" in b_data
 
 
+def test_pull_materializes_nested_directories(server_app, tmp_path: Path, monkeypatch) -> None:
+    """Pull must recursively materialize files in subdirectories."""
+    _patch_remote_client(monkeypatch, server_app)
+
+    from starlette.testclient import TestClient
+    sync_client = TestClient(server_app, headers={"Authorization": "Bearer dit_admin"})
+    sync_client.post("/api/v1/repos", json={"name": "nested"})
+
+    # Client A: init with top-level file, push
+    client_a = tmp_path / "client_a"
+    client_a.mkdir()
+    monkeypatch.chdir(client_a)
+    runner.invoke(app, ["init"], catch_exceptions=False)
+    _init_and_commit(
+        client_a, "top.jsonl",
+        [{"messages": [{"role": "user", "content": "v1"}, {"role": "assistant", "content": "r1"}]}],
+        "v1", monkeypatch,
+    )
+    set_remote(client_a / ".dit", "origin", "http://testserver/nested", token="dit_admin")
+    monkeypatch.chdir(client_a)
+    r = runner.invoke(app, ["push"], catch_exceptions=False)
+    assert r.exit_code == 0, r.output
+
+    # Clone to client_b
+    client_b = tmp_path / "client_b"
+    r = runner.invoke(
+        app,
+        ["clone", "http://testserver/nested", str(client_b), "--token", "dit_admin"],
+        catch_exceptions=False,
+    )
+    assert r.exit_code == 0, r.output
+
+    # Client A: add nested file + push
+    subdir = client_a / "sub"
+    subdir.mkdir()
+    nested_jsonl = subdir / "nested.jsonl"
+    nested_jsonl.write_text(json.dumps({"messages": [{"role": "user", "content": "deep"}, {"role": "assistant", "content": "deep-a"}]}) + "\n")
+    monkeypatch.chdir(client_a)
+    r = runner.invoke(app, ["add", "sub/nested.jsonl"], catch_exceptions=False)
+    assert r.exit_code == 0, r.output
+    r = runner.invoke(app, ["commit", "-m", "add nested"], catch_exceptions=False)
+    assert r.exit_code == 0, r.output
+    r = runner.invoke(app, ["push"], catch_exceptions=False)
+    assert r.exit_code == 0, r.output
+
+    # Client B: pull
+    monkeypatch.chdir(client_b)
+    r = runner.invoke(app, ["pull"], catch_exceptions=False)
+    assert r.exit_code == 0, r.output
+    assert "Pulled" in r.output
+
+    # Verify nested file materialized
+    nested_path = client_b / "sub" / "nested.jsonl"
+    assert nested_path.exists(), f"Nested file not materialized after pull. Dir contents: {list(client_b.rglob('*'))}"
+    content = nested_path.read_text()
+    assert "deep" in content
+
+
 def test_pull_already_up_to_date(server_app, tmp_path: Path, monkeypatch) -> None:
     _patch_remote_client(monkeypatch, server_app)
 

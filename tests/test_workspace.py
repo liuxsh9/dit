@@ -93,6 +93,28 @@ def test_materialize_missing_row_raises(tmp_path: Path) -> None:
         materialize_file(tmp_path / "clone", "data.jsonl", manifest, store)
 
 
+def test_materialize_streams_without_accumulation(tmp_path: Path) -> None:
+    """Verify materialize_file writes correct output via streaming (no list accumulation)."""
+    rows = [{"id": i, "value": f"row-{i}"} for i in range(200)]
+    src = tmp_path / "data.jsonl"
+    _write_jsonl(src, rows)
+
+    store = ObjectStore(tmp_path / ".dit" / "objects")
+    manifest, row_data = build_manifest_for_file(src)
+    for rh, data in row_data.items():
+        store.write("rows", data)
+
+    dest_root = tmp_path / "clone"
+    materialize_file(dest_root, "data.jsonl", manifest, store)
+
+    dest = dest_root / "data.jsonl"
+    lines = dest.read_text().splitlines()
+    assert len(lines) == 200
+    for i, line in enumerate(lines):
+        parsed = json.loads(line)
+        assert parsed == rows[i]
+
+
 def test_materialize_creates_parent_dirs(tmp_path: Path) -> None:
     rows = [{"messages": [{"role": "user", "content": "q"}, {"role": "assistant", "content": "a"}]}]
     src = tmp_path / "data.jsonl"

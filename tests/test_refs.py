@@ -126,3 +126,98 @@ class TestTags:
         refs = RefStore(dot)
         refs.init()
         assert refs.list_tags() == {}
+
+
+class TestAtomicWrite:
+    """Verify that ref writes use atomic write-tmp-then-rename pattern."""
+
+    def test_set_branch_no_partial_write_on_rename_failure(self, tmp_path: Path):
+        """If os.replace fails, the original ref file must remain intact."""
+        import os
+        from unittest.mock import patch
+
+        dot = tmp_path / ".dit"
+        refs = RefStore(dot)
+        refs.init()
+
+        # Write an initial value
+        refs.set_branch("main", "aa" * 32)
+        assert refs.get_branch("main") == "aa" * 32
+
+        # Simulate os.replace failure mid-write
+        original_replace = os.replace
+
+        def failing_replace(src, dst):
+            raise OSError("disk error")
+
+        with patch("os.replace", side_effect=failing_replace):
+            try:
+                refs.set_branch("main", "bb" * 32)
+            except OSError:
+                pass
+
+        # Original value must still be intact
+        assert refs.get_branch("main") == "aa" * 32
+
+        # No temp files should be left behind
+        tmp_files = list(refs.refs_dir.glob(".tmp-*"))
+        assert tmp_files == []
+
+    def test_set_tag_atomic(self, tmp_path: Path):
+        """set_tag should also use atomic writes."""
+        import os
+        from unittest.mock import patch
+
+        dot = tmp_path / ".dit"
+        refs = RefStore(dot)
+        refs.init()
+
+        refs.set_tag("v1.0", "aa" * 32)
+
+        def failing_replace(src, dst):
+            raise OSError("disk error")
+
+        with patch("os.replace", side_effect=failing_replace):
+            try:
+                refs.set_tag("v1.0", "bb" * 32)
+            except OSError:
+                pass
+
+        assert refs.get_tag("v1.0") == "aa" * 32
+        tmp_files = list(refs.tags_dir.glob(".tmp-*"))
+        assert tmp_files == []
+
+    def test_set_head_atomic(self, tmp_path: Path):
+        """set_head should use atomic writes."""
+        import os
+        from unittest.mock import patch
+
+        dot = tmp_path / ".dit"
+        refs = RefStore(dot)
+        refs.init()
+        assert refs.get_head() == "ref:main"
+
+        def failing_replace(src, dst):
+            raise OSError("disk error")
+
+        with patch("os.replace", side_effect=failing_replace):
+            try:
+                refs.set_head("ref:dev")
+            except OSError:
+                pass
+
+        # HEAD must still point to main
+        assert refs.get_head() == "ref:main"
+
+    def test_atomic_write_succeeds_normally(self, tmp_path: Path):
+        """Normal atomic write should work end-to-end with no leftover temps."""
+        dot = tmp_path / ".dit"
+        refs = RefStore(dot)
+        refs.init()
+
+        refs.set_branch("main", "cc" * 32)
+        assert refs.get_branch("main") == "cc" * 32
+
+        # No temp files left
+        tmp_files = list(refs.refs_dir.glob(".tmp-*"))
+        assert tmp_files == []

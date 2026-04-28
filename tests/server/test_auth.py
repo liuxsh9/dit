@@ -130,3 +130,62 @@ class TestAuth:
         with pytest.raises(HTTPException) as exc_info:
             await checker(token=tok)
         assert exc_info.value.status_code == 403
+
+
+class TestVerifyRepoScope:
+    """Tests for verify_repo_scope repo-level access control."""
+
+    def test_global_token_can_access_any_repo(self):
+        """repo_scope=None means global access — any repo_id is allowed."""
+        from dit.server.auth import verify_repo_scope
+
+        token = Token(
+            token_hash="aaa",
+            label="global",
+            repo_scope=None,
+            permissions="push",
+            role="committer",
+        )
+        # Should not raise for any repo_id
+        verify_repo_scope(token, repo_id=1)
+        verify_repo_scope(token, repo_id=99)
+
+    def test_scoped_token_can_access_matching_repo(self):
+        """Token scoped to repo_id=5 can access repo 5."""
+        from dit.server.auth import verify_repo_scope
+
+        token = Token(
+            token_hash="bbb",
+            label="scoped",
+            repo_scope=5,
+            permissions="push",
+            role="committer",
+        )
+        # Should not raise
+        verify_repo_scope(token, repo_id=5)
+
+    def test_scoped_token_cannot_access_other_repo(self):
+        """Token scoped to repo_id=5 must NOT access repo 7 — raises 403."""
+        from fastapi import HTTPException
+        from dit.server.auth import verify_repo_scope
+
+        token = Token(
+            token_hash="ccc",
+            label="scoped",
+            repo_scope=5,
+            permissions="push",
+            role="committer",
+        )
+        with pytest.raises(HTTPException) as exc_info:
+            verify_repo_scope(token, repo_id=7)
+        assert exc_info.value.status_code == 403
+        assert "repo" in exc_info.value.detail.lower()
+
+    def test_service_token_has_global_access(self):
+        """Synthetic admin token (service token) has repo_scope=None."""
+        from dit.server.auth import verify_repo_scope, _synthetic_admin_token
+
+        token = _synthetic_admin_token()
+        # Should not raise for any repo
+        verify_repo_scope(token, repo_id=1)
+        verify_repo_scope(token, repo_id=42)

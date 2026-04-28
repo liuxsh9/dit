@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from dit.core.store import ObjectStore
 
 
@@ -57,3 +59,24 @@ class TestObjectStore:
         missing = "00" * 32
         result = store.batch_exists("rows", [h1, h2, missing])
         assert result == {h1: True, h2: True, missing: False}
+
+    def test_invalid_hash_hex_raises_valueerror(self, tmp_repo: Path):
+        store = ObjectStore(tmp_repo / ".dit" / "objects")
+        # Too short
+        with pytest.raises(ValueError):
+            store.read("rows", "abcd")
+        # Contains non-hex characters
+        with pytest.raises(ValueError):
+            store.read("rows", "g" * 64)
+        # Path traversal attempt
+        with pytest.raises(ValueError):
+            store.read("rows", "../" * 21 + "aa")
+        # Correct length but uppercase (should still be rejected)
+        with pytest.raises(ValueError):
+            store.read("rows", "A" * 64)
+
+    def test_valid_hash_hex_accepted(self, tmp_repo: Path):
+        store = ObjectStore(tmp_repo / ".dit" / "objects")
+        # Valid 64-char lowercase hex — should not raise (returns None for missing)
+        result = store.read("rows", "ab" * 32)
+        assert result is None

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import fnmatch
 import json
 import time
 from pathlib import Path
@@ -12,7 +14,7 @@ from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dit.server.auth import get_session, require_permission
-from dit.server.models import PullRequestMeta, Ref
+from dit.server.models import BranchProtection, PrApproval, PullRequestMeta, Ref
 from dit.server.routes._helpers import _get_repo
 
 router = APIRouter(prefix="/api/v1/repos/{repo}", tags=["pulls"])
@@ -193,6 +195,41 @@ def _serialize_pr(pr: PullRequestMeta) -> dict:
     }
 
 
+async def _check_pr_merge_approvals(
+    session: AsyncSession, repo_id: int, target_ref: str, pull_request_id: int
+) -> None:
+    """Check branch protection approval requirements for a PR merge."""
+    # target_ref is like "heads/main", extract branch name
+    branch_name = target_ref.removeprefix("heads/")
+
+    result = await session.execute(
+        select(BranchProtection).where(BranchProtection.repo_id == repo_id)
+    )
+    rules = result.scalars().all()
+    matched_rule = None
+    for rule in rules:
+        if fnmatch.fnmatch(branch_name, rule.branch_pattern):
+            matched_rule = rule
+            break
+
+    if matched_rule is None or matched_rule.required_approvals == 0:
+        return
+
+    count_result = await session.execute(
+        select(func.count()).select_from(PrApproval).where(
+            PrApproval.repo_id == repo_id,
+            PrApproval.pull_request_id == pull_request_id,
+            PrApproval.status == "approved",
+        )
+    )
+    approval_count = count_result.scalar_one()
+    if approval_count < matched_rule.required_approvals:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Branch '{branch_name}' requires {matched_rule.required_approvals} approval(s), but only {approval_count} found for PR #{pull_request_id}.",
+        )
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -215,11 +252,13 @@ async def create_pull_request(
 
     store = _store_for_repo(request, repo)
 
-    # Compute diff stats
-    diff_stats = _compute_diff_stats(store, source_commit, target_commit)
-
-    # Compute mergeability
-    mergeability = _compute_mergeability(store, target_commit, source_commit)
+    # Compute diff stats and mergeability off the event loop
+    diff_stats, mergeability = await asyncio.to_thread(
+        lambda: (
+            _compute_diff_stats(store, source_commit, target_commit),
+            _compute_mergeability(store, target_commit, source_commit),
+        )
+    )
 
     pr_id = await _next_pr_id(session, r.id)
 
@@ -359,13 +398,16 @@ async def merge_pull_request(
     if pr.status == "closed":
         raise HTTPException(status_code=400, detail="Cannot merge a closed pull request")
 
+    # Check branch protection approval requirements
+    await _check_pr_merge_approvals(session, r.id, pr.target_ref, pr.pull_request_id)
+
     store = _store_for_repo(request, repo)
 
     target_commit = pr.target_commit
     source_commit = pr.source_commit
     target_ref_name = pr.target_ref
 
-    base_hash = find_merge_base(store, target_commit, source_commit)
+    base_hash = await asyncio.to_thread(find_merge_base, store, target_commit, source_commit)
 
     # Fast-forward check
     if base_hash == target_commit:
@@ -392,8 +434,47 @@ async def merge_pull_request(
         result_dict["fast_forward"] = True
         return result_dict
 
-    # Three-way merge
-    merge_result = three_way_merge(store, base_hash, target_commit, source_commit)
+    # Three-way merge + commit creation off the event loop
+    def _do_merge():
+        from dit.core.tree_walker import flatten_tree
+        from dit.core.objects import deserialize_commit
+
+        mr = three_way_merge(store, base_hash, target_commit, source_commit)
+        if mr.conflicts:
+            return mr, None
+
+        # Build sidecar_hash lookup: source (theirs) first, target (ours) wins
+        target_commit_obj = deserialize_commit(store.read("commits", target_commit))
+        source_commit_obj = deserialize_commit(store.read("commits", source_commit))
+        target_flat = flatten_tree(store, target_commit_obj.tree_hash)
+        source_flat = flatten_tree(store, source_commit_obj.tree_hash)
+        sidecar_lookup: dict[str, str | None] = {}
+        for path, (_t, _h, sc) in source_flat.items():
+            if sc is not None:
+                sidecar_lookup[path] = sc
+        for path, (_t, _h, sc) in target_flat.items():
+            if sc is not None:
+                sidecar_lookup[path] = sc
+
+        tree_entries = [
+            TreeEntry(name=name, obj_type="manifest", obj_hash=mhash, sidecar_hash=sidecar_lookup.get(name))
+            for name, mhash in mr.merged_tree_entries.items()
+        ]
+        tree = Tree(entries=tree_entries)
+        tree_bytes = serialize_tree(tree)
+        t_hash = store.write("trees", tree_bytes)
+        commit = Commit(
+            tree_hash=t_hash,
+            parent_hashes=[target_commit, source_commit],
+            author=body.author,
+            message=body.message,
+            timestamp=int(time.time()),
+        )
+        commit_bytes = serialize_commit(commit)
+        c_hash = store.write("commits", commit_bytes)
+        return mr, c_hash
+
+    merge_result, commit_hash = await asyncio.to_thread(_do_merge)
 
     if merge_result.conflicts:
         raise HTTPException(
@@ -406,26 +487,6 @@ async def merge_pull_request(
                 ],
             },
         )
-
-    # Create merged tree
-    tree_entries = [
-        TreeEntry(name=name, obj_type="manifest", obj_hash=mhash)
-        for name, mhash in merge_result.merged_tree_entries.items()
-    ]
-    tree = Tree(entries=tree_entries)
-    tree_bytes = serialize_tree(tree)
-    tree_hash = store.write("trees", tree_bytes)
-
-    # Create merge commit
-    commit = Commit(
-        tree_hash=tree_hash,
-        parent_hashes=[target_commit, source_commit],
-        author=body.author,
-        message=body.message,
-        timestamp=int(time.time()),
-    )
-    commit_bytes = serialize_commit(commit)
-    commit_hash = store.write("commits", commit_bytes)
 
     # Atomic CAS update target branch
     stmt = (
@@ -511,10 +572,13 @@ async def resolve_conflicts(
     target_commit = target_ref.target_hash
     source_commit = source_ref.target_hash
 
-    base_hash = find_merge_base(store, target_commit, source_commit)
+    # Run merge base + three-way merge off the event loop
+    def _do_merge_for_resolve():
+        base = find_merge_base(store, target_commit, source_commit)
+        mr = three_way_merge(store, base, target_commit, source_commit)
+        return base, mr
 
-    # Run three-way merge to get current conflicts
-    merge_result = three_way_merge(store, base_hash, target_commit, source_commit)
+    base_hash, merge_result = await asyncio.to_thread(_do_merge_for_resolve)
 
     if not merge_result.conflicts:
         raise HTTPException(status_code=400, detail="No conflicts to resolve — use /merge instead")
@@ -524,10 +588,11 @@ async def resolve_conflicts(
     for res in body.resolutions:
         resolution_map[res.file_path] = res.row_hash
 
+    # Validate resolutions (needs to raise HTTPException, so stays in async handler)
     # Start with the auto-merged entries
     merged_tree_entries = dict(merge_result.merged_tree_entries)
 
-    # Resolve each conflict using the provided resolutions
+    resolved_entries_map: dict[str, ManifestEntry] = {}
     for conflict in merge_result.conflicts:
         fp = conflict.file_path
         chosen_hash = resolution_map.get(fp)
@@ -537,49 +602,63 @@ async def resolve_conflicts(
                 detail=f"No resolution provided for conflict in '{fp}'",
             )
 
-        # Determine which entries to use based on chosen_hash
         all_candidates: list[ManifestEntry] = []
         if conflict.ours_entries:
             all_candidates.extend(conflict.ours_entries)
         if conflict.theirs_entries:
             all_candidates.extend(conflict.theirs_entries)
 
-        # Find the entry matching chosen_hash
         chosen_entry = next((e for e in all_candidates if e.row_hash == chosen_hash), None)
         if chosen_entry is None:
             raise HTTPException(
                 status_code=422,
                 detail=f"Row hash '{chosen_hash}' not found in conflict entries for '{fp}'",
             )
+        resolved_entries_map[fp] = chosen_entry
 
-        # Build resolved manifest with just the chosen entry for this conflict
-        # We need to merge: non-conflicted rows from base auto-merge + the chosen row
-        # Strategy: load ours manifest, replace the conflicted rows with chosen
-        resolved_entries: list[ManifestEntry] = [chosen_entry]
-        resolved_manifest = Manifest(entries=resolved_entries)
-        resolved_bytes = serialize_manifest(resolved_manifest)
-        resolved_hash = store.write("manifests", resolved_bytes)
-        merged_tree_entries[fp] = resolved_hash
+    # Build resolved tree + commit off the event loop
+    def _do_resolve_commit():
+        from dit.core.tree_walker import flatten_tree
+        from dit.core.objects import deserialize_commit as _deser_commit
 
-    # Build merged tree
-    tree_entries = [
-        TreeEntry(name=name, obj_type="manifest", obj_hash=mhash)
-        for name, mhash in merged_tree_entries.items()
-    ]
-    tree = Tree(entries=tree_entries)
-    tree_bytes = serialize_tree(tree)
-    tree_hash = store.write("trees", tree_bytes)
+        for fp, chosen_entry in resolved_entries_map.items():
+            resolved_manifest = Manifest(entries=[chosen_entry])
+            resolved_bytes = serialize_manifest(resolved_manifest)
+            resolved_hash = store.write("manifests", resolved_bytes)
+            merged_tree_entries[fp] = resolved_hash
 
-    # Create merge commit
-    commit = Commit(
-        tree_hash=tree_hash,
-        parent_hashes=[target_commit, source_commit],
-        author=body.author,
-        message=body.message,
-        timestamp=int(time.time()),
-    )
-    commit_bytes = serialize_commit(commit)
-    commit_hash = store.write("commits", commit_bytes)
+        # Build sidecar_hash lookup: source (theirs) first, target (ours) wins
+        target_commit_obj = _deser_commit(store.read("commits", target_commit))
+        source_commit_obj = _deser_commit(store.read("commits", source_commit))
+        target_flat = flatten_tree(store, target_commit_obj.tree_hash)
+        source_flat = flatten_tree(store, source_commit_obj.tree_hash)
+        sidecar_lookup: dict[str, str | None] = {}
+        for path, (_t, _h, sc) in source_flat.items():
+            if sc is not None:
+                sidecar_lookup[path] = sc
+        for path, (_t, _h, sc) in target_flat.items():
+            if sc is not None:
+                sidecar_lookup[path] = sc
+
+        tree_entries = [
+            TreeEntry(name=name, obj_type="manifest", obj_hash=mhash, sidecar_hash=sidecar_lookup.get(name))
+            for name, mhash in merged_tree_entries.items()
+        ]
+        tree = Tree(entries=tree_entries)
+        tree_bytes = serialize_tree(tree)
+        t_hash = store.write("trees", tree_bytes)
+
+        commit = Commit(
+            tree_hash=t_hash,
+            parent_hashes=[target_commit, source_commit],
+            author=body.author,
+            message=body.message,
+            timestamp=int(time.time()),
+        )
+        commit_bytes = serialize_commit(commit)
+        return store.write("commits", commit_bytes)
+
+    commit_hash = await asyncio.to_thread(_do_resolve_commit)
 
     # Atomic CAS update target branch
     stmt = (

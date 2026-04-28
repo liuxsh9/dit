@@ -1,3 +1,5 @@
+import os
+import uuid
 from pathlib import Path
 from typing import Optional
 
@@ -9,11 +11,26 @@ class RefStore:
         self.refs_dir = dot_dit / "refs" / "heads"
         self.tags_dir = dot_dit / "refs" / "tags"
 
+    @staticmethod
+    def _atomic_write(path: Path, content: str) -> None:
+        """Write content to path atomically via temp file + os.replace."""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.parent / f".tmp-{uuid.uuid4().hex}"
+        try:
+            tmp.write_text(content)
+            os.replace(str(tmp), str(path))
+        except BaseException:
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+            raise
+
     def init(self) -> None:
         self.refs_dir.mkdir(parents=True, exist_ok=True)
         self.tags_dir.mkdir(parents=True, exist_ok=True)
         if not self.head_file.exists():
-            self.head_file.write_text("ref:main\n")
+            self._atomic_write(self.head_file, "ref:main\n")
 
     def get_head(self) -> str:
         return self.head_file.read_text().strip()
@@ -36,10 +53,12 @@ class RefStore:
             return None
         return path.read_text().strip()
 
+    def set_head(self, value: str) -> None:
+        self._atomic_write(self.head_file, value + "\n")
+
     def set_branch(self, name: str, commit_hash: str) -> None:
         path = self.refs_dir / name
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(commit_hash + "\n")
+        self._atomic_write(path, commit_hash + "\n")
 
     def list_branches(self) -> dict[str, str]:
         result = {}
@@ -65,7 +84,7 @@ class RefStore:
     def set_tag(self, name: str, commit_hash: str) -> None:
         self.tags_dir.mkdir(parents=True, exist_ok=True)
         path = self.tags_dir / name
-        path.write_text(commit_hash + "\n")
+        self._atomic_write(path, commit_hash + "\n")
 
     def delete_tag(self, name: str) -> bool:
         path = self.tags_dir / name
