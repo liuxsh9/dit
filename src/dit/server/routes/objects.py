@@ -1,3 +1,4 @@
+import base64
 import hashlib
 from pathlib import Path
 
@@ -62,6 +63,50 @@ async def batch_exists(
     store = _store_for_repo(request, repo)
     result = store.batch_exists(body.obj_type, body.hashes)
     return BatchExistsOut(exists=result)
+
+
+class BatchUploadItem(BaseModel):
+    hash: str
+    data_b64: str  # base64-encoded object data
+
+
+class BatchUploadIn(BaseModel):
+    obj_type: str
+    items: list[BatchUploadItem]
+
+
+class BatchUploadOut(BaseModel):
+    accepted: int
+    errors: list[str]
+
+
+@router.post("/{repo}/objects/batch-upload", response_model=BatchUploadOut)
+async def batch_upload(
+    repo: str,
+    body: BatchUploadIn,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    _token: Token = Depends(verify_token),
+) -> BatchUploadOut:
+    _validate_obj_type(body.obj_type)
+    await _get_repo(repo, session)
+    store = _store_for_repo(request, repo)
+
+    accepted = 0
+    errors: list[str] = []
+    for item in body.items:
+        try:
+            data = base64.b64decode(item.data_b64)
+        except Exception:
+            errors.append(f"{item.hash}: invalid base64")
+            continue
+        computed = hashlib.sha256(data).hexdigest()
+        if computed != item.hash:
+            errors.append(f"{item.hash}: hash mismatch (computed {computed})")
+            continue
+        store.write(body.obj_type, data)
+        accepted += 1
+    return BatchUploadOut(accepted=accepted, errors=errors)
 
 
 @router.get("/{repo}/objects/{obj_type}/{hash}", response_class=Response)

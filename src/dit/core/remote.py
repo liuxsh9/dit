@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+
 import httpx
 
 
@@ -66,6 +68,32 @@ class RemoteClient:
             content=data,
         )
         response.raise_for_status()
+
+    def upload_batch(self, obj_type: str, items: list[tuple[str, bytes]]) -> dict:
+        """Upload multiple objects in a single request.
+
+        items: list of (hash_hex, data) tuples.
+        Returns {"accepted": int, "errors": list[str]}
+        Falls back to individual uploads if server returns 404 (old server).
+        """
+        payload = {
+            "obj_type": obj_type,
+            "items": [
+                {"hash": h, "data_b64": base64.b64encode(d).decode("ascii")}
+                for h, d in items
+            ],
+        }
+        response = self.client.post(
+            f"{self._dit_prefix()}/objects/batch-upload",
+            json=payload,
+        )
+        if response.status_code == 404:
+            # Fallback: server doesn't support batch upload
+            for h, d in items:
+                self.upload_object(obj_type, h, d)
+            return {"accepted": len(items), "errors": []}
+        response.raise_for_status()
+        return response.json()
 
     def download_object(self, obj_type: str, hash_hex: str) -> bytes | None:
         response = self.client.get(self._objects_url(obj_type, hash_hex))

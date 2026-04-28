@@ -1523,15 +1523,30 @@ def push(
 
     total = sum(len(v) for v in to_upload.values())
     uploaded = 0
+    BATCH_SIZE = 100
+    MAX_BATCH_BYTES = 10 * 1024 * 1024  # 10MB
+
     for obj_type in upload_order:
-        for hash_hex in to_upload[obj_type]:
+        hashes = to_upload[obj_type]
+        batch: list[tuple[str, bytes]] = []
+        batch_bytes = 0
+        for hash_hex in hashes:
             data = store.read(obj_type, hash_hex)
             if data is None:
                 typer.echo(f"warning: local object {obj_type}/{hash_hex} missing in store", err=True)
                 continue
+            batch.append((hash_hex, data))
+            batch_bytes += len(data)
+            if len(batch) >= BATCH_SIZE or batch_bytes >= MAX_BATCH_BYTES:
+                with remote_error_boundary("push"):
+                    rc.upload_batch(obj_type, batch)
+                uploaded += len(batch)
+                batch = []
+                batch_bytes = 0
+        if batch:
             with remote_error_boundary("push"):
-                rc.upload_object(obj_type, hash_hex, data)
-            uploaded += 1
+                rc.upload_batch(obj_type, batch)
+            uploaded += len(batch)
 
     with remote_error_boundary("push"):
         ok = rc.cas_ref("heads", branch, old=remote_hash, new=local_hash)
