@@ -26,6 +26,7 @@ from dit.core.objects import (
 )
 from dit.core.refs import RefStore
 from dit.core.store import ObjectStore
+from dit.core.stat_cache import StatCache
 from dit.core.workspace import build_manifest_for_file, build_manifest_for_file_streaming, find_jsonl_files
 
 app = typer.Typer(name="dit", help="Git-like version control for SFT training data.")
@@ -162,12 +163,14 @@ def add(paths: list[str] = typer.Argument(..., help="Files or directories to sta
             typer.echo(f"fatal: pathspec '{path_str}' did not match any files", err=True)
             raise typer.Exit(1)
 
+        stat_cache = StatCache(dot / "stat-cache")
         for fp in jsonl_files:
             manifest = build_manifest_for_file_streaming(fp, store)
             manifest_bytes = serialize_manifest(manifest)
             manifest_hash = store.write("manifests", manifest_bytes)
             rel = str(fp.relative_to(repo_root))
             index.stage(rel, manifest_hash, obj_type="manifest")
+            stat_cache.update(rel, fp, object_hash(manifest_bytes))
             typer.echo(f"  staged {rel} ({len(manifest.entries)} rows)")
 
         for fp in blob_files:
@@ -187,10 +190,13 @@ def diff():
     store = ObjectStore(dot / "objects")
     refs = RefStore(dot)
 
+    stat_cache = StatCache(dot / "stat-cache")
     current_files: dict[str, Manifest] = {}
     for fp in find_jsonl_files(repo_root):
         rel = str(fp.relative_to(repo_root))
         manifest, _ = build_manifest_for_file(fp)
+        current_hash = object_hash(serialize_manifest(manifest))
+        stat_cache.update(rel, fp, current_hash)
         current_files[rel] = manifest
 
     head_files: dict[str, Manifest] = {}
@@ -372,6 +378,7 @@ def status():
     current_rels = {str(f.relative_to(repo_root)) for f in current_files}
     head_rels = set(head_manifests.keys())
 
+    stat_cache = StatCache(dot / "stat-cache")
     modified = []
     new_files = []
     deleted = sorted(rel for rel in (head_rels - current_rels) if staged_typed.get(rel, ("", ""))[0] != "delete")
@@ -381,10 +388,16 @@ def status():
         if rel not in head_manifests:
             new_files.append(rel)
         else:
-            manifest, _ = build_manifest_for_file(fp)
-            current_hash = object_hash(serialize_manifest(manifest))
-            if current_hash != head_manifests[rel]:
-                modified.append(rel)
+            cached_hash = stat_cache.get_manifest_hash(rel, fp)
+            if cached_hash is not None:
+                if cached_hash != head_manifests[rel]:
+                    modified.append(rel)
+            else:
+                manifest, _ = build_manifest_for_file(fp)
+                current_hash = object_hash(serialize_manifest(manifest))
+                stat_cache.update(rel, fp, current_hash)
+                if current_hash != head_manifests[rel]:
+                    modified.append(rel)
 
     has_changes = modified or new_files or deleted
     if not staged and not has_changes:
@@ -503,13 +516,20 @@ def _has_uncommitted_changes(repo_root: Path, dot: Path, store: ObjectStore, ref
     if current_rels != head_rels:
         return True
 
+    stat_cache = StatCache(dot / "stat-cache")
     for fp in current_files:
         rel = str(fp.relative_to(repo_root))
         if rel in head_manifests:
-            manifest, _ = build_manifest_for_file(fp)
-            current_hash = object_hash(serialize_manifest(manifest))
-            if current_hash != head_manifests[rel]:
-                return True
+            cached_hash = stat_cache.get_manifest_hash(rel, fp)
+            if cached_hash is not None:
+                if cached_hash != head_manifests[rel]:
+                    return True
+            else:
+                manifest, _ = build_manifest_for_file(fp)
+                current_hash = object_hash(serialize_manifest(manifest))
+                stat_cache.update(rel, fp, current_hash)
+                if current_hash != head_manifests[rel]:
+                    return True
 
     return False
 
