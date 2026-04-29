@@ -26,6 +26,7 @@ Dit solves these by decomposing JSONL files into row-level objects with content-
 - **Sidecar metadata** — per-row char counts, token estimates, field counts, and language detection
 - **Search** — full-text search across all rows with field-path filtering
 - **Export** — export any commit to JSONL or CSV with optional metadata
+- **Sparse clone** — clone only the directory structure, then fetch individual files on demand — essential for large datasets (tens/hundreds of GB)
 - **Remote collaboration** — push/pull/clone with a self-hosted Dit server
 - **Pull requests** — server-side PRs with inline comments, approvals, and branch protection
 - **Zstd compression** — all objects stored compressed for efficient disk usage
@@ -127,8 +128,24 @@ dit auth set-token <your-token> --remote origin
 dit push
 dit pull
 
-# Clone on another machine
+# Clone on another machine (full clone)
 dit clone http://your-server:8000/my-dataset --token <token>
+
+# Sparse clone (recommended for large datasets)
+dit clone --sparse http://your-server:8000/my-dataset --token <token>
+
+# Then fetch only the files you need
+dit sparse-checkout add train/sft.jsonl
+dit sparse-checkout add eval/
+
+# List all files with fetch status
+dit sparse-checkout list
+
+# Remove a file from working copy (keeps it in history)
+dit sparse-checkout remove train/sft.jsonl
+
+# Convert back to full clone when needed
+dit sparse-checkout disable
 ```
 
 ### Export
@@ -259,6 +276,8 @@ Health check at `GET /health`.
 | `dit push` | Push to remote |
 | `dit pull` | Pull from remote |
 | `dit clone <url>` | Clone a remote repository |
+| `dit clone --sparse <url>` | Sparse clone (directory structure only) |
+| `dit sparse-checkout add/remove/list/disable` | Manage sparse working copy |
 | `dit remote add/remove/list` | Manage remotes |
 | `dit meta compute/show/diff` | Sidecar metadata |
 | `dit stats [path]` | Repository statistics |
@@ -278,7 +297,7 @@ uv sync --group dev --extra server
 uv run pytest
 ```
 
-907 tests covering CLI, core logic, and server routes.
+954 tests covering CLI, core logic, and server routes.
 
 ## Project Structure
 
