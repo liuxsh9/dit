@@ -59,6 +59,39 @@ def remote_error_boundary(action: str):
         raise typer.Exit(1)
 
 
+def _batch_download_objects(rc, store, obj_type: str, hashes: list[str]) -> int:
+    """Download objects in batches of 200. Returns count downloaded.
+
+    Falls back to individual downloads if the remote client does not
+    support batch-download (e.g. old server or mocked client).
+    """
+    BATCH = 200
+    downloaded = 0
+    for i in range(0, len(hashes), BATCH):
+        chunk = hashes[i : i + BATCH]
+        use_batch = hasattr(rc, "download_batch") and callable(getattr(rc, "download_batch", None))
+        batch_ok = False
+        if use_batch:
+            try:
+                with remote_error_boundary(f"batch-download {obj_type}"):
+                    results = rc.download_batch(obj_type, chunk)
+                if isinstance(results, dict):
+                    for h, data in results.items():
+                        store.write(obj_type, data)
+                        downloaded += 1
+                    batch_ok = True
+            except (AttributeError, TypeError):
+                pass
+        if not batch_ok:
+            for h in chunk:
+                with remote_error_boundary(f"download {obj_type}"):
+                    data = rc.download_object(obj_type, h)
+                if data:
+                    store.write(obj_type, data)
+                    downloaded += 1
+    return downloaded
+
+
 def find_repo_root() -> Path:
     cwd = Path.cwd()
     p = cwd
@@ -1322,26 +1355,36 @@ def sparse_checkout_add(
             typer.echo(f"error: '{path_str}' not found in tree", err=True)
             raise typer.Exit(1)
 
-        for fpath, manifest_hash in matched.items():
-            if not store.exists("manifests", manifest_hash):
-                with remote_error_boundary("sparse-checkout add"):
-                    m_data = rc.download_object("manifests", manifest_hash)
-                if m_data:
-                    store.write("manifests", m_data)
+        # Phase 1: batch-download missing manifests
+        missing_manifests = [
+            mh for mh in matched.values() if not store.exists("manifests", mh)
+        ]
+        if missing_manifests:
+            _batch_download_objects(rc, store, "manifests", missing_manifests)
 
+        # Phase 2: collect all missing row hashes across all manifests
+        all_missing_rows: list[str] = []
+        seen_rows: set[str] = set()
+        manifests_by_fpath: dict[str, object] = {}
+        for fpath, manifest_hash in matched.items():
             m_data = store.read("manifests", manifest_hash)
             if m_data is None:
                 typer.echo(f"error: manifest for '{fpath}' not available", err=True)
                 raise typer.Exit(1)
             manifest = deserialize_manifest(m_data)
-
+            manifests_by_fpath[fpath] = manifest
             for entry in manifest.entries:
-                if not store.exists("rows", entry.row_hash):
-                    with remote_error_boundary("sparse-checkout add"):
-                        row_data = rc.download_object("rows", entry.row_hash)
-                    if row_data:
-                        store.write("rows", row_data)
+                if entry.row_hash not in seen_rows and not store.exists("rows", entry.row_hash):
+                    all_missing_rows.append(entry.row_hash)
+                    seen_rows.add(entry.row_hash)
 
+        # Phase 3: batch-download all missing rows
+        if all_missing_rows:
+            _batch_download_objects(rc, store, "rows", all_missing_rows)
+
+        # Phase 4: materialize files
+        for fpath in matched:
+            manifest = manifests_by_fpath[fpath]
             materialize_file(repo_root, fpath, manifest, store)
             typer.echo(f"  fetched {fpath} ({len(manifest.entries)} rows)")
 
@@ -1753,7 +1796,7 @@ def push(
     branch: str = typer.Option("main", help="Branch name to push"),
 ):
     """Push local commits to the remote server."""
-    from dit.core.walker import walk_commit_objects, is_ancestor
+    from dit.core.walker import walk_commit_objects, walk_commit_objects_since, is_ancestor
 
     repo_root = find_repo_root()
     dot = get_dot(repo_root)
@@ -1779,16 +1822,10 @@ def push(
             )
             raise typer.Exit(1)
 
-    local_objects = walk_commit_objects(store, local_hash)
-
     if remote_hash is not None:
-        remote_objects = walk_commit_objects(store, remote_hash)
-        new_objects: dict[str, set[str]] = {
-            obj_type: local_objects[obj_type] - remote_objects[obj_type]
-            for obj_type in local_objects
-        }
+        new_objects = walk_commit_objects_since(store, local_hash, stop_at=remote_hash)
     else:
-        new_objects = local_objects
+        new_objects = walk_commit_objects(store, local_hash)
 
     upload_order = ["rows", "manifests", "sidecars", "blobs", "trees", "commits"]
     to_upload: dict[str, list[str]] = {}
@@ -1850,30 +1887,44 @@ def _clone_tree_objects(
     """Recursively download all manifest, sidecar, and subtree objects for a tree hash."""
     from dit.core.objects import deserialize_tree
 
-    tree_data = rc.download_object("trees", tree_hash)
-    if not tree_data:
-        return
-    store.write("trees", tree_data)
-    tree = deserialize_tree(tree_data)
+    # Phase 1: walk tree recursively, collecting manifest & sidecar hashes
+    pending_manifests: list[str] = []
+    pending_sidecars: list[str] = []
 
-    for entry in tree.entries:
-        if entry.obj_type == "manifest":
-            if not sparse:
-                m_data = rc.download_object("manifests", entry.obj_hash)
-                if m_data:
-                    store.write("manifests", m_data)
+    def _walk_tree(th: str) -> None:
+        tree_data = rc.download_object("trees", th)
+        if not tree_data:
+            return
+        store.write("trees", tree_data)
+        tree = deserialize_tree(tree_data)
+
+        for entry in tree.entries:
+            if entry.obj_type == "manifest":
+                if not sparse:
+                    pending_manifests.append(entry.obj_hash)
                     manifest_hashes.add(entry.obj_hash)
-            if entry.sidecar_hash and not store.exists("sidecars", entry.sidecar_hash):
-                sc_data = rc.download_object("sidecars", entry.sidecar_hash)
-                if sc_data:
-                    store.write("sidecars", sc_data)
-                else:
+                if entry.sidecar_hash and not store.exists("sidecars", entry.sidecar_hash):
+                    pending_sidecars.append(entry.sidecar_hash)
+            elif entry.obj_type == "tree":
+                _walk_tree(entry.obj_hash)
+
+    _walk_tree(tree_hash)
+
+    # Phase 2: batch-download manifests
+    if pending_manifests:
+        _batch_download_objects(rc, store, "manifests", pending_manifests)
+
+    # Phase 3: batch-download sidecars
+    if pending_sidecars:
+        downloaded_sc = _batch_download_objects(rc, store, "sidecars", pending_sidecars)
+        not_found = len(pending_sidecars) - downloaded_sc
+        if not_found > 0:
+            for sh in pending_sidecars:
+                if not store.exists("sidecars", sh):
                     typer.echo(
-                        f"  warning: sidecar {entry.sidecar_hash[:8]} not found on remote (skipped)",
+                        f"  warning: sidecar {sh[:8]} not found on remote (skipped)",
                         err=True,
                     )
-        elif entry.obj_type == "tree":
-            _clone_tree_objects(rc, store, entry.obj_hash, manifest_hashes, sparse=sparse)
 
 
 @app.command()
@@ -1944,17 +1995,20 @@ def clone(
             _clone_tree_objects(rc, store, commit.tree_hash, manifest_hashes, sparse=sparse)
 
     if not sparse:
+        # Collect all missing row hashes from all manifests, then batch-download
+        all_row_hashes: list[str] = []
+        seen_rows: set[str] = set()
         for mhash in manifest_hashes:
             m_data = store.read("manifests", mhash)
             if m_data is None:
                 continue
             manifest = deserialize_manifest(m_data)
             for entry in manifest.entries:
-                if not store.exists("rows", entry.row_hash):
-                    with remote_error_boundary("clone"):
-                        row_data = rc.download_object("rows", entry.row_hash)
-                    if row_data:
-                        store.write("rows", row_data)
+                if entry.row_hash not in seen_rows and not store.exists("rows", entry.row_hash):
+                    all_row_hashes.append(entry.row_hash)
+                    seen_rows.add(entry.row_hash)
+        if all_row_hashes:
+            _batch_download_objects(rc, store, "rows", all_row_hashes)
 
     refs.set_branch(branch, remote_hash)
     refs.head_file.write_text(f"ref:{branch}\n")
@@ -1986,46 +2040,72 @@ def _fetch_tree_objects(
     from dit.core.objects import deserialize_tree, deserialize_manifest
 
     downloaded = 0
-    if store.exists("trees", tree_hash):
-        tree_data = store.read("trees", tree_hash)
-        if tree_data is None:
-            return 0
-        tree = deserialize_tree(tree_data)
-    else:
-        tree_data = rc.download_object("trees", tree_hash)
-        if not tree_data:
-            return 0
-        store.write("trees", tree_data)
-        downloaded += 1
-        tree = deserialize_tree(tree_data)
 
-    for entry in tree.entries:
-        if entry.obj_type == "manifest":
-            if not store.exists("manifests", entry.obj_hash):
-                m_data = rc.download_object("manifests", entry.obj_hash)
-                if m_data:
-                    store.write("manifests", m_data)
-                    downloaded += 1
+    # Phase 1: walk tree, collecting missing manifest/sidecar hashes
+    pending_manifests: list[str] = []
+    pending_sidecars: list[str] = []
+
+    def _walk(th: str) -> int:
+        nonlocal downloaded
+        count = 0
+        if store.exists("trees", th):
+            tree_data = store.read("trees", th)
+            if tree_data is None:
+                return 0
+            tree = deserialize_tree(tree_data)
+        else:
+            tree_data = rc.download_object("trees", th)
+            if not tree_data:
+                return 0
+            store.write("trees", tree_data)
+            count += 1
+            tree = deserialize_tree(tree_data)
+
+        for entry in tree.entries:
+            if entry.obj_type == "manifest":
+                if not store.exists("manifests", entry.obj_hash):
+                    pending_manifests.append(entry.obj_hash)
                     manifest_hashes.add(entry.obj_hash)
-                    m = deserialize_manifest(m_data)
-                    for me in m.entries:
-                        if not store.exists("rows", me.row_hash):
-                            row_data = rc.download_object("rows", me.row_hash)
-                            if row_data:
-                                store.write("rows", row_data)
-                                downloaded += 1
-            if entry.sidecar_hash and not store.exists("sidecars", entry.sidecar_hash):
-                sc_data = rc.download_object("sidecars", entry.sidecar_hash)
-                if sc_data:
-                    store.write("sidecars", sc_data)
-                    downloaded += 1
-                else:
+                if entry.sidecar_hash and not store.exists("sidecars", entry.sidecar_hash):
+                    pending_sidecars.append(entry.sidecar_hash)
+            elif entry.obj_type == "tree":
+                count += _walk(entry.obj_hash)
+        return count
+
+    downloaded += _walk(tree_hash)
+
+    # Phase 2: batch-download manifests
+    if pending_manifests:
+        downloaded += _batch_download_objects(rc, store, "manifests", pending_manifests)
+
+    # Phase 3: collect missing row hashes from newly downloaded manifests
+    pending_rows: list[str] = []
+    seen_rows: set[str] = set()
+    for mhash in pending_manifests:
+        m_data = store.read("manifests", mhash)
+        if m_data is None:
+            continue
+        m = deserialize_manifest(m_data)
+        for me in m.entries:
+            if me.row_hash not in seen_rows and not store.exists("rows", me.row_hash):
+                pending_rows.append(me.row_hash)
+                seen_rows.add(me.row_hash)
+
+    # Phase 4: batch-download rows
+    if pending_rows:
+        downloaded += _batch_download_objects(rc, store, "rows", pending_rows)
+
+    # Phase 5: batch-download sidecars
+    if pending_sidecars:
+        sc_count = _batch_download_objects(rc, store, "sidecars", pending_sidecars)
+        downloaded += sc_count
+        if sc_count < len(pending_sidecars):
+            for sh in pending_sidecars:
+                if not store.exists("sidecars", sh):
                     typer.echo(
-                        f"  warning: sidecar {entry.sidecar_hash[:8]} not found on remote (skipped)",
+                        f"  warning: sidecar {sh[:8]} not found on remote (skipped)",
                         err=True,
                     )
-        elif entry.obj_type == "tree":
-            downloaded += _fetch_tree_objects(rc, store, entry.obj_hash, manifest_hashes)
 
     return downloaded
 

@@ -102,6 +102,29 @@ class RemoteClient:
         response.raise_for_status()
         return response.content
 
+    def download_batch(self, obj_type: str, hashes: list[str]) -> dict[str, bytes]:
+        """Download multiple objects in one request. Returns {hash: data}.
+
+        Falls back to individual downloads if server returns 404 (old server).
+        """
+        resp = self.client.post(
+            f"{self._dit_prefix()}/objects/batch-download",
+            json={"obj_type": obj_type, "hashes": hashes},
+        )
+        if resp.status_code == 404:
+            # Fallback: server doesn't support batch download
+            result: dict[str, bytes] = {}
+            for h in hashes:
+                data = self.download_object(obj_type, h)
+                if data is not None:
+                    result[h] = data
+            return result
+        resp.raise_for_status()
+        result = {}
+        for item in resp.json()["items"]:
+            result[item["hash"]] = base64.b64decode(item["data_b64"])
+        return result
+
     def batch_exists(self, obj_type: str, hashes: list[str]) -> dict[str, bool]:
         response = self.client.post(
             f"{self._dit_prefix()}/objects/batch-exists",

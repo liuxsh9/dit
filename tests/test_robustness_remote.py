@@ -462,3 +462,89 @@ class TestConflictsAndDivergence:
         rows = _read_jsonl(clone_dir / "data.jsonl")
         assert len(rows) == 1, "Local changes should be preserved"
         assert rows[0]["messages"][0]["content"] == "local-edit", "Local edit should not be overwritten"
+
+
+class TestBatchDownload:
+    """Verify batch-download is used in clone and sparse-checkout flows."""
+
+    def test_clone_uses_batch_download(self, server_app, tmp_path, monkeypatch):
+        """Clone a repo with multiple files, verify all data arrives correctly."""
+        _patch_remote_client(monkeypatch, server_app)
+        _create_remote_repo(server_app, "batch-clone")
+
+        src = tmp_path / "src"
+        _init_repo(src, monkeypatch)
+        files = {
+            "a.jsonl": [_make_row("a1"), _make_row("a2")],
+            "b.jsonl": [_make_row("b1"), _make_row("b2"), _make_row("b3")],
+            "sub/c.jsonl": [_make_row("c1")],
+        }
+        for fname, rows in files.items():
+            _write_jsonl(src / fname, rows)
+        monkeypatch.chdir(src)
+        runner.invoke(app, ["add", "."], catch_exceptions=False)
+        r = runner.invoke(app, ["commit", "-m", "multi-file"], catch_exceptions=False)
+        assert r.exit_code == 0, r.output
+        _setup_remote(src, "http://testserver/batch-clone")
+        _push(monkeypatch, src)
+
+        clone_dir = tmp_path / "clone"
+        _clone(str(clone_dir), "http://testserver/batch-clone")
+
+        for fname, expected_rows in files.items():
+            cloned = _read_jsonl(clone_dir / fname)
+            assert len(cloned) == len(expected_rows), f"{fname}: row count mismatch"
+            for orig, got in zip(expected_rows, cloned):
+                assert orig == got, f"{fname}: row content mismatch"
+
+    def test_sparse_checkout_add_batch(self, server_app, tmp_path, monkeypatch):
+        """Sparse clone, then sparse-checkout add a directory with multiple files."""
+        _patch_remote_client(monkeypatch, server_app)
+        _create_remote_repo(server_app, "batch-sparse")
+
+        src = tmp_path / "src"
+        _init_repo(src, monkeypatch)
+        files = {
+            "train.jsonl": [_make_row("t1"), _make_row("t2")],
+            "data/eval.jsonl": [_make_row("e1")],
+            "data/test.jsonl": [_make_row("te1"), _make_row("te2")],
+        }
+        for fname, rows in files.items():
+            _write_jsonl(src / fname, rows)
+        monkeypatch.chdir(src)
+        runner.invoke(app, ["add", "."], catch_exceptions=False)
+        r = runner.invoke(app, ["commit", "-m", "multi-file"], catch_exceptions=False)
+        assert r.exit_code == 0, r.output
+        _setup_remote(src, "http://testserver/batch-sparse")
+        _push(monkeypatch, src)
+
+        # Sparse clone (no file data downloaded)
+        clone_dir = tmp_path / "sparse-clone"
+        r = runner.invoke(
+            app,
+            ["clone", "http://testserver/batch-sparse", str(clone_dir),
+             "--token", "dit_admin", "--sparse"],
+            catch_exceptions=False,
+        )
+        assert r.exit_code == 0, r.output
+
+        # Verify no data files exist yet
+        assert not (clone_dir / "data" / "eval.jsonl").exists()
+        assert not (clone_dir / "data" / "test.jsonl").exists()
+
+        # sparse-checkout add the data/ directory
+        monkeypatch.chdir(clone_dir)
+        r = runner.invoke(
+            app, ["sparse-checkout", "add", "data/"],
+            catch_exceptions=False,
+        )
+        assert r.exit_code == 0, r.output
+
+        # Verify data files are now materialized
+        assert (clone_dir / "data" / "eval.jsonl").exists()
+        assert (clone_dir / "data" / "test.jsonl").exists()
+        eval_rows = _read_jsonl(clone_dir / "data" / "eval.jsonl")
+        assert len(eval_rows) == 1
+        assert eval_rows[0] == _make_row("e1")
+        test_rows = _read_jsonl(clone_dir / "data" / "test.jsonl")
+        assert len(test_rows) == 2

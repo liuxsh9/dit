@@ -170,6 +170,98 @@ async def test_path_traversal_repo_name_rejected(client: AsyncClient) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Batch-download
+# ---------------------------------------------------------------------------
+
+
+async def _upload_object(client: AsyncClient, obj_type: str, data: bytes) -> str:
+    """Upload an object and return its hash."""
+    h = hashlib.sha256(data).hexdigest()
+    r = await client.post(f"/api/v1/repos/obj-repo/objects/{obj_type}/{h}", content=data)
+    assert r.status_code == 204
+    return h
+
+
+async def test_batch_download_returns_objects(client: AsyncClient) -> None:
+    """Upload 3 objects, batch-download them, verify data matches."""
+    await _create_repo(client)
+    payloads = [b"row-data-one", b"row-data-two", b"row-data-three"]
+    hashes = []
+    for p in payloads:
+        h = await _upload_object(client, "rows", p)
+        hashes.append(h)
+
+    response = await client.post(
+        "/api/v1/repos/obj-repo/objects/batch-download",
+        json={"obj_type": "rows", "hashes": hashes},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["items"]) == 3
+    assert body["missing"] == []
+
+    downloaded = {
+        item["hash"]: base64.b64decode(item["data_b64"]) for item in body["items"]
+    }
+    for p, h in zip(payloads, hashes):
+        assert downloaded[h] == p
+
+
+async def test_batch_download_reports_missing(client: AsyncClient) -> None:
+    """Request hashes that don't exist, verify they appear in missing."""
+    await _create_repo(client)
+    missing_hashes = [f"{i:064x}" for i in range(3)]
+    response = await client.post(
+        "/api/v1/repos/obj-repo/objects/batch-download",
+        json={"obj_type": "rows", "hashes": missing_hashes},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["items"] == []
+    assert sorted(body["missing"]) == sorted(missing_hashes)
+
+
+async def test_batch_download_mixed(client: AsyncClient) -> None:
+    """Some exist, some don't -- verify items and missing are correct."""
+    await _create_repo(client)
+    existing_hash = await _upload_object(client, "rows", b"exists-data")
+    missing_hash = "f" * 64
+
+    response = await client.post(
+        "/api/v1/repos/obj-repo/objects/batch-download",
+        json={"obj_type": "rows", "hashes": [existing_hash, missing_hash]},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["items"]) == 1
+    assert body["items"][0]["hash"] == existing_hash
+    assert base64.b64decode(body["items"][0]["data_b64"]) == b"exists-data"
+    assert body["missing"] == [missing_hash]
+
+
+async def test_batch_download_invalid_obj_type(client: AsyncClient) -> None:
+    """Invalid obj_type should return 400."""
+    await _create_repo(client)
+    response = await client.post(
+        "/api/v1/repos/obj-repo/objects/batch-download",
+        json={"obj_type": "secrets", "hashes": ["a" * 64]},
+    )
+    assert response.status_code == 400
+
+
+async def test_batch_download_exceeds_limit(client: AsyncClient) -> None:
+    """Request 201 hashes should return 400."""
+    await _create_repo(client)
+    hashes = [f"{i:064x}" for i in range(201)]
+    response = await client.post(
+        "/api/v1/repos/obj-repo/objects/batch-download",
+        json={"obj_type": "rows", "hashes": hashes},
+    )
+    assert response.status_code == 400
+    assert "exceeds limit" in response.json()["detail"].lower()
+
+
+# ---------------------------------------------------------------------------
 # Batch-exists hash limit
 # ---------------------------------------------------------------------------
 

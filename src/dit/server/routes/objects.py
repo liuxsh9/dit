@@ -93,6 +93,29 @@ class BatchUploadOut(BaseModel):
     errors: list[str]
 
 
+# ---------------------------------------------------------------------------
+# Batch-download models
+# ---------------------------------------------------------------------------
+
+
+class BatchDownloadIn(BaseModel):
+    obj_type: str
+    hashes: list[str]
+
+
+class BatchDownloadItem(BaseModel):
+    hash: str
+    data_b64: str
+
+
+class BatchDownloadOut(BaseModel):
+    items: list[BatchDownloadItem]
+    missing: list[str]
+
+
+_MAX_BATCH_DOWNLOAD_HASHES = 200
+
+
 @router.post("/{repo}/objects/batch-upload", response_model=BatchUploadOut)
 async def batch_upload(
     repo: str,
@@ -125,6 +148,37 @@ async def batch_upload(
         store.write(body.obj_type, data)
         accepted += 1
     return BatchUploadOut(accepted=accepted, errors=errors)
+
+
+@router.post("/{repo}/objects/batch-download", response_model=BatchDownloadOut)
+async def batch_download(
+    repo: str,
+    body: BatchDownloadIn,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    _token: Token = Depends(verify_token),
+) -> BatchDownloadOut:
+    _validate_obj_type(body.obj_type)
+    if len(body.hashes) > _MAX_BATCH_DOWNLOAD_HASHES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many hashes: {len(body.hashes)} exceeds limit of {_MAX_BATCH_DOWNLOAD_HASHES}",
+        )
+    await _get_repo(repo, session)
+    store = _store_for_repo(request, repo)
+
+    items: list[BatchDownloadItem] = []
+    missing: list[str] = []
+    for h in body.hashes:
+        data = store.read(body.obj_type, h)
+        if data is None:
+            missing.append(h)
+        else:
+            items.append(BatchDownloadItem(
+                hash=h,
+                data_b64=base64.b64encode(data).decode("ascii"),
+            ))
+    return BatchDownloadOut(items=items, missing=missing)
 
 
 @router.get("/{repo}/objects/{obj_type}/{hash}", response_class=Response)
