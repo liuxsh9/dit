@@ -109,3 +109,14 @@ class TestAddSparse:
         result = runner.invoke(app, ["add", "general/eval.jsonl"])
         assert result.exit_code != 0
         assert "sparse-checkout" in result.output.lower() or "not checked out" in result.output.lower()
+
+    def test_add_deleted_file_in_sparse_set_stages_deletion(self, tmp_path: Path, monkeypatch) -> None:
+        """Deleting a file that IS in the sparse set should stage as deletion, not give sparse hint."""
+        repo = _init_repo_with_files(tmp_path, monkeypatch)
+        dot = repo / ".dit"
+        save_sparse_paths(dot, {"bug-fix/train.jsonl", "general/eval.jsonl"})
+        (repo / "general" / "eval.jsonl").unlink()
+
+        result = runner.invoke(app, ["add", "general/eval.jsonl"], catch_exceptions=False)
+        assert result.exit_code == 0
+        assert "staged deletion" in result.output

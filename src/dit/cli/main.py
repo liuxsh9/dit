@@ -128,7 +128,7 @@ def add(paths: list[str] = typer.Argument(..., help="Files or directories to sta
     """Stage JSONL and other files for the next commit."""
     from dit.core.workspace import find_all_files, build_blob_for_file
     from dit.core.objects import serialize_blob
-    from dit.core.sparse import load_sparse_paths
+    from dit.core.sparse import load_sparse_paths, is_in_sparse_set
 
     repo_root = find_repo_root()
     dot = get_dot(repo_root)
@@ -160,7 +160,7 @@ def add(paths: list[str] = typer.Argument(..., help="Files or directories to sta
             if rel_path is not None:
                 rel_path = str(Path(rel_path))
             if rel_path and rel_path in tracked_paths:
-                if sparse_paths is not None:
+                if sparse_paths is not None and not is_in_sparse_set(rel_path, sparse_paths):
                     typer.echo(
                         f"error: '{rel_path}' is not checked out.\n"
                         f"  Use 'dit sparse-checkout add {rel_path}' to fetch it first.",
