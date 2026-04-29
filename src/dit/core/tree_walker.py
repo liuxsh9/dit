@@ -81,3 +81,35 @@ def resolve_path(
                 return None
             current_hash = found.obj_hash
     return None
+
+
+def resolve_entry(
+    store: ObjectStore,
+    tree_hash: str,
+    path: str,
+) -> tuple[str, str, str | None] | None:
+    """Resolve a single tree entry without recursively flattening the full tree."""
+    clean_path = path.strip("/")
+    if not clean_path or clean_path == ".":
+        return None
+
+    parts = clean_path.split("/")
+    current_hash = tree_hash
+    for index, part in enumerate(parts):
+        node_data = store.read("trees", current_hash)
+        if node_data is None:
+            return None
+        node = deserialize_tree(node_data)
+        found: TreeEntry | None = None
+        for entry in node.entries:
+            if entry.name == part:
+                found = entry
+                break
+        if found is None:
+            return None
+        if index == len(parts) - 1:
+            return found.obj_type, found.obj_hash, found.sidecar_hash
+        if found.obj_type != "tree":
+            return None
+        current_hash = found.obj_hash
+    return None

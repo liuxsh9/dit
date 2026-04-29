@@ -33,20 +33,19 @@ async def get_manifest(
     store = _store_for_repo(request, repo)
 
     from dit.core.objects import deserialize_commit, deserialize_manifest
-    from dit.core.tree_walker import flatten_tree
+    from dit.core.tree_walker import resolve_entry
 
     commit_data = store.read("commits", commit_hash)
     if commit_data is None:
         raise HTTPException(status_code=404, detail="Commit not found")
 
     commit = deserialize_commit(commit_data)
-    flat = flatten_tree(store, commit.tree_hash)
-
     clean_path = path.strip("/")
-    if clean_path not in flat:
+    entry = resolve_entry(store, commit.tree_hash, clean_path)
+    if entry is None:
         raise HTTPException(status_code=404, detail=f"Path '{clean_path}' not found")
 
-    obj_type, obj_hash, _sidecar = flat[clean_path]
+    obj_type, obj_hash, _sidecar = entry
     if obj_type != "manifest":
         raise HTTPException(
             status_code=404,

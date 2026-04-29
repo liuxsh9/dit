@@ -11,7 +11,15 @@ from dit.core.objects import (
 )
 from dit.core.store import ObjectStore
 from dit.core.tree_builder import build_nested_tree
-from dit.core.stats import repo_stats, compare_stats
+from dit.core.stats import repo_stats, compare_stats, _clear_caches
+
+
+@pytest.fixture(autouse=True)
+def _reset_stats_caches():
+    """Clear row-size caches (including in-flight events) between tests."""
+    _clear_caches()
+    yield
+    _clear_caches()
 
 
 def _build_repo(tmp_path: Path) -> tuple[ObjectStore, str]:
@@ -143,7 +151,7 @@ class TestRepoStats:
         files_by_path = {f["path"]: f for f in result["files"]}
         eval_f = files_by_path["eval.jsonl"]
         assert eval_f["has_sidecar"] is False
-        assert eval_f["row_count"] is None
+        assert eval_f["row_count"] == 1
         assert eval_f["char_count"] is None
         assert eval_f["size_bytes"] == len(json.dumps({"instruction": "hi", "response": "hey"}).encode("utf-8"))
         assert eval_f["token_estimate"] is None
@@ -160,15 +168,23 @@ class TestRepoStats:
         result = repo_stats(store, commit_hash)
         assert result["totals"]["files_with_sidecar"] == 1
 
-    def test_totals_aggregate_only_sidecar_files(self, tmp_path: Path):
+    def test_totals_aggregate_rows_for_all_files_and_metadata_for_sidecar_files(self, tmp_path: Path):
         store, commit_hash = _build_repo(tmp_path)
         result = repo_stats(store, commit_hash)
         totals = result["totals"]
-        assert totals["row_count"] == 3
+        assert totals["row_count"] == 4
         assert totals["char_count"] == 120
         assert totals["size_bytes"] == sum(f["size_bytes"] for f in result["files"])
         assert totals["token_estimate"] == 30
         assert totals["lang_distribution"] == {"en": 3}
+
+    def test_totals_row_count_includes_files_without_sidecars(self, tmp_path: Path):
+        store, commit_hash = _build_repo(tmp_path)
+        result = repo_stats(store, commit_hash, include_size=False)
+
+        assert result["totals"]["row_count"] == 4
+        assert result["totals"]["files_with_sidecar"] == 1
+        assert result["totals"]["char_count"] == 120
 
     def test_path_prefix_filter(self, tmp_path: Path):
         store = ObjectStore(tmp_path / "objects")
@@ -191,6 +207,124 @@ class TestRepoStats:
         result = repo_stats(store, commit_hash, path_prefix="sub/")
         assert len(result["files"]) == 1
         assert result["files"][0]["path"] == "sub/a.jsonl"
+
+    def test_path_prefix_filter_respects_directory_boundaries(self, tmp_path: Path):
+        store = ObjectStore(tmp_path / "objects")
+
+        row = json.dumps({"x": "y"})
+        rh = store.write("rows", row.encode("utf-8"))
+        mh = store.write("manifests", serialize_manifest(Manifest(entries=[ManifestEntry(row_hash=rh, query_fingerprint=None)])))
+
+        tree_entries = {
+            "stress/a.jsonl": ("manifest", mh, None),
+            "stress-large/b.jsonl": ("manifest", mh, None),
+        }
+        tree_hash = build_nested_tree(store, tree_entries)
+        commit = Commit(tree_hash=tree_hash, parent_hashes=[], author="t", message="m", timestamp=int(time.time()))
+        commit_hash = store.write("commits", serialize_commit(commit))
+
+        result = repo_stats(store, commit_hash, path_prefix="stress")
+
+        assert [file["path"] for file in result["files"]] == ["stress/a.jsonl"]
+        assert result["files"][0]["row_count"] == 1
+
+    def test_can_skip_row_size_reads_for_fast_row_counts(self, tmp_path: Path, monkeypatch):
+        from dit.core import stats as stats_module
+
+        store = ObjectStore(tmp_path / "objects")
+
+        row = json.dumps({"x": "y"})
+        rh = store.write("rows", row.encode("utf-8"))
+        mh = store.write("manifests", serialize_manifest(Manifest(entries=[ManifestEntry(row_hash=rh, query_fingerprint=None)])))
+
+        tree_entries = {
+            "stress/a.jsonl": ("manifest", mh, None),
+        }
+        tree_hash = build_nested_tree(store, tree_entries)
+        commit = Commit(tree_hash=tree_hash, parent_hashes=[], author="t", message="m", timestamp=int(time.time()))
+        commit_hash = store.write("commits", serialize_commit(commit))
+
+        def fail_get_frame_info(_frame_header):
+            raise AssertionError("row size should not be read")
+
+        monkeypatch.setattr(stats_module.pyzstd, "get_frame_info", fail_get_frame_info)
+
+        result = stats_module.repo_stats(store, commit_hash, path_prefix="stress", include_size=False)
+
+        assert result["files"][0]["row_count"] == 1
+        assert result["files"][0]["size_bytes"] is None
+        assert result["totals"]["size_bytes"] is None
+
+    def test_row_size_cache_is_reused_across_prefix_stats(self, tmp_path: Path, monkeypatch):
+        from dit.core import stats as stats_module
+
+        store = ObjectStore(tmp_path / "objects")
+
+        row = json.dumps({"x": "y"})
+        rh = store.write("rows", row.encode("utf-8"))
+        mh = store.write("manifests", serialize_manifest(Manifest(entries=[ManifestEntry(row_hash=rh, query_fingerprint=None)])))
+
+        tree_entries = {
+            "stress/a.jsonl": ("manifest", mh, None),
+        }
+        tree_hash = build_nested_tree(store, tree_entries)
+        commit = Commit(tree_hash=tree_hash, parent_hashes=[], author="t", message="m", timestamp=int(time.time()))
+        commit_hash = store.write("commits", serialize_commit(commit))
+
+        original_get_frame_info = stats_module.pyzstd.get_frame_info
+        calls = []
+
+        def counting_get_frame_info(frame_header):
+            calls.append(frame_header)
+            return original_get_frame_info(frame_header)
+
+        monkeypatch.setattr(stats_module.pyzstd, "get_frame_info", counting_get_frame_info)
+
+        prefix_result = stats_module.repo_stats(store, commit_hash, path_prefix="stress")
+        full_result = stats_module.repo_stats(store, commit_hash)
+
+        assert prefix_result["files"][0]["size_bytes"] == len(row.encode("utf-8"))
+        assert full_result["files"][0]["size_bytes"] == len(row.encode("utf-8"))
+        assert len(calls) == 1
+
+    def test_concurrent_stats_share_in_flight_row_size_reads(self, tmp_path: Path, monkeypatch):
+        import threading
+        from concurrent.futures import ThreadPoolExecutor
+        from dit.core import stats as stats_module
+
+        store = ObjectStore(tmp_path / "objects")
+
+        row = json.dumps({"x": "y"})
+        rh = store.write("rows", row.encode("utf-8"))
+        mh = store.write("manifests", serialize_manifest(Manifest(entries=[ManifestEntry(row_hash=rh, query_fingerprint=None)])))
+
+        tree_entries = {
+            "stress/a.jsonl": ("manifest", mh, None),
+        }
+        tree_hash = build_nested_tree(store, tree_entries)
+        commit = Commit(tree_hash=tree_hash, parent_hashes=[], author="t", message="m", timestamp=int(time.time()))
+        commit_hash = store.write("commits", serialize_commit(commit))
+
+        original_get_frame_info = stats_module.pyzstd.get_frame_info
+        calls = []
+
+        def counting_get_frame_info(frame_header):
+            calls.append(frame_header)
+            time.sleep(0.05)
+            return original_get_frame_info(frame_header)
+
+        monkeypatch.setattr(stats_module.pyzstd, "get_frame_info", counting_get_frame_info)
+        barrier = threading.Barrier(2)
+
+        def run_stats():
+            barrier.wait()
+            return stats_module.repo_stats(store, commit_hash, path_prefix="stress")
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(lambda _: run_stats(), range(2)))
+
+        assert [result["files"][0]["size_bytes"] for result in results] == [len(row.encode("utf-8"))] * 2
+        assert len(calls) == 1
 
     def test_unknown_commit_raises(self, tmp_path: Path):
         store = ObjectStore(tmp_path / "objects")

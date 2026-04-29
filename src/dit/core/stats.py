@@ -2,16 +2,75 @@
 """Repo-level stats aggregated from sidecar objects."""
 from __future__ import annotations
 
+import pyzstd
+from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event, Lock
+
 from dit.core.objects import deserialize_commit, deserialize_manifest, deserialize_sidecar
 from dit.core.sidecar import sidecar_summary
 from dit.core.store import ObjectStore
 from dit.core.tree_walker import flatten_tree
+
+_ROW_SIZE_CACHE_MAX = 200_000
+_ROW_SIZE_CACHE: OrderedDict[tuple[str, str], int | None] = OrderedDict()
+_ROW_SIZE_IN_FLIGHT: dict[tuple[str, str], Event] = {}
+_ROW_SIZE_CACHE_LOCK = Lock()
+
+
+def _clear_caches() -> None:
+    """Reset all module-level caches. Intended for test teardown."""
+    with _ROW_SIZE_CACHE_LOCK:
+        _ROW_SIZE_CACHE.clear()
+        _ROW_SIZE_IN_FLIGHT.clear()
+
+
+def _cached_row_size_bytes(store: ObjectStore, row_hash: str) -> int | None:
+    cache_key = (str(store.root), row_hash)
+    should_read = False
+    with _ROW_SIZE_CACHE_LOCK:
+        if cache_key in _ROW_SIZE_CACHE:
+            value = _ROW_SIZE_CACHE.pop(cache_key)
+            _ROW_SIZE_CACHE[cache_key] = value
+            return value
+        in_flight = _ROW_SIZE_IN_FLIGHT.get(cache_key)
+        if in_flight is None:
+            in_flight = Event()
+            _ROW_SIZE_IN_FLIGHT[cache_key] = in_flight
+            should_read = True
+
+    if not should_read:
+        in_flight.wait()
+        with _ROW_SIZE_CACHE_LOCK:
+            return _ROW_SIZE_CACHE.get(cache_key)
+
+    value: int | None = None
+    path = store._object_path("rows", row_hash)
+    if not path.exists():
+        value = None
+    else:
+        try:
+            with path.open("rb") as row_file:
+                value = pyzstd.get_frame_info(row_file.read(16)).decompressed_size
+        except Exception:
+            row_data = store.read("rows", row_hash)
+            value = None if row_data is None else len(row_data)
+
+    with _ROW_SIZE_CACHE_LOCK:
+        _ROW_SIZE_CACHE[cache_key] = value
+        while len(_ROW_SIZE_CACHE) > _ROW_SIZE_CACHE_MAX:
+            _ROW_SIZE_CACHE.popitem(last=False)
+        in_flight = _ROW_SIZE_IN_FLIGHT.pop(cache_key, None)
+        if in_flight is not None:
+            in_flight.set()
+    return value
 
 
 def repo_stats(
     store: ObjectStore,
     commit_hash: str,
     path_prefix: str | None = None,
+    include_size: bool = True,
 ) -> dict:
     """Aggregate sidecar data for all manifest files in a commit.
 
@@ -41,8 +100,8 @@ def repo_stats(
     }
 
     Raises FileNotFoundError if commit_hash is not found in store.
-    Files without a sidecar are included with has_sidecar=False and numeric
-    fields set to None. Totals aggregate only files with has_sidecar=True.
+    Files without a sidecar are included with has_sidecar=False. Row totals come
+    from manifests, while char/token/language totals aggregate sidecars only.
     """
     commit_data = store.read("commits", commit_hash)
     if commit_data is None:
@@ -51,34 +110,53 @@ def repo_stats(
     commit = deserialize_commit(commit_data)
     flat = flatten_tree(store, commit.tree_hash)
 
-    clean_prefix = path_prefix.lstrip("/") if path_prefix else None
+    clean_prefix = path_prefix.strip("/") if path_prefix else None
 
-    def _manifest_size_bytes(manifest_hash: str) -> int | None:
-        manifest_data = store.read("manifests", manifest_hash)
-        if manifest_data is None:
-            return None
-        manifest = deserialize_manifest(manifest_data)
-        total = 0
-        for entry in manifest.entries:
-            row_data = store.read("rows", entry.row_hash)
-            if row_data is None:
-                return None
-            total += len(row_data)
-        return total
+    def _matches_path_prefix(path: str) -> bool:
+        if clean_prefix is None:
+            return True
+        return path == clean_prefix or path.startswith(f"{clean_prefix}/")
 
-    files: list[dict] = []
+    selected_manifests = []
+    row_hashes = set()
     for path, (obj_type, obj_hash, sidecar_hash) in sorted(flat.items()):
         if obj_type != "manifest":
             continue
-        if clean_prefix is not None and not path.startswith(clean_prefix):
+        if not _matches_path_prefix(path):
             continue
+        manifest_data = store.read("manifests", obj_hash)
+        manifest = deserialize_manifest(manifest_data) if manifest_data is not None else None
+        if manifest is not None:
+            row_hashes.update(entry.row_hash for entry in manifest.entries)
+        selected_manifests.append((path, obj_hash, sidecar_hash, manifest))
 
-        size_bytes = _manifest_size_bytes(obj_hash)
+    if include_size:
+        with ThreadPoolExecutor(max_workers=64) as executor:
+            row_size_by_hash = dict(zip(
+                row_hashes,
+                executor.map(lambda row_hash: _cached_row_size_bytes(store, row_hash), row_hashes),
+            ))
+    else:
+        row_size_by_hash = {}
+
+    def _manifest_shape(manifest) -> tuple[int | None, int | None]:
+        if manifest is None:
+            return None, None
+        if not include_size:
+            return len(manifest.entries), None
+        row_sizes = [row_size_by_hash.get(entry.row_hash) for entry in manifest.entries]
+        if any(row_size is None for row_size in row_sizes):
+            return len(manifest.entries), None
+        return len(manifest.entries), sum(row_sizes)
+
+    files: list[dict] = []
+    for path, _obj_hash, sidecar_hash, manifest in selected_manifests:
+        manifest_row_count, size_bytes = _manifest_shape(manifest)
 
         if sidecar_hash is None:
             files.append({
                 "path": path,
-                "row_count": None,
+                "row_count": manifest_row_count,
                 "char_count": None,
                 "size_bytes": size_bytes,
                 "token_estimate": None,
@@ -92,7 +170,7 @@ def repo_stats(
         if sc_data is None:
             files.append({
                 "path": path,
-                "row_count": None,
+                "row_count": manifest_row_count,
                 "char_count": None,
                 "size_bytes": size_bytes,
                 "token_estimate": None,
@@ -115,19 +193,21 @@ def repo_stats(
             "has_sidecar": True,
         })
 
-    # Compute totals over files with sidecars only
+    # Row counts come from manifests and are available before exact byte sizes or
+    # sidecar summaries. Heavier char/token/language totals still require sidecars.
     with_sidecar = [f for f in files if f["has_sidecar"]]
     total_lang: dict[str, int] = {}
     for f in with_sidecar:
         for lang, count in (f["lang_distribution"] or {}).items():
             total_lang[lang] = total_lang.get(lang, 0) + count
+    total_rows = sum(f["row_count"] for f in files if f["row_count"] is not None)
 
     totals: dict = {
         "file_count": len(files),
         "files_with_sidecar": len(with_sidecar),
-        "row_count": sum(f["row_count"] for f in with_sidecar) if with_sidecar else None,
+        "row_count": total_rows,
         "char_count": sum(f["char_count"] for f in with_sidecar) if with_sidecar else None,
-        "size_bytes": sum(f["size_bytes"] for f in files if f["size_bytes"] is not None),
+        "size_bytes": sum(f["size_bytes"] for f in files if f["size_bytes"] is not None) if include_size else None,
         "token_estimate": sum(f["token_estimate"] for f in with_sidecar) if with_sidecar else None,
         "lang_distribution": total_lang if with_sidecar else {},
     }

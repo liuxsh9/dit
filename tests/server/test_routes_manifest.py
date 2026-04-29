@@ -86,3 +86,21 @@ class TestManifestRoute:
             f"/api/v1/repos/manifest-repo/manifest/{commit_hash}/train"
         )
         assert resp.status_code == 404
+
+    async def test_manifest_resolves_exact_path_without_flattening_whole_tree(self, client, tmp_path, monkeypatch):
+        store, commit_hash, m_hash, entries = await _setup_manifest_repo(client, tmp_path, n_rows=2)
+
+        def fail_flatten_tree(*_args, **_kwargs):
+            raise AssertionError("manifest lookup should not flatten the whole tree")
+
+        monkeypatch.setattr("dit.core.tree_walker.flatten_tree", fail_flatten_tree)
+
+        resp = await client.get(
+            f"/api/v1/repos/manifest-repo/manifest/{commit_hash}/train/data.jsonl"
+            "?offset=0&limit=50"
+        )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 2
+        assert len(data["entries"]) == 2

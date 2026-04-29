@@ -2,6 +2,7 @@
 """Repo-level stats endpoint: GET /{repo}/stats/{commit_hash}"""
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Optional
 
@@ -26,6 +27,7 @@ async def repo_stats_endpoint(
     commit_hash: str,
     request: Request,
     path: Optional[str] = Query(default=None, description="Filter to file/directory prefix"),
+    include_size: bool = Query(default=True, description="Include exact row byte sizes"),
     session: AsyncSession = Depends(get_session),
     _token=Depends(require_permission("read")),
 ):
@@ -36,7 +38,7 @@ async def repo_stats_endpoint(
     store = _store_for_repo(request, repo)
 
     try:
-        result = repo_stats(store, commit_hash, path_prefix=path)
+        result = await asyncio.to_thread(repo_stats, store, commit_hash, path_prefix=path, include_size=include_size)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 
