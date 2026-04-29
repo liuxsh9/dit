@@ -80,3 +80,54 @@ class TestObjectStore:
         # Valid 64-char lowercase hex — should not raise (returns None for missing)
         result = store.read("rows", "ab" * 32)
         assert result is None
+
+
+class TestWriteBatch:
+    def test_write_batch_basic(self, tmp_repo: Path):
+        """Write 10 objects via write_batch, verify all are readable."""
+        store = ObjectStore(tmp_repo / ".dit" / "objects")
+        items = [f"object-{i}".encode() for i in range(10)]
+        hashes = store.write_batch("rows", items)
+        assert len(hashes) == 10
+        for i, h in enumerate(hashes):
+            assert len(h) == 64
+            assert store.read("rows", h) == items[i]
+
+    def test_write_batch_idempotent(self, tmp_repo: Path):
+        """Writing the same batch twice should succeed without error."""
+        store = ObjectStore(tmp_repo / ".dit" / "objects")
+        items = [b"alpha", b"beta", b"gamma"]
+        h1 = store.write_batch("rows", items)
+        h2 = store.write_batch("rows", items)
+        assert h1 == h2
+
+    def test_write_batch_empty(self, tmp_repo: Path):
+        """Writing an empty list returns an empty list."""
+        store = ObjectStore(tmp_repo / ".dit" / "objects")
+        result = store.write_batch("rows", [])
+        assert result == []
+
+    def test_write_batch_dedup(self, tmp_repo: Path):
+        """A batch with duplicate items returns a hash for each input."""
+        store = ObjectStore(tmp_repo / ".dit" / "objects")
+        items = [b"same", b"same", b"different", b"same"]
+        hashes = store.write_batch("rows", items)
+        assert len(hashes) == 4
+        assert hashes[0] == hashes[1] == hashes[3]
+        assert hashes[2] != hashes[0]
+        # All readable
+        assert store.read("rows", hashes[0]) == b"same"
+        assert store.read("rows", hashes[2]) == b"different"
+
+    def test_write_batch_matches_write(self, tmp_repo: Path):
+        """write_batch produces the same result as individual write calls."""
+        store = ObjectStore(tmp_repo / ".dit" / "objects")
+        items = [b"one", b"two", b"three"]
+        # Write individually
+        individual_hashes = [store.write("rows", d) for d in items]
+        # Write as batch (to a different type to avoid hitting cache)
+        batch_hashes = store.write_batch("manifests", items)
+        assert individual_hashes == batch_hashes
+        # Cross-check: data is identical
+        for h in batch_hashes:
+            assert store.read("manifests", h) == store.read("rows", h)

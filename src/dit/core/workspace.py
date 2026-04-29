@@ -60,15 +60,33 @@ def build_manifest_for_file(path: Path) -> tuple[Manifest, dict[str, bytes]]:
 def build_manifest_for_file_streaming(path: Path, store: ObjectStore) -> Manifest:
     """Build a Manifest for a JSONL file, streaming rows directly to the store.
 
-    Unlike build_manifest_for_file, this does not accumulate row data in memory.
+    Unlike build_manifest_for_file, this does not accumulate all row data in
+    memory.  Rows are written to the store in batches for efficiency.
     """
-    entries = []
+    BATCH_SIZE = 1000
+
+    entries: list[ManifestEntry] = []
+    row_buffer: list[bytes] = []
+    qfp_buffer: list[str | None] = []
+
+    def _flush() -> None:
+        hashes = store.write_batch("rows", row_buffer)
+        for rh, qfp in zip(hashes, qfp_buffer):
+            entries.append(ManifestEntry(row_hash=rh, query_fingerprint=qfp))
+        row_buffer.clear()
+        qfp_buffer.clear()
+
     for row in read_rows(path):
         canon = canonical_json(row)
-        rh = row_hash(row)
         qfp = query_fingerprint(row)
-        store.write("rows", canon)
-        entries.append(ManifestEntry(row_hash=rh, query_fingerprint=qfp))
+        row_buffer.append(canon)
+        qfp_buffer.append(qfp)
+        if len(row_buffer) >= BATCH_SIZE:
+            _flush()
+
+    if row_buffer:
+        _flush()
+
     return Manifest(entries=entries)
 
 

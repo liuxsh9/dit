@@ -305,3 +305,37 @@ class TestDangerousStateTransitions:
         c1 = deserialize_commit(store.read("commits", c2.parent_hashes[0]))
         assert c1.message == "first"
         assert c1.parent_hashes == []
+
+
+# ── Batch write integration ────────────────────────────────────────
+
+
+class TestBatchWriteIntegration:
+    """Verify that batch writing (used internally by add) stores all rows."""
+
+    def test_add_large_file_uses_batch(self, repo: Path):
+        """Add a file with 100 rows, verify all rows stored correctly."""
+        n = 100
+        lines = [_make_row(f"batch-row-{i}") + "\n" for i in range(n)]
+        (repo / "batch.jsonl").write_text("".join(lines))
+        r = runner.invoke(app, ["add", "batch.jsonl"], catch_exceptions=False)
+        assert r.exit_code == 0
+        assert f"{n} rows" in r.output
+
+        r = runner.invoke(app, ["commit", "-m", "batch test"], catch_exceptions=False)
+        assert r.exit_code == 0
+        assert _commit_row_count(repo) == n
+
+        # Verify every row is individually readable from the store
+        dot = repo / ".dit"
+        store = ObjectStore(dot / "objects")
+        from dit.core.refs import RefStore
+        head = RefStore(dot).resolve_head()
+        commit = deserialize_commit(store.read("commits", head))
+        flat = flatten_tree(store, commit.tree_hash)
+        for _, (obj_type, obj_hash, _) in flat.items():
+            if obj_type == "manifest":
+                m = deserialize_manifest(store.read("manifests", obj_hash))
+                for entry in m.entries:
+                    data = store.read("rows", entry.row_hash)
+                    assert data is not None, f"Row {entry.row_hash} missing from store"
