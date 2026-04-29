@@ -33,6 +33,7 @@ RUN chmod +x /usr/local/bin/dit-docker-entrypoint
 ENV PATH="/app/.venv/bin:$PATH" \
     DIT_SERVER_HOST=0.0.0.0 \
     DIT_SERVER_PORT=8000 \
+    DIT_SERVER_WORKERS=2 \
     DIT_SERVER_DATA_DIR=/data/dit \
     DIT_SERVER_AUTO_MIGRATE=1
 
@@ -46,4 +47,4 @@ HEALTHCHECK --interval=5s --timeout=3s --retries=3 --start-period=10s \
   CMD sh -c 'curl -f "http://localhost:${DIT_SERVER_PORT:-8000}/health" || exit 1'
 
 ENTRYPOINT ["dit-docker-entrypoint"]
-CMD ["sh", "-c", "exec uvicorn dit.server.app:app --host \"${DIT_SERVER_HOST:-0.0.0.0}\" --port \"${DIT_SERVER_PORT:-8000}\""]
+CMD ["sh", "-c", "exec gunicorn dit.server.app:app -k uvicorn.workers.UvicornWorker --bind \"${DIT_SERVER_HOST:-0.0.0.0}:${DIT_SERVER_PORT:-8000}\" --workers \"${DIT_SERVER_WORKERS:-2}\" --timeout 120 --access-logfile -"]
