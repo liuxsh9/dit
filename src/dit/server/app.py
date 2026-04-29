@@ -44,6 +44,17 @@ def create_app(settings: ServerSettings | None = None) -> FastAPI:
     from dit.server.middleware.logging import LoggingMiddleware
     application.add_middleware(LoggingMiddleware)
 
+    if settings.rate_limit:
+        from dit.server.middleware.rate_limit import create_limiter
+        from slowapi import _rate_limit_exceeded_handler
+        from slowapi.errors import RateLimitExceeded
+        from slowapi.middleware import SlowAPIMiddleware
+
+        limiter = create_limiter(settings.rate_limit)
+        application.state.limiter = limiter
+        application.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+        application.add_middleware(SlowAPIMiddleware)
+
     @application.get("/health")
     async def health():
         import time as _time

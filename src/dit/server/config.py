@@ -9,6 +9,7 @@ class ServerSettings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
     service_token: str = ""
+    rate_limit: str = ""
 
     model_config = SettingsConfigDict(env_prefix="DIT_SERVER_")
 

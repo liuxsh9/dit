@@ -25,6 +25,7 @@ server = [
     "alembic>=1.14",
     "prometheus-client>=0.21",
     "gunicorn>=22.0",
+    "slowapi>=0.1.9",
 ]
 
 [build-system]
