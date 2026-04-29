@@ -176,22 +176,30 @@ def add(paths: list[str] = typer.Argument(..., help="Files or directories to sta
         stat_cache = StatCache(dot / "stat-cache")
         for fp in jsonl_files:
             try:
+                rel = str(fp.relative_to(repo_root))
+            except ValueError:
+                typer.echo(f"fatal: '{fp}' is outside the repository", err=True)
+                raise typer.Exit(1)
+            try:
                 manifest = build_manifest_for_file_streaming(fp, store)
             except ValueError as exc:
                 typer.echo(f"error: {exc}", err=True)
                 raise typer.Exit(1)
             manifest_bytes = serialize_manifest(manifest)
             manifest_hash = store.write("manifests", manifest_bytes)
-            rel = str(fp.relative_to(repo_root))
             index.stage(rel, manifest_hash, obj_type="manifest")
             stat_cache.update(rel, fp, manifest_hash)
             typer.echo(f"  staged {rel} ({len(manifest.entries)} rows)")
 
         for fp in blob_files:
+            try:
+                rel = str(fp.relative_to(repo_root))
+            except ValueError:
+                typer.echo(f"fatal: '{fp}' is outside the repository", err=True)
+                raise typer.Exit(1)
             content = build_blob_for_file(fp)
             blob_bytes = serialize_blob(content)
             blob_hash = store.write("blobs", blob_bytes)
-            rel = str(fp.relative_to(repo_root))
             index.stage(rel, blob_hash, obj_type="blob")
             typer.echo(f"  staged {rel} (blob)")
 
@@ -932,13 +940,12 @@ def merge(
         if sc is not None:
             sidecar_lookup[path] = sc
 
-    merged_tree_entries = [
-        TreeEntry(name=name, obj_type="manifest", obj_hash=mhash, sidecar_hash=sidecar_lookup.get(name))
+    from dit.core.tree_builder import build_nested_tree
+    staged_for_tree: dict[str, tuple[str, str, str | None]] = {
+        name: ("manifest", mhash, sidecar_lookup.get(name))
         for name, mhash in merge_result.merged_tree_entries.items()
-    ]
-    tree = Tree(entries=merged_tree_entries)
-    tree_bytes = serialize_tree(tree)
-    tree_hash = store.write("trees", tree_bytes)
+    }
+    tree_hash = build_nested_tree(store, staged_for_tree)
 
     merge_msg = message or f"Merge branch '{source}' into {current_branch}"
     c = Commit(
@@ -2103,6 +2110,10 @@ def pull(
     dot = get_dot(repo_root)
     store = ObjectStore(dot / "objects")
     refs = RefStore(dot)
+
+    if _has_uncommitted_changes(repo_root, dot, store, refs):
+        typer.echo("error: You have uncommitted changes. Commit or reset them before pulling.", err=True)
+        raise typer.Exit(1)
 
     rc = _build_remote_client(dot, remote)
     with remote_error_boundary("pull"):

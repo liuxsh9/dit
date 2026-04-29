@@ -13,6 +13,7 @@ from dit.core.objects import (
     serialize_manifest,
 )
 from dit.core.store import ObjectStore
+from dit.core.tree_walker import flatten_tree
 
 
 @dataclass
@@ -33,9 +34,8 @@ class MergeResult:
 def _load_tree_manifests(store: ObjectStore, commit_hash: str) -> dict[str, str]:
     commit_data = store.read("commits", commit_hash)
     commit = deserialize_commit(commit_data)
-    tree_data = store.read("trees", commit.tree_hash)
-    tree = deserialize_tree(tree_data)
-    return {e.name: e.obj_hash for e in tree.entries if e.obj_type == "manifest"}
+    flat = flatten_tree(store, commit.tree_hash)
+    return {path: obj_hash for path, (obj_type, obj_hash, _) in flat.items() if obj_type == "manifest"}
 
 
 def three_way_merge(
