@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from dit.cli.main import app
+from dit.cli.main import app, _remote_parts_from_url
 from dit.core.config import set_remote
 
 runner = CliRunner()
@@ -208,3 +208,14 @@ def test_clone_sets_up_remote_config(server_app, tmp_path: Path, monkeypatch) ->
     cfg = get_remote(clone_dir / ".dit", "origin")
     assert cfg is not None
     assert "dataset" in cfg["url"]
+
+
+def test_clone_parses_forgejo_datahub_gateway_url() -> None:
+    assert _remote_parts_from_url("http://testserver/e2e/sft-data/datahub") == (
+        "http://testserver",
+        "e2e/sft-data/datahub",
+    )
+    assert _remote_parts_from_url("http://testserver/dataset") == (
+        "http://testserver",
+        "dataset",
+    )

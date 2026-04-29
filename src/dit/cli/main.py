@@ -1477,18 +1477,22 @@ def _build_remote_client(dot: Path, remote_name: str = "origin") -> "RemoteClien
     url: str = cfg["url"]
     token: str = cfg.get("token", "")
 
-    from urllib.parse import urlparse
-    parsed = urlparse(url)
-    path_parts = parsed.path.strip("/").split("/")
-
-    if len(path_parts) >= 2:
-        base_url = f"{parsed.scheme}://{parsed.netloc}"
-        repo_name = "/".join(path_parts)
-    else:
-        base_url = f"{parsed.scheme}://{parsed.netloc}"
-        repo_name = path_parts[0] if path_parts else url
+    base_url, repo_name = _remote_parts_from_url(url)
 
     return RemoteClient(base_url=base_url, token=token, repo=repo_name)
+
+
+def _remote_parts_from_url(url: str) -> tuple[str, str]:
+    from urllib.parse import urlparse
+
+    clean_url = url.rstrip("/")
+    parsed = urlparse(clean_url)
+    path_parts = [part for part in parsed.path.strip("/").split("/") if part]
+    if len(path_parts) >= 2:
+        return f"{parsed.scheme}://{parsed.netloc}", "/".join(path_parts)
+    if len(path_parts) == 1:
+        return f"{parsed.scheme}://{parsed.netloc}", path_parts[0]
+    return clean_url.rsplit("/", 1)[0], clean_url.rsplit("/", 1)[-1]
 
 
 @app.command()
@@ -1631,9 +1635,7 @@ def clone(
     from dit.core.workspace import materialize_file
     from dit.core.objects import deserialize_commit, deserialize_tree, deserialize_manifest
 
-    clean_url = url.rstrip("/")
-    repo_name = clean_url.rsplit("/", 1)[-1]
-    base_url = clean_url.rsplit("/", 1)[0]
+    base_url, repo_name = _remote_parts_from_url(url)
 
     dest_dir = Path(dest) if dest else Path.cwd() / repo_name
     if dest_dir.exists() and any(dest_dir.iterdir()):
