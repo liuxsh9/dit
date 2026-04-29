@@ -86,7 +86,17 @@ def _verify_graph(store: ObjectStore, ref_hashes: list[str], result: FsckResult)
             return
         visited_commits.add(commit_hash)
 
-        data = store.read("commits", commit_hash)
+        try:
+            data = store.read("commits", commit_hash)
+        except Exception:
+            result.errors.append(FsckIssue(
+                severity="error",
+                obj_type="commits",
+                obj_hash=commit_hash,
+                message="corrupt commit object: decompression failed",
+            ))
+            result.total_errors += 1
+            return
         if data is None:
             result.errors.append(FsckIssue(
                 severity="error",
@@ -109,7 +119,17 @@ def _verify_graph(store: ObjectStore, ref_hashes: list[str], result: FsckResult)
             return
         visited_trees.add(tree_hash)
 
-        data = store.read("trees", tree_hash)
+        try:
+            data = store.read("trees", tree_hash)
+        except Exception:
+            result.errors.append(FsckIssue(
+                severity="error",
+                obj_type="trees",
+                obj_hash=tree_hash,
+                message="corrupt tree object: decompression failed",
+            ))
+            result.total_errors += 1
+            return
         if data is None:
             result.errors.append(FsckIssue(
                 severity="error",
@@ -127,7 +147,18 @@ def _verify_graph(store: ObjectStore, ref_hashes: list[str], result: FsckResult)
             elif entry.obj_type == "manifest":
                 _check_manifest(entry.obj_hash)
             elif entry.obj_type == "blob":
-                if store.read("blobs", entry.obj_hash) is None:
+                try:
+                    blob_data = store.read("blobs", entry.obj_hash)
+                except Exception:
+                    result.errors.append(FsckIssue(
+                        severity="error",
+                        obj_type="blobs",
+                        obj_hash=entry.obj_hash,
+                        message="corrupt blob object: decompression failed",
+                    ))
+                    result.total_errors += 1
+                    blob_data = b""  # sentinel to skip missing check
+                if blob_data is None:
                     result.errors.append(FsckIssue(
                         severity="error",
                         obj_type="blobs",
@@ -137,7 +168,18 @@ def _verify_graph(store: ObjectStore, ref_hashes: list[str], result: FsckResult)
                     result.total_errors += 1
 
             if entry.sidecar_hash:
-                if store.read("sidecars", entry.sidecar_hash) is None:
+                try:
+                    sidecar_data = store.read("sidecars", entry.sidecar_hash)
+                except Exception:
+                    result.errors.append(FsckIssue(
+                        severity="error",
+                        obj_type="sidecars",
+                        obj_hash=entry.sidecar_hash,
+                        message="corrupt sidecar object: decompression failed",
+                    ))
+                    result.total_errors += 1
+                    sidecar_data = b""  # sentinel to skip missing check
+                if sidecar_data is None:
                     result.errors.append(FsckIssue(
                         severity="error",
                         obj_type="sidecars",
@@ -151,7 +193,17 @@ def _verify_graph(store: ObjectStore, ref_hashes: list[str], result: FsckResult)
             return
         visited_manifests.add(manifest_hash)
 
-        data = store.read("manifests", manifest_hash)
+        try:
+            data = store.read("manifests", manifest_hash)
+        except Exception:
+            result.errors.append(FsckIssue(
+                severity="error",
+                obj_type="manifests",
+                obj_hash=manifest_hash,
+                message="corrupt manifest object: decompression failed",
+            ))
+            result.total_errors += 1
+            return
         if data is None:
             result.errors.append(FsckIssue(
                 severity="error",
