@@ -128,12 +128,15 @@ def add(paths: list[str] = typer.Argument(..., help="Files or directories to sta
     """Stage JSONL and other files for the next commit."""
     from dit.core.workspace import find_all_files, build_blob_for_file
     from dit.core.objects import serialize_blob
+    from dit.core.sparse import load_sparse_paths
 
     repo_root = find_repo_root()
     dot = get_dot(repo_root)
     store = ObjectStore(dot / "objects")
     index = StagingIndex(dot / "index")
     refs = RefStore(dot)
+
+    sparse_paths = load_sparse_paths(dot)
 
     tracked_paths: set[str] = set()
     head_hash = refs.resolve_head()
@@ -157,6 +160,13 @@ def add(paths: list[str] = typer.Argument(..., help="Files or directories to sta
             if rel_path is not None:
                 rel_path = str(Path(rel_path))
             if rel_path and rel_path in tracked_paths:
+                if sparse_paths is not None:
+                    typer.echo(
+                        f"error: '{rel_path}' is not checked out.\n"
+                        f"  Use 'dit sparse-checkout add {rel_path}' to fetch it first.",
+                        err=True,
+                    )
+                    raise typer.Exit(1)
                 index.stage_delete(rel_path)
                 typer.echo(f"  staged deletion {rel_path}")
                 continue
@@ -189,10 +199,14 @@ def add(paths: list[str] = typer.Argument(..., help="Files or directories to sta
 @app.command()
 def diff():
     """Show changes between working directory and HEAD."""
+    from dit.core.sparse import load_sparse_paths, is_in_sparse_set
+
     repo_root = find_repo_root()
     dot = get_dot(repo_root)
     store = ObjectStore(dot / "objects")
     refs = RefStore(dot)
+
+    sparse_paths = load_sparse_paths(dot)
 
     stat_cache = StatCache(dot / "stat-cache")
     current_files: dict[str, Manifest] = {}
@@ -212,6 +226,8 @@ def diff():
         flat = flatten_tree(store, head_commit.tree_hash)
         for path, (obj_type, obj_hash, _sidecar) in flat.items():
             if obj_type == "manifest":
+                if sparse_paths is not None and not is_in_sparse_set(path, sparse_paths):
+                    continue
                 m_data = store.read("manifests", obj_hash)
                 if m_data:
                     head_files[path] = deserialize_manifest(m_data)
@@ -352,6 +368,8 @@ def log(
 @app.command()
 def status():
     """Show working directory status."""
+    from dit.core.sparse import load_sparse_paths, is_in_sparse_set
+
     repo_root = find_repo_root()
     dot = get_dot(repo_root)
     store = ObjectStore(dot / "objects")
@@ -359,7 +377,18 @@ def status():
     refs = RefStore(dot)
 
     branch = refs.current_branch() or "HEAD"
-    typer.echo(f"On branch {branch}")
+    sparse_paths = load_sparse_paths(dot)
+    if sparse_paths is not None:
+        total_files = 0
+        head_hash_tmp = refs.resolve_head()
+        if head_hash_tmp:
+            from dit.core.tree_walker import flatten_tree as ft
+            cd = store.read("commits", head_hash_tmp)
+            hc = deserialize_commit(cd)
+            total_files = len(ft(store, hc.tree_hash))
+        typer.echo(f"On branch {branch} (sparse checkout: {len(sparse_paths)}/{total_files} files)")
+    else:
+        typer.echo(f"On branch {branch}")
 
     staged = index.entries()
     staged_typed = index.entries_typed()
@@ -381,6 +410,9 @@ def status():
     current_files = find_jsonl_files(repo_root)
     current_rels = {str(f.relative_to(repo_root)) for f in current_files}
     head_rels = set(head_manifests.keys())
+
+    if sparse_paths is not None:
+        head_rels = {r for r in head_rels if is_in_sparse_set(r, sparse_paths)}
 
     stat_cache = StatCache(dot / "stat-cache")
     modified = []
@@ -499,6 +531,7 @@ def tag(
 
 def _has_uncommitted_changes(repo_root: Path, dot: Path, store: ObjectStore, refs: RefStore) -> bool:
     from dit.core.tree_walker import flatten_tree
+    from dit.core.sparse import is_sparse, load_sparse_paths, is_in_sparse_set
 
     head_hash = refs.resolve_head()
     if head_hash is None:
@@ -513,9 +546,14 @@ def _has_uncommitted_changes(repo_root: Path, dot: Path, store: ObjectStore, ref
         if obj_type == "manifest"
     }
 
+    sparse_paths = load_sparse_paths(dot) if is_sparse(dot) else None
+
     current_files = find_jsonl_files(repo_root)
     current_rels = {str(f.relative_to(repo_root)) for f in current_files}
     head_rels = set(head_manifests.keys())
+
+    if sparse_paths is not None:
+        head_rels = {r for r in head_rels if is_in_sparse_set(r, sparse_paths)}
 
     if current_rels != head_rels:
         return True
@@ -538,14 +576,19 @@ def _has_uncommitted_changes(repo_root: Path, dot: Path, store: ObjectStore, ref
     return False
 
 
-def _materialize_tree(repo_root: Path, store: ObjectStore, tree_hash: str, old_tree_hash: str | None = None):
+def _materialize_tree(repo_root: Path, store: ObjectStore, tree_hash: str, old_tree_hash: str | None = None, sparse_paths: set[str] | None = None):
     """Materialize working directory from tree, optimizing by skipping unchanged files."""
     from dit.core.workspace import materialize_file
     from dit.core.tree_walker import flatten_tree
+    from dit.core.sparse import is_in_sparse_set
 
     new_flat = flatten_tree(store, tree_hash)
     new_manifests = {path: obj_hash for path, (obj_type, obj_hash, _sc) in new_flat.items() if obj_type == "manifest"}
     new_blobs = {path: obj_hash for path, (obj_type, obj_hash, _sc) in new_flat.items() if obj_type == "blob"}
+
+    if sparse_paths is not None:
+        new_manifests = {p: h for p, h in new_manifests.items() if is_in_sparse_set(p, sparse_paths)}
+        new_blobs = {p: h for p, h in new_blobs.items() if is_in_sparse_set(p, sparse_paths)}
 
     old_manifests: dict[str, str] = {}
     old_blobs: dict[str, str] = {}
@@ -624,7 +667,9 @@ def checkout(
     target_commit = deserialize_commit(store.read("commits", target_hash))
 
     old_tree_hash = current_commit.tree_hash if current_commit else None
-    _materialize_tree(repo_root, store, target_commit.tree_hash, old_tree_hash)
+    from dit.core.sparse import is_sparse, load_sparse_paths
+    sp = load_sparse_paths(dot) if is_sparse(dot) else None
+    _materialize_tree(repo_root, store, target_commit.tree_hash, old_tree_hash, sparse_paths=sp)
 
     refs.head_file.write_text(f"ref:{target}\n")
     typer.echo(f"Switched to branch '{target}'.")
@@ -702,7 +747,9 @@ def switch(
     target_commit = deserialize_commit(store.read("commits", target_hash))
 
     old_tree_hash = current_commit.tree_hash if current_commit else None
-    _materialize_tree(repo_root, store, target_commit.tree_hash, old_tree_hash)
+    from dit.core.sparse import is_sparse, load_sparse_paths
+    sp = load_sparse_paths(dot) if is_sparse(dot) else None
+    _materialize_tree(repo_root, store, target_commit.tree_hash, old_tree_hash, sparse_paths=sp)
 
     refs.head_file.write_text(f"ref:{target}\n")
     typer.echo(f"Switched to branch '{target}'.")
@@ -1218,6 +1265,204 @@ def auth_login(
 meta_app = typer.Typer(name="meta", help="Manage sidecar metadata.")
 app.add_typer(meta_app)
 
+sparse_app = typer.Typer(name="sparse-checkout", help="Manage sparse checkout configuration.")
+app.add_typer(sparse_app)
+
+
+@sparse_app.command("add")
+def sparse_checkout_add(
+    paths: list[str] = typer.Argument(..., help="File or directory paths to fetch"),
+):
+    """Fetch specific files from remote into the working directory."""
+    from dit.core.sparse import is_sparse, load_sparse_paths, save_sparse_paths, is_in_sparse_set
+    from dit.core.tree_walker import flatten_tree
+    from dit.core.workspace import materialize_file
+    from dit.core.remote import RemoteClient
+
+    repo_root = find_repo_root()
+    dot = get_dot(repo_root)
+    store = ObjectStore(dot / "objects")
+    refs = RefStore(dot)
+
+    if not is_sparse(dot):
+        typer.echo("error: not a sparse checkout repository", err=True)
+        raise typer.Exit(1)
+
+    head_hash = refs.resolve_head()
+    if head_hash is None:
+        typer.echo("fatal: no commits yet", err=True)
+        raise typer.Exit(1)
+
+    commit_data = store.read("commits", head_hash)
+    head_commit = deserialize_commit(commit_data)
+    flat = flatten_tree(store, head_commit.tree_hash)
+
+    rc = _build_remote_client(dot, "origin")
+    sparse_paths = load_sparse_paths(dot) or set()
+
+    for path_str in paths:
+        is_dir = path_str.endswith("/")
+        matched = {}
+        for fpath, (obj_type, obj_hash, sc_hash) in flat.items():
+            if obj_type != "manifest":
+                continue
+            if is_dir and fpath.startswith(path_str):
+                matched[fpath] = obj_hash
+            elif fpath == path_str:
+                matched[fpath] = obj_hash
+
+        if not matched:
+            typer.echo(f"error: '{path_str}' not found in tree", err=True)
+            raise typer.Exit(1)
+
+        for fpath, manifest_hash in matched.items():
+            if not store.exists("manifests", manifest_hash):
+                with remote_error_boundary("sparse-checkout add"):
+                    m_data = rc.download_object("manifests", manifest_hash)
+                if m_data:
+                    store.write("manifests", m_data)
+
+            m_data = store.read("manifests", manifest_hash)
+            if m_data is None:
+                typer.echo(f"error: manifest for '{fpath}' not available", err=True)
+                raise typer.Exit(1)
+            manifest = deserialize_manifest(m_data)
+
+            for entry in manifest.entries:
+                if not store.exists("rows", entry.row_hash):
+                    with remote_error_boundary("sparse-checkout add"):
+                        row_data = rc.download_object("rows", entry.row_hash)
+                    if row_data:
+                        store.write("rows", row_data)
+
+            materialize_file(repo_root, fpath, manifest, store)
+            typer.echo(f"  fetched {fpath} ({len(manifest.entries)} rows)")
+
+        sparse_paths.add(path_str)
+
+    save_sparse_paths(dot, sparse_paths)
+
+
+@sparse_app.command("remove")
+def sparse_checkout_remove(
+    paths: list[str] = typer.Argument(..., help="Paths to remove from sparse set"),
+):
+    """Remove files from sparse checkout (deletes working copy, keeps objects)."""
+    from dit.core.sparse import is_sparse, load_sparse_paths, save_sparse_paths, is_in_sparse_set
+    from dit.core.tree_walker import flatten_tree
+
+    repo_root = find_repo_root()
+    dot = get_dot(repo_root)
+    store = ObjectStore(dot / "objects")
+    refs = RefStore(dot)
+
+    if not is_sparse(dot):
+        typer.echo("error: not a sparse checkout repository", err=True)
+        raise typer.Exit(1)
+
+    sparse_paths = load_sparse_paths(dot) or set()
+
+    head_hash = refs.resolve_head()
+    head_commit = deserialize_commit(store.read("commits", head_hash))
+    flat = flatten_tree(store, head_commit.tree_hash)
+
+    for path_str in paths:
+        sparse_paths.discard(path_str)
+        for fpath in flat:
+            if fpath == path_str or (path_str.endswith("/") and fpath.startswith(path_str)):
+                fp = repo_root / fpath
+                if fp.exists():
+                    fp.unlink()
+                    typer.echo(f"  removed {fpath}")
+
+    save_sparse_paths(dot, sparse_paths)
+
+
+@sparse_app.command("list")
+def sparse_checkout_list():
+    """List all files in tree with fetch status."""
+    from dit.core.sparse import is_sparse, load_sparse_paths, is_in_sparse_set
+    from dit.core.tree_walker import flatten_tree
+
+    repo_root = find_repo_root()
+    dot = get_dot(repo_root)
+    store = ObjectStore(dot / "objects")
+    refs = RefStore(dot)
+
+    if not is_sparse(dot):
+        typer.echo("error: not a sparse checkout repository", err=True)
+        raise typer.Exit(1)
+
+    sparse_paths = load_sparse_paths(dot) or set()
+
+    head_hash = refs.resolve_head()
+    if head_hash is None:
+        typer.echo("No commits yet.")
+        return
+
+    commit_data = store.read("commits", head_hash)
+    head_commit = deserialize_commit(commit_data)
+    flat = flatten_tree(store, head_commit.tree_hash)
+
+    fetched = sum(1 for f in flat if is_in_sparse_set(f, sparse_paths))
+    typer.echo(f"Files in tree ({len(flat)} total, {fetched} fetched):")
+    for fpath in sorted(flat):
+        marker = "[x]" if is_in_sparse_set(fpath, sparse_paths) else "[ ]"
+        typer.echo(f"  {marker} {fpath}")
+
+
+@sparse_app.command("disable")
+def sparse_checkout_disable():
+    """Convert sparse checkout to full checkout by fetching all missing files."""
+    from dit.core.sparse import is_sparse
+    from dit.core.tree_walker import flatten_tree
+    from dit.core.workspace import materialize_file
+    from dit.core.remote import RemoteClient
+
+    repo_root = find_repo_root()
+    dot = get_dot(repo_root)
+    store = ObjectStore(dot / "objects")
+    refs = RefStore(dot)
+
+    if not is_sparse(dot):
+        typer.echo("error: not a sparse checkout repository", err=True)
+        raise typer.Exit(1)
+
+    head_hash = refs.resolve_head()
+    if head_hash is None:
+        typer.echo("fatal: no commits yet", err=True)
+        raise typer.Exit(1)
+
+    commit_data = store.read("commits", head_hash)
+    head_commit = deserialize_commit(commit_data)
+    flat = flatten_tree(store, head_commit.tree_hash)
+
+    rc = _build_remote_client(dot, "origin")
+
+    for fpath, (obj_type, obj_hash, _sc) in flat.items():
+        if obj_type != "manifest":
+            continue
+        if not store.exists("manifests", obj_hash):
+            with remote_error_boundary("sparse-checkout disable"):
+                m_data = rc.download_object("manifests", obj_hash)
+            if m_data:
+                store.write("manifests", m_data)
+
+        m_data = store.read("manifests", obj_hash)
+        if m_data is None:
+            continue
+        manifest = deserialize_manifest(m_data)
+        for entry in manifest.entries:
+            if not store.exists("rows", entry.row_hash):
+                with remote_error_boundary("sparse-checkout disable"):
+                    row_data = rc.download_object("rows", entry.row_hash)
+                if row_data:
+                    store.write("rows", row_data)
+        materialize_file(repo_root, fpath, manifest, store)
+
+    (dot / "sparse-checkout").unlink()
+    typer.echo(f"Sparse checkout disabled. {len(flat)} file(s) materialized.")
+
 
 @meta_app.command("compute")
 def meta_compute(
@@ -1593,6 +1838,7 @@ def _clone_tree_objects(
     store: ObjectStore,
     tree_hash: str,
     manifest_hashes: set,
+    sparse: bool = False,
 ):
     """Recursively download all manifest, sidecar, and subtree objects for a tree hash."""
     from dit.core.objects import deserialize_tree
@@ -1605,10 +1851,11 @@ def _clone_tree_objects(
 
     for entry in tree.entries:
         if entry.obj_type == "manifest":
-            m_data = rc.download_object("manifests", entry.obj_hash)
-            if m_data:
-                store.write("manifests", m_data)
-                manifest_hashes.add(entry.obj_hash)
+            if not sparse:
+                m_data = rc.download_object("manifests", entry.obj_hash)
+                if m_data:
+                    store.write("manifests", m_data)
+                    manifest_hashes.add(entry.obj_hash)
             if entry.sidecar_hash and not store.exists("sidecars", entry.sidecar_hash):
                 sc_data = rc.download_object("sidecars", entry.sidecar_hash)
                 if sc_data:
@@ -1619,7 +1866,7 @@ def _clone_tree_objects(
                         err=True,
                     )
         elif entry.obj_type == "tree":
-            _clone_tree_objects(rc, store, entry.obj_hash, manifest_hashes)
+            _clone_tree_objects(rc, store, entry.obj_hash, manifest_hashes, sparse=sparse)
 
 
 @app.command()
@@ -1628,12 +1875,15 @@ def clone(
     dest: str = typer.Argument("", help="Destination directory (default: repo name)"),
     token: str = typer.Option("", help="Auth token"),
     branch: str = typer.Option("main", help="Branch to clone"),
+    sparse: bool = typer.Option(False, "--sparse", help="Sparse clone: download metadata only, fetch files on demand"),
 ):
     """Clone a remote repository into a new directory."""
     from dit.core.config import set_remote
     from dit.core.remote import RemoteClient
     from dit.core.workspace import materialize_file
     from dit.core.objects import deserialize_commit, deserialize_tree, deserialize_manifest
+    from dit.core.sparse import save_sparse_paths
+    from dit.core.tree_walker import flatten_tree
 
     base_url, repo_name = _remote_parts_from_url(url)
 
@@ -1658,7 +1908,7 @@ def clone(
         typer.echo(f"fatal: remote branch '{branch}' not found", err=True)
         raise typer.Exit(1)
 
-    typer.echo(f"Cloning {url} -> {dest_dir}")
+    typer.echo(f"Cloning {url} -> {dest_dir}{' (sparse)' if sparse else ''}")
 
     commits_to_fetch: list[str] = []
     queue = [remote_hash]
@@ -1684,19 +1934,20 @@ def clone(
         commit_data = store.read("commits", chash)
         commit = deserialize_commit(commit_data)
         with remote_error_boundary("clone"):
-            _clone_tree_objects(rc, store, commit.tree_hash, manifest_hashes)
+            _clone_tree_objects(rc, store, commit.tree_hash, manifest_hashes, sparse=sparse)
 
-    for mhash in manifest_hashes:
-        m_data = store.read("manifests", mhash)
-        if m_data is None:
-            continue
-        manifest = deserialize_manifest(m_data)
-        for entry in manifest.entries:
-            if not store.exists("rows", entry.row_hash):
-                with remote_error_boundary("clone"):
-                    row_data = rc.download_object("rows", entry.row_hash)
-                if row_data:
-                    store.write("rows", row_data)
+    if not sparse:
+        for mhash in manifest_hashes:
+            m_data = store.read("manifests", mhash)
+            if m_data is None:
+                continue
+            manifest = deserialize_manifest(m_data)
+            for entry in manifest.entries:
+                if not store.exists("rows", entry.row_hash):
+                    with remote_error_boundary("clone"):
+                        row_data = rc.download_object("rows", entry.row_hash)
+                    if row_data:
+                        store.write("rows", row_data)
 
     refs.set_branch(branch, remote_hash)
     refs.head_file.write_text(f"ref:{branch}\n")
@@ -1704,9 +1955,18 @@ def clone(
 
     head_commit_data = store.read("commits", remote_hash)
     head_commit = deserialize_commit(head_commit_data)
-    _materialize_tree(dest_dir, store, head_commit.tree_hash)
 
-    typer.echo(f"Clone complete. {len(commits_to_fetch)} commit(s).")
+    if sparse:
+        save_sparse_paths(dot, set())
+        flat = flatten_tree(store, head_commit.tree_hash)
+        for path in flat:
+            parent = (dest_dir / path).parent
+            parent.mkdir(parents=True, exist_ok=True)
+        typer.echo(f"Sparse clone complete. {len(commits_to_fetch)} commit(s), {len(flat)} file(s) in tree.")
+        typer.echo("  Use 'dit sparse-checkout add <path>' to fetch files.")
+    else:
+        _materialize_tree(dest_dir, store, head_commit.tree_hash)
+        typer.echo(f"Clone complete. {len(commits_to_fetch)} commit(s).")
 
 
 def _fetch_tree_objects(
@@ -1876,7 +2136,9 @@ def pull(
         old_commit_data = store.read("commits", local_hash)
         if old_commit_data:
             old_tree_hash = deserialize_commit(old_commit_data).tree_hash
-    _materialize_tree(repo_root, store, head_commit.tree_hash, old_tree_hash)
+    from dit.core.sparse import is_sparse, load_sparse_paths
+    sp = load_sparse_paths(dot) if is_sparse(dot) else None
+    _materialize_tree(repo_root, store, head_commit.tree_hash, old_tree_hash, sparse_paths=sp)
 
     typer.echo(f"Pulled {count} new objects. Now at {remote_hash[:8]}.")
 
