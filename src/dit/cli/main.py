@@ -23,6 +23,7 @@ from dit.core.objects import (
     deserialize_commit,
     deserialize_tree,
     deserialize_manifest,
+    deserialize_blob,
 )
 from dit.core.refs import RefStore
 from dit.core.store import ObjectStore
@@ -650,7 +651,7 @@ def _materialize_tree(repo_root: Path, store: ObjectStore, tree_hash: str, old_t
             if blob_data is not None:
                 dest = repo_root / name
                 dest.parent.mkdir(parents=True, exist_ok=True)
-                dest.write_bytes(blob_data)
+                dest.write_bytes(deserialize_blob(blob_data))
 
     old_all = set(old_manifests) | set(old_blobs)
     new_all = set(new_manifests) | set(new_blobs)
@@ -1890,6 +1891,7 @@ def _clone_tree_objects(
     # Phase 1: walk tree recursively, collecting manifest & sidecar hashes
     pending_manifests: list[str] = []
     pending_sidecars: list[str] = []
+    pending_blobs: list[str] = []
 
     def _walk_tree(th: str) -> None:
         tree_data = rc.download_object("trees", th)
@@ -1907,6 +1909,9 @@ def _clone_tree_objects(
                     pending_sidecars.append(entry.sidecar_hash)
             elif entry.obj_type == "tree":
                 _walk_tree(entry.obj_hash)
+            elif entry.obj_type == "blob":
+                if not sparse:
+                    pending_blobs.append(entry.obj_hash)
 
     _walk_tree(tree_hash)
 
@@ -1925,6 +1930,10 @@ def _clone_tree_objects(
                         f"  warning: sidecar {sh[:8]} not found on remote (skipped)",
                         err=True,
                     )
+
+    # Phase 4: batch-download blobs
+    if pending_blobs:
+        _batch_download_objects(rc, store, "blobs", pending_blobs)
 
 
 @app.command()
@@ -2044,6 +2053,7 @@ def _fetch_tree_objects(
     # Phase 1: walk tree, collecting missing manifest/sidecar hashes
     pending_manifests: list[str] = []
     pending_sidecars: list[str] = []
+    pending_blobs: list[str] = []
 
     def _walk(th: str) -> int:
         nonlocal downloaded
@@ -2070,6 +2080,9 @@ def _fetch_tree_objects(
                     pending_sidecars.append(entry.sidecar_hash)
             elif entry.obj_type == "tree":
                 count += _walk(entry.obj_hash)
+            elif entry.obj_type == "blob":
+                if not store.exists("blobs", entry.obj_hash):
+                    pending_blobs.append(entry.obj_hash)
         return count
 
     downloaded += _walk(tree_hash)
@@ -2106,6 +2119,10 @@ def _fetch_tree_objects(
                         f"  warning: sidecar {sh[:8]} not found on remote (skipped)",
                         err=True,
                     )
+
+    # Phase 6: batch-download blobs
+    if pending_blobs:
+        downloaded += _batch_download_objects(rc, store, "blobs", pending_blobs)
 
     return downloaded
 
