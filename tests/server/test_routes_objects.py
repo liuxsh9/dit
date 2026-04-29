@@ -381,3 +381,114 @@ async def test_batch_exists_allowed_for_reader(
         json={"obj_type": "rows", "hashes": [PAYLOAD_HASH]},
     )
     assert response.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Binary batch-upload endpoint
+# ---------------------------------------------------------------------------
+
+
+def _build_bin_payload(obj_type: str, items: list[tuple[str, bytes]]) -> bytes:
+    """Build the binary wire format for batch-upload-bin."""
+    buf = bytearray()
+    obj_type_bytes = obj_type.encode()
+    buf.append(len(obj_type_bytes))
+    buf.extend(obj_type_bytes)
+    buf.extend(len(items).to_bytes(4, "big"))
+    for h, data in items:
+        buf.extend(h.encode())  # 64 bytes hex ASCII
+        buf.extend(len(data).to_bytes(4, "big"))
+        buf.extend(data)
+    return bytes(buf)
+
+
+async def test_batch_upload_bin_basic(client: AsyncClient) -> None:
+    """Upload 3 objects via binary endpoint, verify they're stored."""
+    await _create_repo(client)
+    payloads = [b"row-data-one", b"row-data-two", b"row-data-three"]
+    items = [(hashlib.sha256(p).hexdigest(), p) for p in payloads]
+
+    body = _build_bin_payload("rows", items)
+    response = await client.post(
+        "/api/v1/repos/obj-repo/objects/batch-upload-bin",
+        content=body,
+        headers={"Content-Type": "application/octet-stream"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["accepted"] == 3
+    assert data["errors"] == []
+
+    # Verify objects are actually stored by downloading them
+    for h, payload in items:
+        r = await client.get(f"/api/v1/repos/obj-repo/objects/rows/{h}")
+        assert r.status_code == 200
+        assert r.content == payload
+
+
+async def test_batch_upload_bin_hash_mismatch(client: AsyncClient) -> None:
+    """Send wrong hash, verify error reported but request succeeds."""
+    await _create_repo(client)
+    data = b"some data"
+    wrong_hash = "0" * 64
+    items = [(wrong_hash, data)]
+
+    body = _build_bin_payload("rows", items)
+    response = await client.post(
+        "/api/v1/repos/obj-repo/objects/batch-upload-bin",
+        content=body,
+        headers={"Content-Type": "application/octet-stream"},
+    )
+    assert response.status_code == 200
+    result = response.json()
+    assert result["accepted"] == 0
+    assert len(result["errors"]) == 1
+    assert "hash mismatch" in result["errors"][0]
+
+
+async def test_batch_upload_bin_exceeds_limit(client: AsyncClient) -> None:
+    """Send 201 items, verify 400."""
+    await _create_repo(client)
+    data = b"x"
+    h = hashlib.sha256(data).hexdigest()
+    items = [(h, data)] * 201
+
+    body = _build_bin_payload("rows", items)
+    response = await client.post(
+        "/api/v1/repos/obj-repo/objects/batch-upload-bin",
+        content=body,
+        headers={"Content-Type": "application/octet-stream"},
+    )
+    assert response.status_code == 400
+    assert "too many" in response.json()["detail"].lower()
+
+
+async def test_batch_upload_bin_invalid_obj_type(client: AsyncClient) -> None:
+    """Invalid obj_type should return 400."""
+    await _create_repo(client)
+    data = b"x"
+    h = hashlib.sha256(data).hexdigest()
+    items = [(h, data)]
+
+    body = _build_bin_payload("secrets", items)
+    response = await client.post(
+        "/api/v1/repos/obj-repo/objects/batch-upload-bin",
+        content=body,
+        headers={"Content-Type": "application/octet-stream"},
+    )
+    assert response.status_code == 400
+
+
+async def test_batch_upload_bin_requires_push_permission(
+    reader_client: AsyncClient,
+) -> None:
+    """A reader token must get 403 on binary batch upload."""
+    data = b"x"
+    h = hashlib.sha256(data).hexdigest()
+    body = _build_bin_payload("rows", [(h, data)])
+    response = await reader_client.post(
+        "/api/v1/repos/any-repo/objects/batch-upload-bin",
+        content=body,
+        headers={"Content-Type": "application/octet-stream"},
+    )
+    assert response.status_code == 403

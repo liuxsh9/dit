@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import json
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -148,6 +149,58 @@ async def batch_upload(
         store.write(body.obj_type, data)
         accepted += 1
     return BatchUploadOut(accepted=accepted, errors=errors)
+
+
+@router.post("/{repo}/objects/batch-upload-bin")
+async def batch_upload_bin(
+    repo: str,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    _token: Token = Depends(require_permission("push")),
+) -> Response:
+    """Upload multiple objects using binary wire format (no base64 overhead)."""
+    await _get_repo(repo, session)
+    body = await request.body()
+    store = _store_for_repo(request, repo)
+
+    offset = 0
+    # Read obj_type
+    obj_type_len = body[offset]
+    offset += 1
+    obj_type = body[offset : offset + obj_type_len].decode()
+    offset += obj_type_len
+    _validate_obj_type(obj_type)
+
+    # Read item count
+    item_count = int.from_bytes(body[offset : offset + 4], "big")
+    offset += 4
+    if item_count > _MAX_BATCH_ITEMS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many items: {item_count} exceeds limit of {_MAX_BATCH_ITEMS}",
+        )
+
+    accepted = 0
+    errors: list[str] = []
+    for _ in range(item_count):
+        hash_hex = body[offset : offset + 64].decode()
+        offset += 64
+        data_len = int.from_bytes(body[offset : offset + 4], "big")
+        offset += 4
+        data = body[offset : offset + data_len]
+        offset += data_len
+
+        computed = hashlib.sha256(data).hexdigest()
+        if computed != hash_hex:
+            errors.append(f"{hash_hex}: hash mismatch (computed {computed})")
+            continue
+        store.write(obj_type, data)
+        accepted += 1
+
+    return Response(
+        content=json.dumps({"accepted": accepted, "errors": errors}),
+        media_type="application/json",
+    )
 
 
 @router.post("/{repo}/objects/batch-download", response_model=BatchDownloadOut)

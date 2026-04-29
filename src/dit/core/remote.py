@@ -74,6 +74,42 @@ class RemoteClient:
 
         items: list of (hash_hex, data) tuples.
         Returns {"accepted": int, "errors": list[str]}
+        Tries binary format first, falls back to base64 JSON, then individual uploads.
+        """
+        try:
+            return self.upload_batch_bin(obj_type, items)
+        except Exception:
+            return self._upload_batch_json(obj_type, items)
+
+    def upload_batch_bin(self, obj_type: str, items: list[tuple[str, bytes]]) -> dict:
+        """Upload objects using binary wire format (no base64 overhead).
+
+        items: list of (hash_hex, data) tuples.
+        Returns {"accepted": int, "errors": list[str]}
+        """
+        buf = bytearray()
+        obj_type_bytes = obj_type.encode()
+        buf.append(len(obj_type_bytes))
+        buf.extend(obj_type_bytes)
+        buf.extend(len(items).to_bytes(4, "big"))
+        for h, data in items:
+            buf.extend(h.encode())  # 64 bytes hex ASCII
+            buf.extend(len(data).to_bytes(4, "big"))
+            buf.extend(data)
+
+        resp = self.client.post(
+            f"{self._dit_prefix()}/objects/batch-upload-bin",
+            content=bytes(buf),
+            headers={"Content-Type": "application/octet-stream"},
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def _upload_batch_json(self, obj_type: str, items: list[tuple[str, bytes]]) -> dict:
+        """Upload multiple objects using base64 JSON format (fallback).
+
+        items: list of (hash_hex, data) tuples.
+        Returns {"accepted": int, "errors": list[str]}
         Falls back to individual uploads if server returns 404 (old server).
         """
         payload = {

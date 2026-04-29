@@ -548,3 +548,37 @@ class TestBatchDownload:
         assert eval_rows[0] == _make_row("e1")
         test_rows = _read_jsonl(clone_dir / "data" / "test.jsonl")
         assert len(test_rows) == 2
+
+
+class TestBinaryUpload:
+    """Verify binary upload is used in push workflows."""
+
+    def test_push_uses_binary_upload(self, server_app, tmp_path, monkeypatch):
+        """Push a repo, verify it works end-to-end with binary upload path."""
+        _patch_remote_client(monkeypatch, server_app)
+        _create_remote_repo(server_app, "bin-push")
+
+        src = tmp_path / "src"
+        _init_repo(src, monkeypatch)
+        files = {
+            "train.jsonl": [_make_row("t1"), _make_row("t2")],
+            "eval.jsonl": [_make_row("e1")],
+        }
+        for fname, rows in files.items():
+            _write_jsonl(src / fname, rows)
+        monkeypatch.chdir(src)
+        runner.invoke(app, ["add", "."], catch_exceptions=False)
+        r = runner.invoke(app, ["commit", "-m", "binary push test"], catch_exceptions=False)
+        assert r.exit_code == 0, r.output
+        _setup_remote(src, "http://testserver/bin-push")
+        _push(monkeypatch, src)
+
+        # Clone and verify data integrity
+        clone_dir = tmp_path / "clone"
+        _clone(str(clone_dir), "http://testserver/bin-push")
+
+        for fname, expected_rows in files.items():
+            cloned = _read_jsonl(clone_dir / fname)
+            assert len(cloned) == len(expected_rows), f"{fname}: row count mismatch"
+            for orig, got in zip(expected_rows, cloned):
+                assert orig == got, f"{fname}: row content mismatch"
