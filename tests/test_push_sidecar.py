@@ -63,7 +63,7 @@ class TestPushUploadOrder:
         def fake_batch_exists(obj_type, hashes):
             return {h: False for h in hashes}
 
-        def fake_upload(obj_type, hash_hex, data):
+        def fake_upload_batch(obj_type, batch):
             uploaded_types.append(obj_type)
 
         def fake_get_ref(ref_type, name):
@@ -75,7 +75,7 @@ class TestPushUploadOrder:
         mock_rc = MagicMock()
         mock_rc.get_ref.side_effect = fake_get_ref
         mock_rc.batch_exists.side_effect = fake_batch_exists
-        mock_rc.upload_object.side_effect = fake_upload
+        mock_rc.upload_batch.side_effect = fake_upload_batch
         mock_rc.cas_ref.side_effect = fake_cas_ref
 
         with patch("dit.cli.main._build_remote_client", return_value=mock_rc):
@@ -108,7 +108,7 @@ class TestPushUploadOrder:
         mock_rc = MagicMock()
         mock_rc.get_ref.return_value = None
         mock_rc.batch_exists.side_effect = fake_batch_exists
-        mock_rc.upload_object.return_value = None
+        mock_rc.upload_batch.return_value = None
         mock_rc.cas_ref.return_value = True
 
         with patch("dit.cli.main._build_remote_client", return_value=mock_rc):
