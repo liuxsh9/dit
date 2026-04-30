@@ -250,7 +250,7 @@ class TestDiffBadRefs:
 
         result = runner.invoke(app, ["diff", "nonexistent-ref"])
         assert result.exit_code != 0
-        assert "bad revision" in result.output.lower()
+        assert "unknown ref" in result.output.lower()
         assert "nonexistent-ref" in result.output
 
     def test_bad_first_ref_of_two(self, tmp_path: Path):
@@ -259,7 +259,7 @@ class TestDiffBadRefs:
 
         result = runner.invoke(app, ["diff", "bad-ref", h1])
         assert result.exit_code != 0
-        assert "bad revision" in result.output.lower()
+        assert "unknown ref" in result.output.lower()
         assert "bad-ref" in result.output
 
     def test_bad_second_ref_of_two(self, tmp_path: Path):
@@ -268,7 +268,7 @@ class TestDiffBadRefs:
 
         result = runner.invoke(app, ["diff", h1, "bad-ref"])
         assert result.exit_code != 0
-        assert "bad revision" in result.output.lower()
+        assert "unknown ref" in result.output.lower()
         assert "bad-ref" in result.output
 
     def test_bad_both_refs(self, tmp_path: Path):
@@ -277,7 +277,7 @@ class TestDiffBadRefs:
 
         result = runner.invoke(app, ["diff", "nope1", "nope2"])
         assert result.exit_code != 0
-        assert "bad revision" in result.output.lower()
+        assert "unknown ref" in result.output.lower()
         # Should fail on the first bad ref
         assert "nope1" in result.output
 
