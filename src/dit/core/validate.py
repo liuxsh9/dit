@@ -14,6 +14,7 @@ _DEFAULTS: dict = {
     "forbidden_keywords": [],
     "max_row_chars": None,
     "min_row_chars": None,
+    "per_file": {},
 }
 
 
@@ -50,12 +51,64 @@ def load_rules(repo_root: Path) -> dict:
     if min_row_chars is not None and (not isinstance(min_row_chars, int) or min_row_chars <= 0):
         raise ValueError("invalid .ditvalidate.yaml: min_row_chars must be a positive integer")
 
+    per_file_raw = raw.get("per_file", {})
+    if per_file_raw is not None and not isinstance(per_file_raw, dict):
+        raise ValueError("invalid .ditvalidate.yaml: per_file must be a mapping")
+
+    per_file: dict[str, dict] = {}
+    if isinstance(per_file_raw, dict):
+        for pattern, overrides in per_file_raw.items():
+            if not isinstance(overrides, dict):
+                raise ValueError(f"invalid .ditvalidate.yaml: per_file['{pattern}'] must be a mapping")
+            entry: dict = {}
+            if "required_fields" in overrides:
+                rf_val = overrides["required_fields"]
+                if rf_val is not None and not isinstance(rf_val, list):
+                    raise ValueError(f"invalid .ditvalidate.yaml: per_file['{pattern}'].required_fields must be a list or null")
+                entry["required_fields"] = [str(f) for f in rf_val] if rf_val is not None else None
+            if "forbidden_keywords" in overrides:
+                fk_val = overrides["forbidden_keywords"]
+                if fk_val is not None and not isinstance(fk_val, list):
+                    raise ValueError(f"invalid .ditvalidate.yaml: per_file['{pattern}'].forbidden_keywords must be a list or null")
+                entry["forbidden_keywords"] = [str(k) for k in fk_val] if fk_val is not None else None
+            if "max_row_chars" in overrides:
+                v = overrides["max_row_chars"]
+                if v is not None and (not isinstance(v, int) or v <= 0):
+                    raise ValueError(f"invalid .ditvalidate.yaml: per_file['{pattern}'].max_row_chars must be a positive integer or null")
+                entry["max_row_chars"] = v
+            if "min_row_chars" in overrides:
+                v = overrides["min_row_chars"]
+                if v is not None and (not isinstance(v, int) or v <= 0):
+                    raise ValueError(f"invalid .ditvalidate.yaml: per_file['{pattern}'].min_row_chars must be a positive integer or null")
+                entry["min_row_chars"] = v
+            per_file[pattern] = entry
+
     return {
         "required_fields": [str(f) for f in required_fields],
         "forbidden_keywords": [str(k) for k in forbidden_keywords],
         "max_row_chars": max_row_chars,
         "min_row_chars": min_row_chars,
+        "per_file": per_file,
     }
+
+
+def _resolve_rules_for_file(global_rules: dict, path: str) -> dict:
+    from fnmatch import fnmatch
+
+    resolved = {
+        "required_fields": global_rules.get("required_fields") or [],
+        "forbidden_keywords": global_rules.get("forbidden_keywords") or [],
+        "max_row_chars": global_rules.get("max_row_chars"),
+        "min_row_chars": global_rules.get("min_row_chars"),
+    }
+    for pattern, overrides in global_rules.get("per_file", {}).items():
+        if fnmatch(path, pattern):
+            for key, value in overrides.items():
+                if value is None:
+                    resolved[key] = [] if key in ("required_fields", "forbidden_keywords") else None
+                else:
+                    resolved[key] = value
+    return resolved
 
 
 def validate_commit(
@@ -85,17 +138,18 @@ def validate_commit(
     commit = deserialize_commit(commit_data)
     flat = flatten_tree(store, commit.tree_hash)
 
-    required_fields: list[str] = rules.get("required_fields") or []
-    forbidden_keywords: list[str] = rules.get("forbidden_keywords") or []
-    max_row_chars: int | None = rules.get("max_row_chars")
-    min_row_chars: int | None = rules.get("min_row_chars")
-
     violations: list[dict] = []
     checked_rows = 0
 
     for path, (obj_type, obj_hash, _sidecar_hash) in sorted(flat.items()):
         if obj_type != "manifest":
             continue
+
+        file_rules = _resolve_rules_for_file(rules, path)
+        required_fields: list[str] = file_rules["required_fields"]
+        forbidden_keywords: list[str] = file_rules["forbidden_keywords"]
+        max_row_chars: int | None = file_rules["max_row_chars"]
+        min_row_chars: int | None = file_rules["min_row_chars"]
 
         manifest_data = store.read("manifests", obj_hash)
         if manifest_data is None:
