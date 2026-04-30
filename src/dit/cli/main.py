@@ -1215,6 +1215,13 @@ remote_app = typer.Typer(name="remote", help="Manage remote repositories.")
 app.add_typer(remote_app)
 
 
+@remote_app.callback(invoke_without_command=True)
+def remote_main(ctx: typer.Context):
+    """Manage remote repositories."""
+    if ctx.invoked_subcommand is None:
+        typer.echo(ctx.get_help())
+
+
 @remote_app.command("add")
 def remote_add(
     name: str = typer.Argument(..., help="Remote name (e.g. origin)"),
@@ -1263,6 +1270,13 @@ def remote_list():
 
 auth_app = typer.Typer(name="auth", help="Manage authentication credentials.")
 app.add_typer(auth_app)
+
+
+@auth_app.callback(invoke_without_command=True)
+def auth_main(ctx: typer.Context):
+    """Manage authentication credentials."""
+    if ctx.invoked_subcommand is None:
+        typer.echo(ctx.get_help())
 
 
 @auth_app.command("set-token")
@@ -1316,8 +1330,23 @@ def auth_login(
 meta_app = typer.Typer(name="meta", help="Manage sidecar metadata.")
 app.add_typer(meta_app)
 
+
+@meta_app.callback(invoke_without_command=True)
+def meta_main(ctx: typer.Context):
+    """Manage sidecar metadata."""
+    if ctx.invoked_subcommand is None:
+        typer.echo(ctx.get_help())
+
+
 sparse_app = typer.Typer(name="sparse-checkout", help="Manage sparse checkout configuration.")
 app.add_typer(sparse_app)
+
+
+@sparse_app.callback(invoke_without_command=True)
+def sparse_main(ctx: typer.Context):
+    """Manage sparse checkout configuration."""
+    if ctx.invoked_subcommand is None:
+        typer.echo(ctx.get_help())
 
 
 @sparse_app.command("add")
