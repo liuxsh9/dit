@@ -36,8 +36,15 @@ def _resolve_field(row: dict, field_path: str) -> object | None:
             if not isinstance(current, list) or idx >= len(current):
                 return None
             current = current[idx]
+        elif isinstance(current, list):
+            # Auto-iterate over list elements
+            results = []
+            for item in current:
+                if isinstance(item, dict) and segment in item:
+                    results.append(item[segment])
+            current = results if results else None
         else:
-            # Plain key
+            # Plain key on dict
             if not isinstance(current, dict) or segment not in current:
                 return None
             current = current[segment]
@@ -147,7 +154,12 @@ def search_rows(
                 value = _resolve_field(row, field_path)
                 if value is None:
                     continue
-                value_str = str(value) if not isinstance(value, str) else value
+                if isinstance(value, list):
+                    value_str = " ".join(
+                        str(v) for v in value
+                    )
+                else:
+                    value_str = str(value) if not isinstance(value, str) else value
                 matched = query_lower in value_str.lower()
                 excerpt_source = value_str
 
