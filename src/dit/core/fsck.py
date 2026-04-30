@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass, field
 
 import pyzstd
@@ -47,6 +48,8 @@ def _verify_hashes(store: ObjectStore, result: FsckResult) -> None:
                     continue
                 for obj_file in sorted(shard2.iterdir()):
                     if not obj_file.is_file():
+                        continue
+                    if not re.fullmatch(r'[0-9a-f]{64}', obj_file.name):
                         continue
                     expected_hash = obj_file.name
                     result.checked_objects[obj_type] += 1
