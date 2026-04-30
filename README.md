@@ -207,17 +207,32 @@ Dit includes a self-hosted collaboration server with a REST API, role-based acce
 
 ### Deployment
 
+Dit is designed to run alongside [datahub-gateway](https://github.com/liuxsh9/datahub-gateway) (a Forgejo-based web UI). The recommended production stack uses Docker Compose with Caddy for automatic TLS:
+
 ```bash
-docker build -t dit-server .
+# In the datahub-gateway repo
+cp .env.example .env
+# Edit .env: set SERVICE_TOKEN, POSTGRES_PASSWORD, DIT_DB_PASSWORD, DOMAIN
+docker compose up -d
+```
+
+This starts 4 services: Caddy (TLS on 80/443), gateway, dit-core, and PostgreSQL.
+
+For standalone dit-core deployment:
+
+```bash
+docker build -t dit-core .
 docker run -p 8000:8000 \
   -e DIT_SERVER_DATABASE_URL=postgresql+asyncpg://user:pass@db:5432/dit \
   -e DIT_SERVER_DATA_DIR=/data/dit \
   -e DIT_SERVER_SERVICE_TOKEN=your-secret \
   -v dit-data:/data/dit \
-  dit-server
+  dit-core
 ```
 
-The container auto-runs database migrations on startup.
+The container runs as non-root user `dit`, uses gunicorn with uvicorn workers, and auto-runs database migrations on startup.
+
+See [docs/deployment.md](docs/deployment.md) for the full deployment checklist.
 
 ### Environment Variables
 
@@ -229,6 +244,8 @@ The container auto-runs database migrations on startup.
 | `DIT_SERVER_PORT` | `8000` | Bind port |
 | `DIT_SERVER_SERVICE_TOKEN` | — | Shared secret for service-to-service auth |
 | `DIT_SERVER_AUTO_MIGRATE` | `1` | Run Alembic migrations on startup |
+| `DIT_SERVER_WORKERS` | `2` | Gunicorn worker count |
+| `DIT_SERVER_RATE_LIMIT` | (disabled) | Rate limit, e.g. `100/minute` |
 
 ### API Highlights
 
@@ -297,7 +314,7 @@ uv sync --group dev --extra server
 uv run pytest
 ```
 
-954 tests covering CLI, core logic, and server routes.
+1108 tests covering CLI, core logic, and server routes.
 
 ## Project Structure
 
@@ -318,7 +335,7 @@ Dockerfile             # Production container image
 - **Hashing**: SHA-256 + RFC 8785 (JCS) canonical JSON
 - **Compression**: Zstandard (pyzstd)
 - **HTTP Client**: httpx
-- **Server**: FastAPI + Uvicorn
+- **Server**: FastAPI + Gunicorn/Uvicorn
 - **Database**: PostgreSQL (asyncpg) + SQLAlchemy + Alembic
 - **Auth**: Bearer tokens, role-based, HMAC-SHA256 webhooks
 - **Metrics**: Prometheus

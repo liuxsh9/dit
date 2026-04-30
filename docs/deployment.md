@@ -4,13 +4,16 @@
 
 ## 1. 架构和端口
 
-推荐部署包含三类服务：
+推荐部署包含四类服务：
 
 | 服务 | 默认端口 | 作用 |
 |------|----------|------|
-| PostgreSQL | 5432 | core 元数据、权限、PR、CI 检查等表 |
-| dit-core | 8000 | FastAPI 数据版本管理 API、对象存储、验证、diff、PR API |
-| datahub-gateway | 3000 | Forgejo 网关和 Web UI，代理 data repo 请求到 core |
+| Caddy | 80/443 | TLS 终止、反向代理，自动 Let's Encrypt 证书 |
+| datahub-gateway | 3000（仅内部） | Forgejo 网关和 Web UI，代理 data repo 请求到 core |
+| dit-core | 8000（仅内部） | FastAPI 数据版本管理 API、对象存储、验证、diff、PR API |
+| PostgreSQL | 5432（仅内部） | core 元数据、权限、PR、CI 检查等表 |
+
+外部流量通过 Caddy（80/443）进入，gateway 和 core 端口不直接暴露到宿主机。
 
 网关通过 `X-Service-Token` 调用 core。该值必须与 core 的 `DIT_SERVER_SERVICE_TOKEN` 完全一致。
 
@@ -24,6 +27,8 @@
 | `DIT_SERVER_HOST` | `0.0.0.0` | 监听地址 |
 | `DIT_SERVER_PORT` | `8000` | 监听端口 |
 | `DIT_SERVER_AUTO_MIGRATE` | `1` | 容器启动前自动执行 Alembic 迁移；生产可设为 `0` 后由发布流程单独迁移 |
+| `DIT_SERVER_WORKERS` | `2` | gunicorn worker 进程数，建议设为 CPU 核数 × 2 |
+| `DIT_SERVER_RATE_LIMIT` | （空，禁用） | 全局速率限制，格式如 `100/minute`、`10/second`；留空则不限速 |
 
 ## 3. Gateway 必填配置
 
@@ -44,6 +49,16 @@ FORGEJO__datahub__CORE_URL=http://core:8000
 FORGEJO__datahub__SERVICE_TOKEN=<same-as-DIT_SERVER_SERVICE_TOKEN>
 ```
 
+## 3.1 Caddy TLS 配置
+
+Caddy 通过 `DOMAIN` 环境变量确定公网域名，自动申请和续期 Let's Encrypt 证书。
+
+| 变量 | 示例 | 说明 |
+|------|------|------|
+| `DOMAIN` | `data.example.com` | 公网域名；默认 `localhost`（自签名证书） |
+
+本地开发时 `DOMAIN=localhost`，Caddy 使用自签名证书。生产环境设为真实域名即可自动 HTTPS。
+
 ## 4. 推荐 Docker Compose 流程
 
 如果使用 `/Users/lxs/code/datahub-gateway/docker-compose.yml` 这套一体化部署：
@@ -54,21 +69,21 @@ FORGEJO__datahub__SERVICE_TOKEN=<same-as-DIT_SERVER_SERVICE_TOKEN>
 SERVICE_TOKEN=<generate-a-long-random-secret>
 POSTGRES_PASSWORD=<generate-a-db-password>
 DIT_DB_PASSWORD=<generate-a-dit-db-password>
+DOMAIN=data.example.com          # 公网域名，本地开发可省略（默认 localhost）
+# CORE_IMAGE=ghcr.io/liuxsh9/dit-core:latest  # 默认从 registry 拉取，本地构建见下方
 ```
 
-2. 确认目录布局：
-
-```text
-/path/to/datahub
-/path/to/datahub-gateway
-```
-
-`datahub-gateway/docker-compose.yml` 默认用 `../datahub` 构建 core 镜像。
-
-3. 构建并启动：
+2. 构建并启动（生产模式，从 registry 拉取 core 镜像）：
 
 ```bash
 cd /path/to/datahub-gateway
+docker compose up -d
+```
+
+本地开发模式（从源码构建 core 镜像，需要 `../datahub` 并排 checkout）：
+
+```bash
+cp docker-compose.override.yml.example docker-compose.override.yml
 docker compose up --build -d
 ```
 
@@ -82,13 +97,19 @@ docker compose logs --tail=100 gateway
 
 ## 5. 切流前 Smoke
 
-在 core 仓库执行：
+在 core 仓库执行（需要从容器内部或通过 Caddy 访问）：
 
 ```bash
 cd /path/to/datahub
+
+# 通过 Caddy 访问 gateway（生产模式）
 CORE_URL=http://localhost:8000 \
-GATEWAY_URL=http://localhost:3000 \
+GATEWAY_URL=https://data.example.com \
 ./scripts/deployment-smoke.sh
+
+# 本地开发模式（直接访问内部端口）
+docker compose exec core curl -f http://localhost:8000/health
+docker compose exec gateway curl -f http://localhost:3000/api/v1/version
 ```
 
 首次部署还应额外验证 admin token 引导路径：
