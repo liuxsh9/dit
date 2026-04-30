@@ -47,12 +47,12 @@ def test_serve_cli_port_overrides_env(monkeypatch):
     assert captured["port"] == 9001
 
 
-def test_module_entrypoint_registers_serve_command():
+def test_module_entrypoint_registers_serve_command(tmp_path):
     result = subprocess.run(
         [sys.executable, "-m", "dit.cli.main", "serve", "--help"],
         capture_output=True,
         text=True,
-        cwd="/Users/lxs/code/datahub",
+        cwd=tmp_path,
     )
 
     assert result.returncode == 0
