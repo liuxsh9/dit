@@ -5,7 +5,7 @@ Git-like version control for LLM SFT training data.
 Dit tracks JSONL training datasets at the row level — each JSON object gets its own content-addressable hash, enabling precise diffs, deduplication, blame, and three-way merges on individual training examples rather than opaque file-level changes.
 
 <p align="center">
-  <img src="docs/images/demo.gif" alt="Dit Demo" width="720">
+  <img src="docs/images/demo.gif" alt="Dit Demo" width="960">
 </p>
 
 ## Why Dit?
