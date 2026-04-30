@@ -66,8 +66,8 @@ Duplicate detection for heads/main (commit abc12345)
 ℹ QUERY DUPLICATES (3 groups, 8 rows) — same query, different response
 ────────────────────────────────────────────────────────────────
   fingerprint  Variants  Files
-  9a3fb2c1     2         train.jsonl (x2)
-  d4e5f6a7     3         train.jsonl (x2), eval.jsonl (x1)
+  9a3fb2c1     2 variants  train.jsonl (x2)
+  d4e5f6a7     3 variants  train.jsonl (x2), eval.jsonl (x1)
 
 Summary: 100 rows across 5 files
   Exact duplicates: 2 groups (6 rows) ⚠ WARNING

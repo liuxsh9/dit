@@ -24,7 +24,7 @@ eval.jsonl      5     ...LRU缓存的时间复杂度为O(1)...
 3 matches (scanned 1700 rows)
 ```
 
-Excerpt 列显示匹配位置前后各约 30 个字符的上下文。
+Excerpt 列显示匹配位置前后各约 20 个字符的上下文。
 
 ---
 

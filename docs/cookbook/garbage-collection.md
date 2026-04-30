@@ -55,11 +55,10 @@ dit gc --grace 1
 执行输出：
 
 ```text
-Garbage collection — grace period: 24h
+Garbage collection (cleanup) — grace period: 24h
 
 Deleted 5 unreachable objects (1 commit, 1 tree, 1 manifest, 2 rows).
 Deleted 1 stale tmp file.
-Freed ~12.4 KB.
 ```
 
 ### Grace Period 的作用

@@ -84,7 +84,7 @@ Exported 2 files to ./exported/
   "char_count": 4521000,
   "token_estimate": 1130250,
   "avg_fields": 5.2,
-  "lang_distribution": {"zh": 0.82, "en": 0.18}
+  "lang_distribution": {"en": 998, "zh": 12}
 }
 ```
 

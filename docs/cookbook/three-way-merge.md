@@ -135,7 +135,7 @@ dit merge improve-v2
 解决冲突的流程：
 1. 手动编辑冲突文件，选择保留哪个版本的行
 2. `dit add <file>` 标记冲突已解决
-3. `dit commit` 完成合并提交
+3. `dit merge --continue` 完成合并提交
 
 放弃合并：
 
