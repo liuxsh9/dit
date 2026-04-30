@@ -4,16 +4,17 @@
 
 ## 1. 架构和端口
 
-推荐部署包含四类服务：
+推荐部署包含三类核心服务（TLS 可选）：
 
 | 服务 | 默认端口 | 作用 |
 |------|----------|------|
-| Caddy | 80/443 | TLS 终止、反向代理，自动 Let's Encrypt 证书 |
-| datahub-gateway | 3000（仅内部） | Forgejo 网关和 Web UI，代理 data repo 请求到 core |
+| datahub-gateway | 3000 | Forgejo 网关和 Web UI，代理 data repo 请求到 core |
 | dit-core | 8000（仅内部） | FastAPI 数据版本管理 API、对象存储、验证、diff、PR API |
 | PostgreSQL | 5432（仅内部） | core 元数据、权限、PR、CI 检查等表 |
+| Caddy（可选） | 80/443 | TLS 终止、反向代理，自动 Let's Encrypt 证书 |
 
-外部流量通过 Caddy（80/443）进入，gateway 和 core 端口不直接暴露到宿主机。
+默认模式下 gateway 直接暴露 3000 端口，适合内网部署或无域名场景。
+启用 TLS profile 后，外部流量通过 Caddy（80/443）进入，gateway 端口仅内部可见。
 
 网关通过 `X-Service-Token` 调用 core。该值必须与 core 的 `DIT_SERVER_SERVICE_TOKEN` 完全一致。
 
@@ -49,7 +50,13 @@ FORGEJO__datahub__CORE_URL=http://core:8000
 FORGEJO__datahub__SERVICE_TOKEN=<same-as-DIT_SERVER_SERVICE_TOKEN>
 ```
 
-## 3.1 Caddy TLS 配置
+## 3.1 Caddy TLS 配置（可选）
+
+如果有公网域名且需要 HTTPS，可以启用 Caddy TLS profile：
+
+```bash
+docker compose --profile tls up -d
+```
 
 Caddy 通过 `DOMAIN` 环境变量确定公网域名，自动申请和续期 Let's Encrypt 证书。
 
@@ -57,7 +64,7 @@ Caddy 通过 `DOMAIN` 环境变量确定公网域名，自动申请和续期 Let
 |------|------|------|
 | `DOMAIN` | `data.example.com` | 公网域名；默认 `localhost`（自签名证书） |
 
-本地开发时 `DOMAIN=localhost`，Caddy 使用自签名证书。生产环境设为真实域名即可自动 HTTPS。
+内网部署或无域名场景不需要启用此 profile，直接通过 `http://<server-ip>:3000` 访问即可。
 
 ## 4. 推荐 Docker Compose 流程
 
@@ -69,15 +76,24 @@ Caddy 通过 `DOMAIN` 环境变量确定公网域名，自动申请和续期 Let
 SERVICE_TOKEN=<generate-a-long-random-secret>
 POSTGRES_PASSWORD=<generate-a-db-password>
 DIT_DB_PASSWORD=<generate-a-dit-db-password>
-DOMAIN=data.example.com          # 公网域名，本地开发可省略（默认 localhost）
-# CORE_IMAGE=ghcr.io/liuxsh9/dit-core:latest  # 默认从 registry 拉取，本地构建见下方
+# GATEWAY_PORT=3000              # 可选，修改 gateway 暴露端口
+# CORE_IMAGE=ghcr.io/liuxsh9/dit-core:latest  # 默认从 registry 拉取
 ```
 
-2. 构建并启动（生产模式，从 registry 拉取 core 镜像）：
+2. 启动（内网 HTTP 模式，无需域名）：
 
 ```bash
 cd /path/to/datahub-gateway
 docker compose up -d
+# 访问 http://<server-ip>:3000
+```
+
+启用 TLS（需要域名）：
+
+```bash
+echo "DOMAIN=data.example.com" >> .env
+docker compose --profile tls up -d
+# 访问 https://data.example.com
 ```
 
 本地开发模式（从源码构建 core 镜像，需要 `../datahub` 并排 checkout）：
@@ -97,17 +113,20 @@ docker compose logs --tail=100 gateway
 
 ## 5. 切流前 Smoke
 
-在 core 仓库执行（需要从容器内部或通过 Caddy 访问）：
-
 ```bash
 cd /path/to/datahub
 
-# 通过 Caddy 访问 gateway（生产模式）
+# 内网 HTTP 模式
+CORE_URL=http://localhost:8000 \
+GATEWAY_URL=http://localhost:3000 \
+./scripts/deployment-smoke.sh
+
+# TLS 模式
 CORE_URL=http://localhost:8000 \
 GATEWAY_URL=https://data.example.com \
 ./scripts/deployment-smoke.sh
 
-# 本地开发模式（直接访问内部端口）
+# 或直接 exec 进容器检查
 docker compose exec core curl -f http://localhost:8000/health
 docker compose exec gateway curl -f http://localhost:3000/api/v1/version
 ```
