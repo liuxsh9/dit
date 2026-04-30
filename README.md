@@ -36,11 +36,18 @@ Dit solves these by decomposing JSONL files into row-level objects with content-
 
 ### Installation
 
+Requires Python >= 3.12 and [uv](https://docs.astral.sh/uv/).
+
 ```bash
-# Requires Python >= 3.12 and uv
+# Install from GitHub (recommended for CLI users)
+uv pip install git+https://github.com/liuxsh9/dit.git
+
+# Or clone and install locally
+git clone https://github.com/liuxsh9/dit.git
+cd dit
 uv pip install .
 
-# Or install with server dependencies
+# With server dependencies (for self-hosting)
 uv pip install ".[server]"
 ```
 
@@ -120,8 +127,11 @@ dit blame train.jsonl
 ### Remote Collaboration
 
 ```bash
-# Add a remote
-dit remote add origin http://your-server:8000/my-dataset
+# Add a remote (use the gateway URL, not dit-core directly)
+dit remote add origin http://your-server:3000/<owner>/<repo-name>.dit
+
+# Tokens are created by the server admin via the gateway web UI
+# or the bootstrap API. Ask your admin for a token.
 dit auth set-token <your-token> --remote origin
 
 # Push and pull
@@ -129,10 +139,10 @@ dit push
 dit pull
 
 # Clone on another machine (full clone)
-dit clone http://your-server:8000/my-dataset --token <token>
+dit clone http://your-server:3000/<owner>/<repo-name>.dit --token <token>
 
 # Sparse clone (recommended for large datasets)
-dit clone --sparse http://your-server:8000/my-dataset --token <token>
+dit clone --sparse http://your-server:3000/<owner>/<repo-name>.dit --token <token>
 
 # Then fetch only the files you need
 dit sparse-checkout add train/sft.jsonl
@@ -207,16 +217,18 @@ Dit includes a self-hosted collaboration server with a REST API, role-based acce
 
 ### Deployment
 
-Dit is designed to run alongside [datahub-gateway](https://github.com/liuxsh9/datahub-gateway) (a Forgejo-based web UI). The recommended production stack uses Docker Compose with Caddy for automatic TLS:
+Dit is designed to run alongside [datahub-gateway](https://github.com/liuxsh9/datahub-gateway) (a Forgejo-based web UI). The recommended production stack uses Docker Compose:
 
 ```bash
-# In the datahub-gateway repo
+# Clone and configure
+git clone https://github.com/liuxsh9/datahub-gateway.git
+cd datahub-gateway
 cp .env.example .env
-# Edit .env: set SERVICE_TOKEN, POSTGRES_PASSWORD, DIT_DB_PASSWORD, DOMAIN
+# Edit .env: set SERVICE_TOKEN, POSTGRES_PASSWORD, DIT_DB_PASSWORD
 docker compose up -d
 ```
 
-This starts 4 services: Caddy (TLS on 80/443), gateway, dit-core, and PostgreSQL.
+This starts 3 services: gateway (web UI on port 3000), dit-core, and PostgreSQL. For HTTPS with automatic TLS certificates, add `DOMAIN=your.domain.com` to `.env` and use `docker compose --profile tls up -d`.
 
 For standalone dit-core deployment:
 

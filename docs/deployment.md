@@ -2,6 +2,21 @@
 
 本文面向从本地测试迁移到真实服务器的部署。目标是把已知易错点前置检查，避免上线后再靠人工逐项调试。
 
+## 0. 服务器前置条件
+
+**软件依赖：**
+
+- Docker Engine >= 24 + Docker Compose V2（或 Docker Desktop）
+- git
+- curl（用于 smoke test）
+
+**硬件要求：**
+
+| 级别 | CPU | 内存 | 磁盘 |
+|------|-----|------|------|
+| 最低 | 2 核 | 2 GB | 10 GB |
+| 推荐 | 4 核 | 4 GB | 50 GB+（随数据集规模增长） |
+
 ## 1. 架构和端口
 
 推荐部署包含三类核心服务（TLS 可选）：
@@ -68,9 +83,14 @@ Caddy 通过 `DOMAIN` 环境变量确定公网域名，自动申请和续期 Let
 
 ## 4. 推荐 Docker Compose 流程
 
-如果使用 `/Users/lxs/code/datahub-gateway/docker-compose.yml` 这套一体化部署：
+如果使用 datahub-gateway 仓库的一体化 Docker Compose 部署：
 
-1. 在 `datahub-gateway` 仓库创建 `.env`：
+```bash
+git clone https://github.com/liuxsh9/datahub-gateway.git
+cd datahub-gateway
+```
+
+1. 创建 `.env`：
 
 ```bash
 SERVICE_TOKEN=<generate-a-long-random-secret>
@@ -83,7 +103,6 @@ DIT_DB_PASSWORD=<generate-a-dit-db-password>
 2. 启动（内网 HTTP 模式，无需域名）：
 
 ```bash
-cd /path/to/datahub-gateway
 docker compose up -d
 # 访问 http://<server-ip>:3000
 ```
@@ -96,7 +115,7 @@ docker compose --profile tls up -d
 # 访问 https://data.example.com
 ```
 
-本地开发模式（从源码构建 core 镜像，需要 `../datahub` 并排 checkout）：
+3. 本地开发模式（从源码构建 core 镜像，需要 `../datahub` 并排 checkout）：
 
 ```bash
 cp docker-compose.override.yml.example docker-compose.override.yml
@@ -113,6 +132,25 @@ docker compose logs --tail=100 gateway
 
 ## 5. 切流前 Smoke
 
+在 datahub-gateway 目录下，用 `docker compose exec` 快速验证：
+
+```bash
+# core 健康检查
+docker compose exec core curl -f http://localhost:8000/health
+
+# core metrics
+docker compose exec core curl -f http://localhost:8000/metrics
+
+# core 未认证请求应返回 401
+docker compose exec core curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/api/v1/repos
+# 预期输出: 401
+
+# gateway 健康检查
+docker compose exec gateway curl -f http://localhost:3000/api/v1/version
+```
+
+如果同时 clone 了 datahub 仓库，也可以用自动化 smoke 脚本：
+
 ```bash
 cd /path/to/datahub
 
@@ -125,10 +163,6 @@ GATEWAY_URL=http://localhost:3000 \
 CORE_URL=http://localhost:8000 \
 GATEWAY_URL=https://data.example.com \
 ./scripts/deployment-smoke.sh
-
-# 或直接 exec 进容器检查
-docker compose exec core curl -f http://localhost:8000/health
-docker compose exec gateway curl -f http://localhost:3000/api/v1/version
 ```
 
 首次部署还应额外验证 admin token 引导路径：
@@ -168,6 +202,7 @@ deployment smoke checks passed
 | gateway 容器没有读取 `FORGEJO__datahub__...` | 使用了错误 Dockerfile 或绕过官方 entrypoint | 使用根目录 `Dockerfile`，不要使用已废弃的 `Dockerfile.datahub` |
 | SQLite 相关测试或本地二进制缺驱动 | 构建缺少 sqlite tags | 使用 `TAGS='bindata sqlite sqlite_unlock_notify' make backend` 或官方 Dockerfile |
 | UI 仍是旧前端资源 | 前端 bundle 未重新构建/未进入 bindata | 先运行 `NODE_ENV=development npx webpack`，再构建后端；Dockerfile 会自动执行完整构建 |
+| core 启动报 `database "dit" does not exist` | 非 Compose 部署未创建 dit 数据库和用户 | Compose 部署会自动执行 `scripts/init-db.sh`；手动部署需先创建数据库：`CREATE USER dit WITH PASSWORD '...'; CREATE DATABASE dit OWNER dit;` |
 
 ## 8. 最低上线门槛
 
