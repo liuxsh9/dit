@@ -6,7 +6,7 @@ Set Width 1200
 Set Height 540
 Set Padding 20
 Set Theme "Catppuccin Mocha"
-Set TypingSpeed 35ms
+Set TypingSpeed 20ms
 Set PlaybackSpeed 0.5
 Set Framerate 24
 Set CursorBlink false
@@ -26,11 +26,11 @@ Show
 
 # Stage and commit
 Type "dit status" Enter
-Sleep 2s
+Sleep 1.5s
 
 # Branch
 Type "dit branch improve-answers && dit checkout improve-answers" Enter
-Sleep 1.5s
+Sleep 1s
 
 # Hidden: refresh an answer
 Hide
@@ -43,17 +43,17 @@ Show
 
 # Semantic diff — the star feature
 Type "dit diff" Enter
-Sleep 3s
+Sleep 2s
 
 # Commit and merge
 Type "dit add train.jsonl" Enter
-Sleep 1s
+Sleep 0.5s
 Type `dit commit -m "improve LRU explanation"` Enter
-Sleep 1.5s
-Type "dit checkout main" Enter
 Sleep 1s
+Type "dit checkout main" Enter
+Sleep 0.5s
 Type "dit merge improve-answers" Enter
-Sleep 2.5s
+Sleep 1.5s
 
 # Hidden: start dit-core server for push demo
 Hide
@@ -71,7 +71,7 @@ Show
 
 # Push to remote server
 Type "dit push" Enter
-Sleep 3s
+Sleep 2s
 
 # Hidden: cleanup server
 Hide
@@ -81,18 +81,18 @@ Show
 
 # Search
 Type `dit search "LRU" --field messages.content` Enter
-Sleep 3s
+Sleep 2s
 
 # Blame
 Type "dit blame train.jsonl" Enter
-Sleep 3s
+Sleep 2s
 
 # Log
 Type "dit log --oneline" Enter
-Sleep 3s
+Sleep 2s
 
 # Dedup
 Type "dit dedup" Enter
-Sleep 3s
-
 Sleep 2s
+
+Sleep 1s
