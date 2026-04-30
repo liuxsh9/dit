@@ -1,6 +1,6 @@
 # Pull Request 与代码审查
 
-Dit 的 Pull Request（PR）机制用于在合并数据变更前进行审查。PR 通过 dit-core 的 REST API 或 datahub-gateway Web UI 操作。本指南以 API 调用为主，展示完整的 PR 工作流。
+Dit 的 Pull Request（PR）机制用于在合并数据变更前进行审查。PR 通过 dit-core 的 REST API 或 dit-gateway Web UI 操作。本指南以 API 调用为主，展示完整的 PR 工作流。
 
 ## 前置准备
 

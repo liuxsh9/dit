@@ -164,4 +164,4 @@ error: push rejected — remote ref is not a descendant. Pull first.
 - push 使用 CAS（Compare-And-Swap）更新引用，保证并发安全
 - pull 仅支持快进合并（fast-forward），分歧场景需要先合并再推送
 - 无令牌或令牌错误时，push/pull/clone 会返回认证失败错误，不会静默失败
-- 如果部署了 datahub-gateway，可以用 `dit auth login --url http://server:3000 --token "forgejo_token"` 存储网关凭据
+- 如果部署了 dit-gateway，可以用 `dit auth login --url http://server:3000 --token "forgejo_token"` 存储网关凭据

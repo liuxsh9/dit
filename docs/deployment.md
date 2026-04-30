@@ -23,7 +23,7 @@
 
 | 服务 | 默认端口 | 作用 |
 |------|----------|------|
-| datahub-gateway | 3000 | Forgejo 网关和 Web UI，代理 data repo 请求到 core |
+| dit-gateway | 3000 | Forgejo 网关和 Web UI，代理 data repo 请求到 core |
 | dit-core | 8000（仅内部） | FastAPI 数据版本管理 API、对象存储、验证、diff、PR API |
 | PostgreSQL | 5432（仅内部） | core 元数据、权限、PR、CI 检查等表 |
 | Caddy（可选） | 80/443 | TLS 终止、反向代理，自动 Let's Encrypt 证书 |
@@ -181,11 +181,11 @@ dit push
 
 ## 4. 推荐 Docker Compose 流程
 
-如果使用 datahub-gateway 仓库的一体化 Docker Compose 部署：
+如果使用 dit-gateway 仓库的一体化 Docker Compose 部署：
 
 ```bash
-git clone https://github.com/liuxsh9/datahub-gateway.git
-cd datahub-gateway
+git clone https://github.com/liuxsh9/dit-gateway.git
+cd dit-gateway
 ```
 
 1. 创建 `.env`：
@@ -230,7 +230,7 @@ docker compose logs --tail=100 gateway
 
 ## 5. 切流前 Smoke
 
-在 datahub-gateway 目录下，用 `docker compose exec` 快速验证：
+在 dit-gateway 目录下，用 `docker compose exec` 快速验证：
 
 ```bash
 # core 健康检查

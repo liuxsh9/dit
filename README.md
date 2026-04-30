@@ -225,12 +225,12 @@ Dit supports three deployment modes — from local-only to a full production sta
 
 ### Deployment
 
-Dit is designed to run alongside [datahub-gateway](https://github.com/liuxsh9/datahub-gateway) (a Forgejo-based web UI). The recommended production stack uses Docker Compose:
+Dit is designed to run alongside [dit-gateway](https://github.com/liuxsh9/dit-gateway) (a Forgejo-based web UI). The recommended production stack uses Docker Compose:
 
 ```bash
 # Clone and configure
-git clone https://github.com/liuxsh9/datahub-gateway.git
-cd datahub-gateway
+git clone https://github.com/liuxsh9/dit-gateway.git
+cd dit-gateway
 cp .env.example .env
 # Edit .env: set SERVICE_TOKEN, POSTGRES_PASSWORD, DIT_DB_PASSWORD
 docker compose up -d

@@ -102,7 +102,7 @@
 | Push 增量发现（不走全历史） | 依赖 commit graph cache，复杂度高，后续迭代 |
 | query_fingerprint 碰撞风险 | P2，需要与数据格式团队讨论 |
 | GC 全量扫描优化 | P2，当前规模可接受 |
-| 前端耦合问题 | 等用户修改 datahub-gateway 后再处理 |
+| 前端耦合问题 | 等用户修改 dit-gateway 后再处理 |
 
 ## 执行原则
 

@@ -68,10 +68,10 @@ curl -fsS -X POST "$CORE_URL/api/v1/repos/$REPO/fsck" \
 
 ## 4. Gateway 一体化备份
 
-如果使用 `datahub-gateway/docker-compose.yml` 部署，优先使用 gateway 仓库的 compose 脚本。它会停止 gateway/core 写入面，备份 Forgejo DB、Dit DB、Forgejo volume 和 core object volume。
+如果使用 `dit-gateway/docker-compose.yml` 部署，优先使用 gateway 仓库的 compose 脚本。它会停止 gateway/core 写入面，备份 Forgejo DB、Dit DB、Forgejo volume 和 core object volume。
 
 ```bash
-cd /path/to/datahub-gateway
+cd /path/to/dit-gateway
 DIT_GATEWAY_BACKUP_DIR=/secure/backups/dit-gateway \
 ./scripts/compose-backup.sh
 ```
@@ -79,7 +79,7 @@ DIT_GATEWAY_BACKUP_DIR=/secure/backups/dit-gateway \
 恢复：
 
 ```bash
-cd /path/to/datahub-gateway
+cd /path/to/dit-gateway
 DIT_GATEWAY_RESTORE_CONFIRM=I_UNDERSTAND_THIS_DESTROYS_COMPOSE_VOLUMES \
 ./scripts/compose-restore.sh /secure/backups/dit-gateway/dit-gateway-YYYYMMDDTHHMMSSZ
 ```
