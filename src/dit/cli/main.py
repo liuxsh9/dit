@@ -134,6 +134,58 @@ def resolve_commit_hash(dot: Path, commit_hash: str) -> str | None:
     return None
 
 
+def _resolve_ref(dot: Path, ref_str: str) -> str | None:
+    refs = RefStore(dot)
+    h = refs.get_branch(ref_str)
+    if h:
+        return h
+    h = refs.get_tag(ref_str)
+    if h:
+        return h
+    return resolve_commit_hash(dot, ref_str)
+
+
+def _load_manifests_from_commit(store: ObjectStore, commit_hash: str, sparse_paths=None) -> dict[str, "Manifest"]:
+    from dit.core.tree_walker import flatten_tree
+    from dit.core.sparse import is_in_sparse_set
+    commit_data = store.read("commits", commit_hash)
+    head_commit = deserialize_commit(commit_data)
+    flat = flatten_tree(store, head_commit.tree_hash)
+    result = {}
+    for path, (obj_type, obj_hash, _sidecar) in flat.items():
+        if obj_type == "manifest":
+            if sparse_paths is not None and not is_in_sparse_set(path, sparse_paths):
+                continue
+            m_data = store.read("manifests", obj_hash)
+            if m_data:
+                result[path] = deserialize_manifest(m_data)
+    return result
+
+
+def _print_diff(old_files: dict, new_files: dict) -> None:
+    all_files = sorted(set(list(old_files.keys()) + list(new_files.keys())))
+    any_changes = False
+    for rel in all_files:
+        old_m = old_files.get(rel, Manifest(entries=[]))
+        new_m = new_files.get(rel, Manifest(entries=[]))
+        result = diff_manifests(old_m, new_m)
+        if not result.added and not result.removed and not result.refreshed:
+            continue
+        any_changes = True
+        old_count = len(old_m.entries)
+        new_count = len(new_m.entries)
+        if rel not in old_files:
+            typer.echo(f"{rel}: {added_str('new file')} ({new_count} rows)")
+        elif rel not in new_files:
+            typer.echo(f"{rel}: {removed_str('deleted')} ({old_count} rows)")
+        else:
+            typer.echo(f"{rel}: {old_count} → {new_count} rows ({result.summary()})")
+        if result.refreshed:
+            typer.echo(f"  {refreshed_str(f'Likely refreshed: {len(result.refreshed)} rows')}")
+    if not any_changes:
+        typer.echo(dim_str("No changes."))
+
+
 @app.callback(invoke_without_command=True)
 def main(ctx: typer.Context):
     """Git-like version control for SFT training data."""
@@ -244,68 +296,60 @@ def add(paths: list[str] = typer.Argument(..., help="Files or directories to sta
 
 
 @app.command()
-def diff():
-    """Show changes between working directory and HEAD."""
-    from dit.core.sparse import load_sparse_paths, is_in_sparse_set
+def diff(
+    ref1: str = typer.Argument(None, help="First ref (commit, branch, or tag)"),
+    ref2: str = typer.Argument(None, help="Second ref"),
+):
+    """Show changes between working directory and HEAD, or between two refs."""
+    from dit.core.sparse import load_sparse_paths
 
     repo_root = find_repo_root()
     dot = get_dot(repo_root)
     store = ObjectStore(dot / "objects")
     refs = RefStore(dot)
-
     sparse_paths = load_sparse_paths(dot)
 
-    stat_cache = StatCache(dot / "stat-cache")
-    current_files: dict[str, Manifest] = {}
-    for fp in find_jsonl_files(repo_root):
-        rel = str(fp.relative_to(repo_root))
-        manifest, _ = build_manifest_for_file(fp)
-        current_hash = object_hash(serialize_manifest(manifest))
-        stat_cache.update(rel, fp, current_hash)
-        current_files[rel] = manifest
-
-    head_files: dict[str, Manifest] = {}
-    head_hash = refs.resolve_head()
-    if head_hash:
-        from dit.core.tree_walker import flatten_tree
-        commit_data = store.read("commits", head_hash)
-        head_commit = deserialize_commit(commit_data)
-        flat = flatten_tree(store, head_commit.tree_hash)
-        for path, (obj_type, obj_hash, _sidecar) in flat.items():
-            if obj_type == "manifest":
-                if sparse_paths is not None and not is_in_sparse_set(path, sparse_paths):
-                    continue
-                m_data = store.read("manifests", obj_hash)
-                if m_data:
-                    head_files[path] = deserialize_manifest(m_data)
-
-    all_files = sorted(set(list(current_files.keys()) + list(head_files.keys())))
-    any_changes = False
-
-    for rel in all_files:
-        old_m = head_files.get(rel, Manifest(entries=[]))
-        new_m = current_files.get(rel, Manifest(entries=[]))
-        result = diff_manifests(old_m, new_m)
-
-        if not result.added and not result.removed and not result.refreshed:
-            continue
-
-        any_changes = True
-        old_count = len(old_m.entries)
-        new_count = len(new_m.entries)
-
-        if rel not in head_files:
-            typer.echo(f"{rel}: {added_str('new file')} ({new_count} rows)")
-        elif rel not in current_files:
-            typer.echo(f"{rel}: {removed_str('deleted')} ({old_count} rows)")
-        else:
-            typer.echo(f"{rel}: {old_count} → {new_count} rows ({result.summary()})")
-
-        if result.refreshed:
-            typer.echo(f"  {refreshed_str(f'Likely refreshed: {len(result.refreshed)} rows')}")
-
-    if not any_changes:
-        typer.echo(dim_str("No changes."))
+    if ref1 is not None and ref2 is not None:
+        hash1 = _resolve_ref(dot, ref1)
+        if hash1 is None:
+            typer.echo(f"error: unknown ref '{ref1}'", err=True)
+            raise typer.Exit(1)
+        hash2 = _resolve_ref(dot, ref2)
+        if hash2 is None:
+            typer.echo(f"error: unknown ref '{ref2}'", err=True)
+            raise typer.Exit(1)
+        old_files = _load_manifests_from_commit(store, hash1, sparse_paths)
+        new_files = _load_manifests_from_commit(store, hash2, sparse_paths)
+        _print_diff(old_files, new_files)
+    elif ref1 is not None:
+        hash1 = _resolve_ref(dot, ref1)
+        if hash1 is None:
+            typer.echo(f"error: unknown ref '{ref1}'", err=True)
+            raise typer.Exit(1)
+        old_files = _load_manifests_from_commit(store, hash1, sparse_paths)
+        stat_cache = StatCache(dot / "stat-cache")
+        current_files: dict[str, Manifest] = {}
+        for fp in find_jsonl_files(repo_root):
+            rel = str(fp.relative_to(repo_root))
+            manifest, _ = build_manifest_for_file(fp)
+            current_hash = object_hash(serialize_manifest(manifest))
+            stat_cache.update(rel, fp, current_hash)
+            current_files[rel] = manifest
+        _print_diff(old_files, current_files)
+    else:
+        stat_cache = StatCache(dot / "stat-cache")
+        current_files = {}
+        for fp in find_jsonl_files(repo_root):
+            rel = str(fp.relative_to(repo_root))
+            manifest, _ = build_manifest_for_file(fp)
+            current_hash = object_hash(serialize_manifest(manifest))
+            stat_cache.update(rel, fp, current_hash)
+            current_files[rel] = manifest
+        head_hash = refs.resolve_head()
+        head_files: dict[str, Manifest] = {}
+        if head_hash:
+            head_files = _load_manifests_from_commit(store, head_hash, sparse_paths)
+        _print_diff(head_files, current_files)
 
 
 @app.command()
@@ -2628,6 +2672,9 @@ def validate(
         rules_parts.append(f"max_row_chars={mx}")
     if rules["min_row_chars"] is not None:
         rules_parts.append(f"min_row_chars={rules['min_row_chars']}")
+    pf = rules.get("per_file", {})
+    if pf:
+        rules_parts.append(f"per_file={len(pf)} pattern(s)")
     if rules_parts:
         typer.echo("Rules: " + "  ".join(rules_parts))
     typer.echo("")
