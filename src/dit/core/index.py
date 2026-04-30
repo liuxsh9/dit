@@ -1,7 +1,33 @@
-import fcntl
 import json
+import os
 import time
 from pathlib import Path
+
+if os.name == "nt":
+    import msvcrt
+
+    def _lock_file(fd, *, shared: bool, blocking: bool):
+        """Acquire a lock on Windows. shared is ignored (always exclusive)."""
+        mode = msvcrt.LK_NBLCK if not blocking else msvcrt.LK_LOCK
+        msvcrt.locking(fd.fileno(), mode, 1)
+
+    def _unlock_file(fd):
+        """Release a lock on Windows."""
+        msvcrt.locking(fd.fileno(), msvcrt.LK_UNLCK, 1)
+
+else:
+    import fcntl
+
+    def _lock_file(fd, *, shared: bool, blocking: bool):
+        """Acquire a lock on Unix."""
+        lock_op = fcntl.LOCK_SH if shared else fcntl.LOCK_EX
+        if not blocking:
+            lock_op |= fcntl.LOCK_NB
+        fcntl.flock(fd, lock_op)
+
+    def _unlock_file(fd):
+        """Release a lock on Unix."""
+        fcntl.flock(fd, fcntl.LOCK_UN)
 
 
 class StagingIndex:
@@ -17,11 +43,10 @@ class StagingIndex:
         """
         self._lock_path.parent.mkdir(parents=True, exist_ok=True)
         self._lock_fd = open(self._lock_path, "w")
-        lock_op = fcntl.LOCK_SH if shared else fcntl.LOCK_EX
         deadline = time.monotonic() + self._lock_timeout
         while True:
             try:
-                fcntl.flock(self._lock_fd, lock_op | fcntl.LOCK_NB)
+                _lock_file(self._lock_fd, shared=shared, blocking=False)
                 return
             except (IOError, OSError):
                 if time.monotonic() >= deadline:
@@ -36,7 +61,7 @@ class StagingIndex:
     def _release_lock(self):
         """Release the file lock."""
         try:
-            fcntl.flock(self._lock_fd, fcntl.LOCK_UN)
+            _unlock_file(self._lock_fd)
             self._lock_fd.close()
         except Exception:
             pass
