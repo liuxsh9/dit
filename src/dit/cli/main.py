@@ -29,6 +29,11 @@ from dit.core.refs import RefStore
 from dit.core.store import ObjectStore
 from dit.core.stat_cache import StatCache
 from dit.core.workspace import build_manifest_for_file, build_manifest_for_file_streaming, find_jsonl_files
+from dit.cli.style import (
+    hash_str, branch_str, added_str, removed_str, modified_str,
+    refreshed_str, header_str, dim_str, warn_str, error_str,
+    success_str, info_str,
+)
 
 app = typer.Typer(name="dit", help="Git-like version control for SFT training data.")
 
@@ -290,17 +295,17 @@ def diff():
         new_count = len(new_m.entries)
 
         if rel not in head_files:
-            typer.echo(f"{rel}: new file ({new_count} rows)")
+            typer.echo(f"{rel}: {added_str('new file')} ({new_count} rows)")
         elif rel not in current_files:
-            typer.echo(f"{rel}: deleted ({old_count} rows)")
+            typer.echo(f"{rel}: {removed_str('deleted')} ({old_count} rows)")
         else:
             typer.echo(f"{rel}: {old_count} → {new_count} rows ({result.summary()})")
 
         if result.refreshed:
-            typer.echo(f"  Likely refreshed: {len(result.refreshed)} rows")
+            typer.echo(f"  {refreshed_str(f'Likely refreshed: {len(result.refreshed)} rows')}")
 
     if not any_changes:
-        typer.echo("No changes.")
+        typer.echo(dim_str("No changes."))
 
 
 @app.command()
@@ -350,7 +355,7 @@ def commit(message: str = typer.Option(..., "-m", help="Commit message")):
     branch = refs.current_branch()
     refs.set_branch(branch, commit_hash)
     index.clear()
-    typer.echo(f"[{branch} {commit_hash[:8]}] {message}")
+    typer.echo(f"[{branch_str(branch)} {hash_str(commit_hash[:8])}] {message}")
 
 
 @app.command()
@@ -396,12 +401,12 @@ def log(
         data = store.read("commits", commit_hash)
         c = deserialize_commit(data)
         if oneline:
-            typer.echo(f"{commit_hash[:8]} {c.message}")
+            typer.echo(f"{hash_str(commit_hash[:8])} {c.message}")
             commit_hash = c.parent_hashes[0] if c.parent_hashes else None
             continue
         ts = datetime.fromtimestamp(c.timestamp, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-        typer.echo(f"commit {commit_hash}")
-        typer.echo(f"Author: {c.author}")
+        typer.echo(f"commit {hash_str(commit_hash)}")
+        typer.echo(f"{header_str('Author:')} {c.author}")
         typer.echo(f"Date:   {ts}")
         typer.echo(f"\n    {c.message}\n")
         commit_hash = c.parent_hashes[0] if c.parent_hashes else None
@@ -428,17 +433,19 @@ def status():
             cd = store.read("commits", head_hash_tmp)
             hc = deserialize_commit(cd)
             total_files = len(ft(store, hc.tree_hash))
-        typer.echo(f"On branch {branch} (sparse checkout: {len(sparse_paths)}/{total_files} files)")
+        typer.echo(f"On branch {branch_str(branch)} (sparse checkout: {len(sparse_paths)}/{total_files} files)")
     else:
-        typer.echo(f"On branch {branch}")
+        typer.echo(f"On branch {branch_str(branch)}")
 
     staged = index.entries()
     staged_typed = index.entries_typed()
     if staged:
-        typer.echo("\nStaged files:")
+        typer.echo(header_str("\nStaged files:"))
         for rel, (obj_type, _obj_hash) in sorted(staged_typed.items()):
-            prefix = "deleted:  " if obj_type == "delete" else ""
-            typer.echo(f"  {prefix}{rel}")
+            if obj_type == "delete":
+                typer.echo(f"  {removed_str('deleted:')}  {rel}")
+            else:
+                typer.echo(f"  {added_str(rel)}")
 
     head_manifests: dict[str, str] = {}
     head_hash = refs.resolve_head()
@@ -482,17 +489,17 @@ def status():
 
     has_changes = modified or new_files or deleted
     if not staged and not has_changes:
-        typer.echo("\nNothing to commit, working directory clean.")
+        typer.echo(dim_str("\nNothing to commit, working directory clean."))
         return
 
     if modified or new_files or deleted:
-        typer.echo("\nUnstaged changes:")
+        typer.echo(header_str("\nUnstaged changes:"))
         for rel in sorted(modified):
-            typer.echo(f"  modified: {rel}")
+            typer.echo(f"  {modified_str('modified:')} {rel}")
         for rel in sorted(new_files):
-            typer.echo(f"  new file: {rel}")
+            typer.echo(f"  {added_str('new file:')} {rel}")
         for rel in deleted:
-            typer.echo(f"  deleted:  {rel}")
+            typer.echo(f"  {removed_str('deleted:')}  {rel}")
 
 
 @app.command()
@@ -913,7 +920,7 @@ def merge(
 
     # Already up to date (same tip)
     if ours_hash == theirs_hash:
-        typer.echo("Already up to date.")
+        typer.echo(dim_str("Already up to date."))
         return
 
     # Fast-forward
@@ -922,12 +929,12 @@ def merge(
         ours_commit = deserialize_commit(store.read("commits", ours_hash))
         _materialize_tree(repo_root, store, theirs_commit.tree_hash, ours_commit.tree_hash)
         refs.set_branch(current_branch, theirs_hash)
-        typer.echo(f"Fast-forward to {theirs_hash[:8]}.")
+        typer.echo(f"Fast-forward to {hash_str(theirs_hash[:8])}.")
         return
 
     # Already up to date
     if base_hash == theirs_hash:
-        typer.echo("Already up to date.")
+        typer.echo(dim_str("Already up to date."))
         return
 
     # Three-way merge
@@ -957,9 +964,9 @@ def merge(
             ],
         }
         conflicts_file.write_text(json.dumps(conflict_data, indent=2))
-        typer.echo(f"CONFLICT: {len(merge_result.conflicts)} file(s) have conflicts.")
+        typer.echo(f"{error_str('CONFLICT:')} {len(merge_result.conflicts)} file(s) have conflicts.")
         for c in merge_result.conflicts:
-            typer.echo(f"  {c.file_path} ({c.conflict_type})")
+            typer.echo(f"  {removed_str(c.file_path)} ({c.conflict_type})")
         typer.echo("\nResolve conflicts, then: dit add <files> && dit merge --continue")
         raise typer.Exit(1)
 
@@ -1131,9 +1138,9 @@ def cherry_pick(
             ],
         }
         conflicts_file.write_text(json.dumps(conflict_data, indent=2))
-        typer.echo(f"CONFLICT: {len(merge_result.conflicts)} file(s) have conflicts.")
+        typer.echo(f"{error_str('CONFLICT:')} {len(merge_result.conflicts)} file(s) have conflicts.")
         for c in merge_result.conflicts:
-            typer.echo(f"  {c.file_path} ({c.conflict_type})")
+            typer.echo(f"  {removed_str(c.file_path)} ({c.conflict_type})")
         typer.echo("\nResolve conflicts, then: dit add <files> && dit cherry-pick --continue")
         raise typer.Exit(1)
 
@@ -1875,7 +1882,7 @@ def push(
         )
         raise typer.Exit(1)
 
-    typer.echo(f"Pushed {uploaded} new objects to {remote}/{branch} ({local_hash[:8]})")
+    typer.echo(f"Pushed {added_str(str(uploaded))} new objects to {branch_str(f'{remote}/{branch}')} ({hash_str(local_hash[:8])})")
 
 
 def _clone_tree_objects(
@@ -2495,11 +2502,11 @@ def search(
     # Table format header
     ref_display = f"heads/{ref}" if refs.get_branch(ref) else ref
     if field:
-        typer.echo(f'Searching {ref_display} (commit {commit_hash[:8]}) for "{query}" in field {field}')
+        typer.echo(f'Searching {branch_str(ref_display)} (commit {hash_str(commit_hash[:8])}) for "{query}" in field {field}')
     elif path:
-        typer.echo(f'Searching {ref_display} (commit {commit_hash[:8]}) for "{query}" in {path}')
+        typer.echo(f'Searching {branch_str(ref_display)} (commit {hash_str(commit_hash[:8])}) for "{query}" in {path}')
     else:
-        typer.echo(f'Searching {ref_display} (commit {commit_hash[:8]}) for "{query}"')
+        typer.echo(f'Searching {branch_str(ref_display)} (commit {hash_str(commit_hash[:8])}) for "{query}"')
     typer.echo("")
 
     matches = result["matches"]
@@ -2515,17 +2522,17 @@ def search(
     sep = "\u2500" * (col_file + 8 + 50)
 
     header = f"{'File':<{col_file}}  {'Row':>5}  Excerpt"
-    typer.echo(header)
-    typer.echo(sep)
+    typer.echo(header_str(header))
+    typer.echo(dim_str(sep))
 
     for m in matches:
         excerpt = m["highlight"].replace("\n", " ")
         typer.echo(f"{m['file']:<{col_file}}  {m['row_index']:>5}  {excerpt}")
 
-    typer.echo(sep)
+    typer.echo(dim_str(sep))
 
     match_word = "match" if len(matches) == 1 else "matches"
-    typer.echo(f"{len(matches)} {match_word} (scanned {result['total_scanned']} rows)")
+    typer.echo(header_str(f"{len(matches)} {match_word} (scanned {result['total_scanned']} rows)"))
 
     if result["limit_reached"]:
         typer.echo("Limit reached. Pass --limit N to see more.")
@@ -2654,7 +2661,7 @@ def blame(
                 return
 
             ref_display = f"heads/{ref}" if refs.get_branch(ref) else ref
-            typer.echo(f"History for {file} row {row} at {ref_display}")
+            typer.echo(f"History for {file} row {row} at {branch_str(ref_display)}")
             typer.echo("")
 
             events = result["events"]
@@ -2667,13 +2674,13 @@ def blame(
             col_author = max(col_author, 6)
             header = f"  {'Commit':<{col_commit}}  {'Author':<{col_author}}  {'Date':<21}  Event     Content"
             sep = "\u2500" * max(len(header), 80)
-            typer.echo(header)
-            typer.echo(sep)
+            typer.echo(header_str(header))
+            typer.echo(dim_str(sep))
             for e in events:
                 ts = datetime.fromtimestamp(e["timestamp"], tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
                 preview = e.get("content_preview", "")[:50]
-                typer.echo(f"  {e['commit_hash'][:7]:<{col_commit}}  {e['author']:<{col_author}}  {ts:<21}  {e['event']:<8}  {preview}")
-            typer.echo(sep)
+                typer.echo(f"  {hash_str(e['commit_hash'][:7]):<{col_commit + 9}}  {e['author']:<{col_author}}  {ts:<21}  {e['event']:<8}  {preview}")
+            typer.echo(dim_str(sep))
 
             qfp = result.get("query_fingerprint")
             if qfp:
@@ -2689,7 +2696,7 @@ def blame(
                 return
 
             ref_display = f"heads/{ref}" if refs.get_branch(ref) else ref
-            typer.echo(f"Blame for {file} at {ref_display} (commit {commit_hash[:8]})")
+            typer.echo(f"Blame for {file} at {branch_str(ref_display)} (commit {hash_str(commit_hash[:8])})")
             typer.echo("")
 
             entries = result["entries"]
@@ -2701,13 +2708,13 @@ def blame(
             col_author = max(col_author, 6)
             header = f" {'Row':>4}  {'Commit':<9}  {'Author':<{col_author}}  {'Date':<21}  Content"
             sep = "\u2500" * max(len(header) + 40, 80)
-            typer.echo(header)
-            typer.echo(sep)
+            typer.echo(header_str(header))
+            typer.echo(dim_str(sep))
             for e in entries:
                 ts = datetime.fromtimestamp(e["timestamp"], tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
                 preview = e.get("content_preview", "")[:60]
-                typer.echo(f" {e['row_index']:>4}  {e['commit_hash'][:7]:<9}  {e['author']:<{col_author}}  {ts:<21}  {preview}")
-            typer.echo(sep)
+                typer.echo(f" {e['row_index']:>4}  {hash_str(e['commit_hash'][:7]):<{9 + 9}}  {e['author']:<{col_author}}  {ts:<21}  {preview}")
+            typer.echo(dim_str(sep))
 
             s = result["summary"]
             typer.echo(f"{s['total_rows']} rows, {s['unique_commits']} commits, {s['unique_authors']} authors")
@@ -3003,28 +3010,28 @@ def dedup(
 
     s = result["summary"]
     ref_display = f"heads/{ref}" if refs_store.get_branch(ref) else ref
-    typer.echo(f"Duplicate detection for {ref_display} (commit {commit_hash[:8]})")
+    typer.echo(f"Duplicate detection for {branch_str(ref_display)} (commit {hash_str(commit_hash[:8])})")
     typer.echo("")
 
     if severity == "clean":
-        typer.echo(f"No duplicates found. {s['total_rows']} rows across {s['total_files']} files.")
+        typer.echo(success_str(f"No duplicates found. {s['total_rows']} rows across {s['total_files']} files."))
         raise typer.Exit(0)
 
     if result["exact_duplicates"]:
-        typer.echo(f"⚠ EXACT DUPLICATES ({s['exact_dup_groups']} groups, {s['exact_dup_rows']} rows) \u2014 identical content")
-        typer.echo("\u2500" * 60)
+        typer.echo(warn_str(f"⚠ EXACT DUPLICATES ({s['exact_dup_groups']} groups, {s['exact_dup_rows']} rows) \u2014 identical content"))
+        typer.echo(dim_str("\u2500" * 60))
         typer.echo("  row_hash    Count  Files")
         for group in result["exact_duplicates"]:
             file_counts: dict[str, int] = {}
             for occ in group["occurrences"]:
                 file_counts[occ["file"]] = file_counts.get(occ["file"], 0) + 1
             files_str = ", ".join(f"{f} (\u00d7{c})" for f, c in file_counts.items())
-            typer.echo(f"  {group['row_hash'][:8]}    {group['count']:>3}x   {files_str}")
+            typer.echo(f"  {hash_str(group['row_hash'][:8])}    {group['count']:>3}x   {files_str}")
         typer.echo("")
 
     if result["query_duplicates"]:
-        typer.echo(f"ℹ QUERY DUPLICATES ({s['query_dup_groups']} groups, {s['query_dup_rows']} rows) \u2014 same query, different response")
-        typer.echo("\u2500" * 60)
+        typer.echo(info_str(f"ℹ QUERY DUPLICATES ({s['query_dup_groups']} groups, {s['query_dup_rows']} rows) \u2014 same query, different response"))
+        typer.echo(dim_str("\u2500" * 60))
         typer.echo("  fingerprint  Variants  Files")
         for group in result["query_duplicates"]:
             file_counts: dict[str, int] = {}
@@ -3036,9 +3043,9 @@ def dedup(
 
     typer.echo(f"Summary: {s['total_rows']} rows across {s['total_files']} files")
     if s["exact_dup_groups"] > 0:
-        typer.echo(f"  Exact duplicates: {s['exact_dup_groups']} groups ({s['exact_dup_rows']} rows) WARNING")
+        typer.echo(f"  Exact duplicates: {s['exact_dup_groups']} groups ({s['exact_dup_rows']} rows) {warn_str('WARNING')}")
     if s["query_dup_groups"] > 0:
-        typer.echo(f"  Query duplicates: {s['query_dup_groups']} groups ({s['query_dup_rows']} rows) INFO")
+        typer.echo(f"  Query duplicates: {s['query_dup_groups']} groups ({s['query_dup_rows']} rows) {info_str('INFO')}")
 
     raise typer.Exit(exit_code)
 
