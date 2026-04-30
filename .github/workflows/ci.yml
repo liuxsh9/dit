@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     name: Lint
@@ -14,6 +18,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: "pip"
       - run: pip install ruff
       - run: ruff check src/ tests/
 
@@ -25,8 +30,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install uv
-        run: pip install uv
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          enable-cache: true
       - name: Install dependencies
         run: uv sync --frozen --group dev --extra server
       - name: Run tests
@@ -36,8 +43,15 @@ jobs:
     name: Docker Build
     runs-on: ubuntu-latest
     needs: [lint, test]
+    if: "!contains(github.event.head_commit.message, '[skip docker]')"
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
       - name: Build image
-        run: docker build -t dit-core:ci .
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: dit-core:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
