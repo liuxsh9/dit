@@ -1,0 +1,109 @@
+<mxfile host="Electron" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/29.6.6 Chrome/144.0.7559.236 Electron/40.8.4 Safari/537.36" version="29.6.6">
+  <diagram id="JsFbyabf270L26wWUeCO" name="第 1 页">
+    <mxGraphModel dx="1162" dy="719" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="bg" parent="1" style="rounded=0;fillColor=#fafbfc;strokeColor=none;glass=1;" value="" vertex="1">
+          <mxGeometry height="480" width="760" x="20" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="title" parent="1" style="text;fontSize=22;fontStyle=1;fontFamily=Helvetica;align=center;verticalAlign=middle;fillColor=none;strokeColor=none;fontColor=#1e293b;" value="Dit — Architecture Overview" vertex="1">
+          <mxGeometry height="35" width="500" x="150" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" parent="1" style="text;fontSize=12;fontStyle=2;fontFamily=Helvetica;align=center;fillColor=none;strokeColor=none;fontColor=#94a3b8;" value="Git-like version control for LLM training data" vertex="1">
+          <mxGeometry height="20" width="400" x="200" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="user-cli" parent="1" style="rounded=1;fillColor=#dbeafe;strokeColor=#93c5fd;fontSize=11;fontFamily=Helvetica;fontColor=#1e40af;whiteSpace=wrap;" value="Data Engineer" vertex="1">
+          <mxGeometry height="32" width="110" x="85" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="user-web" parent="1" style="rounded=1;fillColor=#fef3c7;strokeColor=#fcd34d;fontSize=11;fontFamily=Helvetica;fontColor=#92400e;whiteSpace=wrap;" value="Reviewer (Browser)" vertex="1">
+          <mxGeometry height="32" width="140" x="590" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="cli-card" parent="1" style="rounded=1;arcSize=10;fillColor=#eff6ff;strokeColor=#bfdbfe;strokeWidth=1.5;shadow=1;" value="" vertex="1">
+          <mxGeometry height="150" width="200" x="40" y="150" as="geometry" />
+        </mxCell>
+        <mxCell id="cli-badge" parent="1" style="rounded=1;arcSize=20;fillColor=#3b82f6;strokeColor=none;fontColor=#ffffff;fontSize=13;fontStyle=1;fontFamily=Helvetica;" value="dit CLI" vertex="1">
+          <mxGeometry height="28" width="90" x="95" y="140" as="geometry" />
+        </mxCell>
+        <mxCell id="cli-content" parent="1" style="text;fontSize=11;fontFamily=Helvetica;align=center;verticalAlign=middle;fillColor=none;strokeColor=none;fontColor=#475569;" value="init / add / commit / diff&#xa;branch / merge / cherry-pick&#xa;push / pull / clone&#xa;blame / dedup / validate&#xa;search / export / gc" vertex="1">
+          <mxGeometry height="110" width="180" x="50" y="175" as="geometry" />
+        </mxCell>
+        <mxCell id="core-card" parent="1" style="rounded=1;arcSize=10;fillColor=#f0fdf4;strokeColor=#bbf7d0;strokeWidth=1.5;shadow=1;" value="" vertex="1">
+          <mxGeometry height="150" width="200" x="300" y="150" as="geometry" />
+        </mxCell>
+        <mxCell id="core-badge" parent="1" style="rounded=1;arcSize=20;fillColor=#22c55e;strokeColor=none;fontColor=#ffffff;fontSize=13;fontStyle=1;fontFamily=Helvetica;" value="dit-core :8000" vertex="1">
+          <mxGeometry height="28" width="120" x="340" y="140" as="geometry" />
+        </mxCell>
+        <mxCell id="core-content" parent="1" style="text;fontSize=11;fontFamily=Helvetica;align=center;verticalAlign=middle;fillColor=none;strokeColor=none;fontColor=#475569;" value="REST API (repos, objects)&#xa;Auth (tokens, role hierarchy)&#xa;Pull Requests &amp; Review&#xa;Webhooks (HMAC-SHA256)&#xa;Prometheus /metrics" vertex="1">
+          <mxGeometry height="110" width="180" x="310" y="175" as="geometry" />
+        </mxCell>
+        <mxCell id="gw-card" parent="1" style="rounded=1;arcSize=10;fillColor=#fffbeb;strokeColor=#fde68a;strokeWidth=1.5;shadow=1;" value="" vertex="1">
+          <mxGeometry height="150" width="200" x="560" y="150" as="geometry" />
+        </mxCell>
+        <mxCell id="gw-badge" parent="1" style="rounded=1;arcSize=20;fillColor=#f59e0b;strokeColor=none;fontColor=#ffffff;fontSize=13;fontStyle=1;fontFamily=Helvetica;" value="Gateway :3000" vertex="1">
+          <mxGeometry height="28" width="120" x="600" y="140" as="geometry" />
+        </mxCell>
+        <mxCell id="gw-content" parent="1" style="text;fontSize=11;fontFamily=Helvetica;align=center;verticalAlign=middle;fillColor=none;strokeColor=none;fontColor=#475569;" value="Web UI (repo browser)&#xa;JSONL card rendering&#xa;PR review interface&#xa;User management&#xa;Git hosting (SSH/HTTP)" vertex="1">
+          <mxGeometry height="110" width="180" x="570" y="175" as="geometry" />
+        </mxCell>
+        <mxCell id="local-store" parent="1" style="rounded=1;arcSize=12;fillColor=#f1f5f9;strokeColor=#cbd5e1;fontSize=11;fontFamily=Helvetica;fontColor=#475569;shadow=1;" value=".dit/ (local objects)" vertex="1">
+          <mxGeometry height="38" width="150" x="65" y="370" as="geometry" />
+        </mxCell>
+        <mxCell id="pg-store" parent="1" style="rounded=1;arcSize=12;fillColor=#fef3c7;strokeColor=#fde68a;fontSize=11;fontFamily=Helvetica;fontStyle=1;fontColor=#92400e;shadow=1;" value="PostgreSQL" vertex="1">
+          <mxGeometry height="38" width="130" x="335" y="332" as="geometry" />
+        </mxCell>
+        <mxCell id="pg-desc" parent="1" style="text;fontSize=10;fontFamily=Helvetica;fontStyle=2;align=center;fillColor=none;strokeColor=none;fontColor=#a3a3a3;autosizeText=0;html=1;" value="metadata, refs, tokens, PRs" vertex="1">
+          <mxGeometry height="27" width="140" x="400" y="375.5" as="geometry" />
+        </mxCell>
+        <mxCell id="obj-store" parent="1" style="rounded=1;arcSize=12;fillColor=#dcfce7;strokeColor=#bbf7d0;fontSize=11;fontFamily=Helvetica;fontStyle=1;fontColor=#166534;shadow=1;" value="Object Store" vertex="1">
+          <mxGeometry height="38" width="130" x="335" y="408" as="geometry" />
+        </mxCell>
+        <mxCell id="obj-desc" parent="1" style="text;fontSize=9;fontFamily=Helvetica;fontStyle=2;align=center;fillColor=none;strokeColor=none;fontColor=#a3a3a3;" value="commits, trees, manifests, rows" vertex="1">
+          <mxGeometry height="14" width="150" x="325" y="446" as="geometry" />
+        </mxCell>
+        <mxCell id="caddy-box" parent="1" style="rounded=1;arcSize=12;fillColor=#f5f5f5;strokeColor=#d4d4d4;strokeDasharray=4;fontSize=11;fontFamily=Helvetica;fontStyle=2;fontColor=#737373;" value="Caddy (optional TLS)" vertex="1">
+          <mxGeometry height="40" width="145" x="585" y="370" as="geometry" />
+        </mxCell>
+        <mxCell id="e-u1" edge="1" parent="1" source="user-cli" style="endArrow=classic;strokeColor=#93c5fd;strokeWidth=1.5;curved=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="cli-badge">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-u2" edge="1" parent="1" source="user-web" style="endArrow=classic;strokeColor=#fcd34d;strokeWidth=1.5;curved=1;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="660" y="140" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e-cli-core" edge="1" parent="1" source="cli-card" style="endArrow=classic;startArrow=classic;strokeColor=#3b82f6;strokeWidth=2;curved=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;entryDx=0;entryDy=0;exitDx=0;exitDy=0;" target="core-card">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-cli-core-lbl" connectable="0" parent="e-cli-core" style="edgeLabel;fontSize=10;fontFamily=Helvetica;fontColor=#64748b;fillColor=#fafbfc;rounded=1;" value="push / &#xa;pull / &#xa;clone" vertex="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="-18" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e-gw-core" edge="1" parent="1" source="gw-card" style="endArrow=classic;strokeColor=#f59e0b;strokeWidth=2;curved=1;exitX=0;exitY=0.5;entryX=1;entryY=0.5;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" target="core-card">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-gw-core-lbl" connectable="0" parent="e-gw-core" style="edgeLabel;fontSize=10;fontFamily=Helvetica;fontColor=#92400e;fillColor=#fefce8;rounded=1;" value="X-Service-&#xa;Token" vertex="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="-24" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e-cli-local" edge="1" parent="1" source="cli-card" style="endArrow=classic;startArrow=classic;strokeColor=#94a3b8;strokeWidth=1.5;curved=1;" target="local-store">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-core-pg" edge="1" parent="1" source="core-card" style="endArrow=classic;startArrow=classic;strokeColor=#22c55e;strokeWidth=1.5;curved=1;" target="pg-store">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-pg-obj" edge="1" parent="1" source="pg-store" style="endArrow=classic;startArrow=classic;strokeColor=#22c55e;strokeWidth=1.5;curved=1;" target="obj-store">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-caddy-gw" edge="1" parent="1" source="caddy-box" style="endArrow=classic;strokeColor=#d4d4d4;strokeWidth=1;dashed=1;curved=1;" target="gw-card">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="repo-bar" parent="1" style="rounded=1;arcSize=8;fillColor=#f8fafc;strokeColor=#e2e8f0;" value="dit repo — CLI + Core + Dockerfile | datahub-gateway repo — Gateway + Docker Compose" vertex="1">
+          <mxGeometry height="25" width="520" x="140" y="470" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
