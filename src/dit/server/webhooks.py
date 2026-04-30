@@ -25,7 +25,7 @@ async def load_webhooks(
     event: WebhookEvent,
 ) -> list[dict]:
     result = await session.execute(
-        select(Webhook).where(Webhook.repo_id == repo_id, Webhook.active == True)
+        select(Webhook).where(Webhook.repo_id == repo_id, Webhook.active.is_(True))
     )
     hooks = result.scalars().all()
     subscribed = [

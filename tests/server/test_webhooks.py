@@ -1,6 +1,3 @@
-import hashlib
-import hmac
-import json
 from unittest.mock import AsyncMock, patch
 
 from dit.server.webhooks import load_webhooks, fire_webhook_payloads, WebhookEvent
@@ -36,7 +33,6 @@ class TestFireWebhooks:
             mock_client.post.assert_called_once()
             call_args = mock_client.post.call_args
             assert call_args[0][0] == "https://example.com/hook"
-            body = call_args[1]["content"]
             headers = call_args[1]["headers"]
             assert "X-Dit-Signature" in headers
 

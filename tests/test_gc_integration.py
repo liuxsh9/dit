@@ -4,16 +4,14 @@ import os
 import time
 from pathlib import Path
 
-import pytest
 
-from dit.core.gc import gc, collect_live_set, sweep
+from dit.core.gc import gc, collect_live_set
 from dit.core.hash import row_hash as compute_row_hash, query_fingerprint as compute_qfp
 from dit.core.index import StagingIndex
 from dit.core.objects import (
     Commit, Manifest, ManifestEntry, Tree, TreeEntry,
     serialize_manifest, serialize_tree, serialize_commit,
     serialize_blob,
-    object_hash,
 )
 from dit.core.refs import RefStore
 from dit.core.store import ObjectStore
@@ -139,7 +137,7 @@ def test_walk_commit_objects_blobs_included_in_push_delta(tmp_path: Path) -> Non
     rh = compute_row_hash(shared_row)
     _write_row(store, shared_row)
     manifest = Manifest(entries=[ManifestEntry(row_hash=rh, query_fingerprint=None)])
-    m_hash = store.write("manifests", serialize_manifest(manifest))
+    store.write("manifests", serialize_manifest(manifest))
 
     # c1: blob "v1"
     c1_hash = _make_commit(

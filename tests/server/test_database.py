@@ -1,7 +1,6 @@
 """Tests for database engine connection pool configuration."""
 
 import pytest
-import pytest_asyncio
 from sqlalchemy.pool import AsyncAdaptedQueuePool, StaticPool
 
 from dit.server.database import create_db_engine

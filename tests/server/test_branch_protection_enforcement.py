@@ -1,17 +1,13 @@
 """Tests for branch protection enforcement across merge, PR merge, and direct push."""
 import time
 
-import pytest
 
 from dit.core.objects import (
     Commit,
     Manifest,
     ManifestEntry,
-    Tree,
-    TreeEntry,
     serialize_commit,
     serialize_manifest,
-    serialize_tree,
 )
 from dit.core.store import ObjectStore
 from dit.core.tree_builder import build_nested_tree

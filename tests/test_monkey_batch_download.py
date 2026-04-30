@@ -106,7 +106,7 @@ def _write_jsonl(path: Path, rows: list[dict]) -> None:
 
 def _read_jsonl(path: Path) -> list[dict]:
     lines = path.read_text().splitlines()
-    return [json.loads(l) for l in lines if l.strip()]
+    return [json.loads(line) for line in lines if line.strip()]
 
 
 def _init_repo(d: Path, monkeypatch) -> None:

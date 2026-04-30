@@ -12,7 +12,7 @@ from dit.core.objects import (
     serialize_manifest, serialize_tree, serialize_commit,
 )
 from dit.core.store import ObjectStore
-from dit.server.models import Ref, Repo, Token
+from dit.server.models import Ref, Token
 
 
 def _write_row(store: ObjectStore, content: dict) -> str:
@@ -113,7 +113,7 @@ async def test_gc_requires_admin(client: AsyncClient, session, tmp_path):
     session.add(reader_token)
     await session.commit()
 
-    from httpx import ASGITransport, AsyncClient as RawClient
+    from httpx import AsyncClient as RawClient
     transport = client._transport
     async with RawClient(
         transport=transport,

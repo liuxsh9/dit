@@ -566,7 +566,7 @@ class TestMeta:
 
     def test_meta_compute_single_file(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
-        dot = self._make_repo_with_data(tmp_path)
+        self._make_repo_with_data(tmp_path)
 
         result = runner.invoke(app, ["meta", "compute", "--file", "train.jsonl"])
         assert result.exit_code == 0, result.output
@@ -580,7 +580,6 @@ class TestMeta:
         dot = self._make_repo_with_data(tmp_path)
 
         runner.invoke(app, ["meta", "compute"])
-        store = ObjectStore(dot / "objects")
         refs = RefStore(dot)
         h1 = refs.resolve_head()
 
@@ -598,7 +597,7 @@ class TestMeta:
 
     def test_meta_show_table(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
-        dot = self._make_repo_with_data(tmp_path)
+        self._make_repo_with_data(tmp_path)
         runner.invoke(app, ["meta", "compute"])
 
         result = runner.invoke(app, ["meta", "show", "train.jsonl"])
@@ -609,7 +608,7 @@ class TestMeta:
 
     def test_meta_show_json(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
-        dot = self._make_repo_with_data(tmp_path)
+        self._make_repo_with_data(tmp_path)
         runner.invoke(app, ["meta", "compute"])
 
         result = runner.invoke(app, ["meta", "show", "train.jsonl", "--format", "json"])
@@ -623,7 +622,7 @@ class TestMeta:
     def test_meta_show_no_sidecar(self, tmp_path, monkeypatch):
         """meta show on a file without sidecar exits with error."""
         monkeypatch.chdir(tmp_path)
-        dot = self._make_repo_with_data(tmp_path)
+        self._make_repo_with_data(tmp_path)
 
         result = runner.invoke(app, ["meta", "show", "train.jsonl"])
         assert result.exit_code != 0
@@ -631,7 +630,7 @@ class TestMeta:
 
     def test_meta_show_file_not_in_tree(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
-        dot = self._make_repo_with_data(tmp_path)
+        self._make_repo_with_data(tmp_path)
         runner.invoke(app, ["meta", "compute"])
 
         result = runner.invoke(app, ["meta", "show", "nonexistent.jsonl"])

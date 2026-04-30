@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from dit.server.auth import get_session, require_permission
-from dit.server.models import PrComment, PullRequestMeta, Repo
+from dit.server.models import PrComment, PullRequestMeta
 from dit.server.routes._helpers import _get_repo
 
 router = APIRouter(prefix="/api/v1/repos/{repo}", tags=["pr-comments"])

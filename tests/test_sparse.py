@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 
 from dit.core.sparse import is_sparse, load_sparse_paths, save_sparse_paths, is_in_sparse_set
 

@@ -1,6 +1,5 @@
 """Tests for the blame API endpoint."""
 import json
-import time
 from pathlib import Path
 
 import pytest
@@ -191,7 +190,7 @@ class TestBlameEndpoint:
         assert resp.status_code == 201
 
         # Make request without Authorization header
-        from httpx import ASGITransport, AsyncClient as RawClient
+        from httpx import AsyncClient as RawClient
         # Extract the app from the existing client transport
         transport = client._transport
         async with RawClient(transport=transport, base_url="http://test") as raw:

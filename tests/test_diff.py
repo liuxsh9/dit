@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dit.core.objects import Manifest, ManifestEntry
-from dit.core.diff import diff_manifests, DiffResult
+from dit.core.diff import diff_manifests
 
 
 def _entry(row_hash: str, qfp: str | None = None) -> ManifestEntry:

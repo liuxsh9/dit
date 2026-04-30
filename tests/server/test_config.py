@@ -1,4 +1,3 @@
-import os
 from alembic.config import Config
 from dit.server.config import ServerSettings
 from dit.server.config import resolve_database_url

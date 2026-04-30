@@ -1,9 +1,8 @@
 import hashlib
 
-import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from dit.server.app import create_app
 from dit.server.auth import get_session

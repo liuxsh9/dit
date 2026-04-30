@@ -1,5 +1,4 @@
 import json
-import time
 
 from dit.core.objects import (
     ManifestEntry,

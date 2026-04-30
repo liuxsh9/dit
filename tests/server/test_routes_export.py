@@ -65,7 +65,7 @@ class TestExportEndpoint:
     async def test_export_jsonl_body_is_valid_ndjson(self, client: AsyncClient, tmp_path: Path):
         store, commit_hash = await _create_repo_with_data(client, tmp_path)
         resp = await client.get(f"/api/v1/repos/export-repo/export/{commit_hash}/train.jsonl")
-        lines = [l for l in resp.text.splitlines() if l.strip()]
+        lines = [line for line in resp.text.splitlines() if line.strip()]
         assert len(lines) == 2
         for line in lines:
             obj = json.loads(line)

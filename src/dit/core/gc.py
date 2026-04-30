@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
 
 from dit.core.store import ObjectStore
 from dit.core.walker import walk_commit_objects

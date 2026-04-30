@@ -1,6 +1,5 @@
 import time
 import json
-import pytest
 from pathlib import Path
 from httpx import AsyncClient
 
@@ -11,7 +10,6 @@ from dit.core.objects import (
     serialize_sidecar, Sidecar, SidecarEntry,
 )
 from dit.core.tree_builder import build_nested_tree
-from dit.core.refs import RefStore
 
 
 async def _create_repo(client: AsyncClient, name: str = "meta-repo"):

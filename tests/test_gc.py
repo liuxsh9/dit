@@ -6,9 +6,7 @@ import os
 import time
 from pathlib import Path
 
-import pytest
 
-from dit.core.hash import row_hash as compute_row_hash, query_fingerprint as compute_qfp
 from dit.core.objects import (
     Commit,
     Manifest,

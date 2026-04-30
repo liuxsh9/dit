@@ -1,5 +1,4 @@
 # tests/test_tree_walker.py
-import pytest
 from dit.core.store import ObjectStore
 from dit.core.tree_builder import build_nested_tree
 from dit.core.tree_walker import flatten_tree, resolve_path

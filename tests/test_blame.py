@@ -6,7 +6,6 @@ from dit.core.blame import blame_file, row_history
 from dit.core.objects import (
     Commit, Manifest, ManifestEntry, Tree, TreeEntry,
     serialize_manifest, serialize_tree, serialize_commit,
-    object_hash,
 )
 from dit.core.store import ObjectStore
 

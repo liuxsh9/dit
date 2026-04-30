@@ -133,7 +133,6 @@ class TestAtomicWrite:
 
     def test_set_branch_no_partial_write_on_rename_failure(self, tmp_path: Path):
         """If os.replace fails, the original ref file must remain intact."""
-        import os
         from unittest.mock import patch
 
         dot = tmp_path / ".dit"
@@ -145,7 +144,6 @@ class TestAtomicWrite:
         assert refs.get_branch("main") == "aa" * 32
 
         # Simulate os.replace failure mid-write
-        original_replace = os.replace
 
         def failing_replace(src, dst):
             raise OSError("disk error")
@@ -165,7 +163,6 @@ class TestAtomicWrite:
 
     def test_set_tag_atomic(self, tmp_path: Path):
         """set_tag should also use atomic writes."""
-        import os
         from unittest.mock import patch
 
         dot = tmp_path / ".dit"
@@ -189,7 +186,6 @@ class TestAtomicWrite:
 
     def test_set_head_atomic(self, tmp_path: Path):
         """set_head should use atomic writes."""
-        import os
         from unittest.mock import patch
 
         dot = tmp_path / ".dit"

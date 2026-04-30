@@ -1315,10 +1315,9 @@ def sparse_checkout_add(
     paths: list[str] = typer.Argument(..., help="File or directory paths to fetch"),
 ):
     """Fetch specific files from remote into the working directory."""
-    from dit.core.sparse import is_sparse, load_sparse_paths, save_sparse_paths, is_in_sparse_set
+    from dit.core.sparse import is_sparse, load_sparse_paths, save_sparse_paths
     from dit.core.tree_walker import flatten_tree
     from dit.core.workspace import materialize_file
-    from dit.core.remote import RemoteClient
 
     repo_root = find_repo_root()
     dot = get_dot(repo_root)
@@ -1399,7 +1398,7 @@ def sparse_checkout_remove(
     paths: list[str] = typer.Argument(..., help="Paths to remove from sparse set"),
 ):
     """Remove files from sparse checkout (deletes working copy, keeps objects)."""
-    from dit.core.sparse import is_sparse, load_sparse_paths, save_sparse_paths, is_in_sparse_set
+    from dit.core.sparse import is_sparse, load_sparse_paths, save_sparse_paths
     from dit.core.tree_walker import flatten_tree
 
     repo_root = find_repo_root()
@@ -1468,7 +1467,6 @@ def sparse_checkout_disable():
     from dit.core.sparse import is_sparse
     from dit.core.tree_walker import flatten_tree
     from dit.core.workspace import materialize_file
-    from dit.core.remote import RemoteClient
 
     repo_root = find_repo_root()
     dot = get_dot(repo_root)
@@ -1753,15 +1751,15 @@ def meta_diff(
         typer.echo(f"  Token estimate: {os_['tokens']:,} → {ns['tokens']:,} ({sign}{tok_delta:,})")
 
         if os_["langs"] != ns["langs"]:
-            old_lang_str = ", ".join(f"{l} {p}" for l, p in os_["langs"].items())
-            new_lang_str = ", ".join(f"{l} {p}" for l, p in ns["langs"].items())
+            old_lang_str = ", ".join(f"{lang} {pct}" for lang, pct in os_["langs"].items())
+            new_lang_str = ", ".join(f"{lang} {pct}" for lang, pct in ns["langs"].items())
             typer.echo(f"  Languages:      {old_lang_str} → {new_lang_str}")
 
     if not any_output:
         typer.echo("No metadata differences.")
 
 
-def _build_remote_client(dot: Path, remote_name: str = "origin") -> "RemoteClient":
+def _build_remote_client(dot: Path, remote_name: str = "origin") -> "RemoteClient":  # noqa: F821
     from dit.core.config import get_remote
     from dit.core.remote import RemoteClient
 
@@ -1839,7 +1837,6 @@ def push(
             exists = rc.batch_exists(obj_type, hashes)
         to_upload[obj_type] = [h for h in hashes if not exists.get(h, False)]
 
-    total = sum(len(v) for v in to_upload.values())
     uploaded = 0
     BATCH_SIZE = 100
     MAX_BATCH_BYTES = 10 * 1024 * 1024  # 10MB
@@ -1947,8 +1944,7 @@ def clone(
     """Clone a remote repository into a new directory."""
     from dit.core.config import set_remote
     from dit.core.remote import RemoteClient
-    from dit.core.workspace import materialize_file
-    from dit.core.objects import deserialize_commit, deserialize_tree, deserialize_manifest
+    from dit.core.objects import deserialize_commit, deserialize_manifest
     from dit.core.sparse import save_sparse_paths
     from dit.core.tree_walker import flatten_tree
 
@@ -2128,7 +2124,7 @@ def _fetch_tree_objects(
 
 
 def _fetch_objects_since(
-    rc: "RemoteClient",
+    rc: "RemoteClient",  # noqa: F821
     store: ObjectStore,
     remote_hash: str,
     stop_at: str | None,
@@ -2199,9 +2195,8 @@ def pull(
     branch: str = typer.Option("main", help="Branch to pull"),
 ):
     """Fetch from remote + fast-forward local branch + materialize changed files."""
-    from dit.core.objects import deserialize_commit, deserialize_tree, deserialize_manifest
+    from dit.core.objects import deserialize_commit
     from dit.core.walker import is_ancestor
-    from dit.core.workspace import materialize_file
 
     repo_root = find_repo_root()
     dot = get_dot(repo_root)
@@ -2530,7 +2525,7 @@ def search(
     typer.echo(f"{len(matches)} {match_word} (scanned {result['total_scanned']} rows)")
 
     if result["limit_reached"]:
-        typer.echo(f"Limit reached. Pass --limit N to see more.")
+        typer.echo("Limit reached. Pass --limit N to see more.")
 
 
 @app.command()

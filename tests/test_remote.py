@@ -5,7 +5,6 @@ import hashlib
 import json
 
 import httpx
-import pytest
 
 from dit.core.remote import RemoteClient
 

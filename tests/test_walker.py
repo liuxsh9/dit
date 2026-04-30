@@ -4,7 +4,6 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-import pytest
 
 from dit.core.objects import (
     Commit,
@@ -16,7 +15,6 @@ from dit.core.objects import (
     serialize_commit,
     serialize_manifest,
     serialize_tree,
-    object_hash,
 )
 from dit.core.store import ObjectStore
 from dit.core.walker import is_ancestor, walk_commit_objects

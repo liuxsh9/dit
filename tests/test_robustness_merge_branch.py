@@ -378,7 +378,6 @@ class TestMergeAbortCleanup:
         ]})
         _commit_file(tmp_path, "data.jsonl", row_m + "\n", "main change")
 
-        pre_merge_content = (tmp_path / "data.jsonl").read_text()
         pre_merge_hash = _get_branch_hash(tmp_path, "main")
 
         # Trigger conflict
@@ -395,7 +394,7 @@ class TestMergeAbortCleanup:
         assert not (tmp_path / ".dit" / "conflicts.json").exists()
         # Compare semantically: dit re-serializes JSON with canonical key order,
         # so raw string comparison won't match the original hand-written JSON.
-        post_abort_rows = [json.loads(l) for l in (tmp_path / "data.jsonl").read_text().strip().splitlines()]
+        post_abort_rows = [json.loads(line) for line in (tmp_path / "data.jsonl").read_text().strip().splitlines()]
         assert len(post_abort_rows) == 1
         assert post_abort_rows[0]["messages"][1]["content"] == "main"
         assert _get_branch_hash(tmp_path, "main") == pre_merge_hash

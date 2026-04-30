@@ -58,7 +58,7 @@ async def test_fsck_clean(client: AsyncClient, session, tmp_path):
     session.add(ref)
     await session.commit()
 
-    resp = await client.post(f"/api/v1/repos/fsck-clean/fsck", json={"check_hashes": True, "check_graph": True})
+    resp = await client.post("/api/v1/repos/fsck-clean/fsck", json={"check_hashes": True, "check_graph": True})
     assert resp.status_code == 200
     data = resp.json()
     assert data["total_errors"] == 0
@@ -84,7 +84,7 @@ async def test_fsck_with_corruption(client: AsyncClient, session, tmp_path):
     obj_path = store._object_path("rows", row_hash)
     obj_path.write_bytes(pyzstd.compress(b"corrupted"))
 
-    resp = await client.post(f"/api/v1/repos/fsck-corrupt/fsck", json={"check_hashes": True, "check_graph": True})
+    resp = await client.post("/api/v1/repos/fsck-corrupt/fsck", json={"check_hashes": True, "check_graph": True})
     assert resp.status_code == 200
     data = resp.json()
     assert data["total_errors"] >= 1
@@ -92,7 +92,7 @@ async def test_fsck_with_corruption(client: AsyncClient, session, tmp_path):
 
 @pytest.mark.asyncio
 async def test_fsck_repo_not_found(client: AsyncClient):
-    resp = await client.post(f"/api/v1/repos/nonexistent/fsck", json={})
+    resp = await client.post("/api/v1/repos/nonexistent/fsck", json={})
     assert resp.status_code == 404
 
 
@@ -110,7 +110,7 @@ async def test_fsck_defaults(client: AsyncClient, session, tmp_path):
     session.add(ref)
     await session.commit()
 
-    resp = await client.post(f"/api/v1/repos/fsck-defaults/fsck", json={})
+    resp = await client.post("/api/v1/repos/fsck-defaults/fsck", json={})
     assert resp.status_code == 200
     data = resp.json()
     assert "checked_objects" in data
@@ -135,7 +135,7 @@ async def test_fsck_requires_admin(client: AsyncClient, session, tmp_path):
     session.add(reader_token)
     await session.commit()
 
-    from httpx import ASGITransport, AsyncClient as RawClient
+    from httpx import AsyncClient as RawClient
     transport = client._transport
     async with RawClient(
         transport=transport,

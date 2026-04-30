@@ -4,7 +4,6 @@ import os
 import time
 from pathlib import Path
 
-import pytest
 from typer.testing import CliRunner
 
 from dit.cli.main import app

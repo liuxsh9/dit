@@ -1,12 +1,8 @@
 import time
-import pytest
-from pathlib import Path
 
 from dit.core.store import ObjectStore
 from dit.core.objects import (
-    Commit, Manifest, ManifestEntry, Tree, TreeEntry,
-    serialize_commit, serialize_manifest, serialize_tree,
-    deserialize_commit,
+    Commit, Manifest, ManifestEntry, serialize_commit, serialize_manifest, deserialize_commit,
 )
 from dit.core.tree_builder import build_nested_tree
 
@@ -94,7 +90,7 @@ class TestPRMergeFastForward:
 
 class TestPRMergeConflict:
     async def test_merge_with_conflict(self, client, tmp_path):
-        resp = await client.post("/api/v1/repos", json={"name": "conflict-repo"})
+        await client.post("/api/v1/repos", json={"name": "conflict-repo"})
         data_dir = tmp_path / "data"
         store = ObjectStore(data_dir / "repos" / "conflict-repo" / "objects")
 

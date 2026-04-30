@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 
 from dit.core.hash import canonical_json, row_hash, query_fingerprint

@@ -87,10 +87,9 @@ async def _next_pr_id(session: AsyncSession, repo_id: int) -> int:
 
 
 def _compute_diff_stats(store, source_commit: str, target_commit: str) -> dict:
-    from dit.core.objects import deserialize_commit, deserialize_tree, deserialize_manifest
+    from dit.core.objects import deserialize_commit, deserialize_manifest
     from dit.core.tree_walker import flatten_tree
     from dit.core.diff import diff_manifests
-    from dit.core.objects import Manifest
 
     def _get_commit_tree_hash(commit_hash: str) -> str:
         data = store.read("commits", commit_hash)
@@ -531,7 +530,6 @@ async def resolve_conflicts(
         ManifestEntry,
         Tree,
         TreeEntry,
-        deserialize_manifest,
         serialize_commit,
         serialize_manifest,
         serialize_tree,
@@ -560,14 +558,14 @@ async def resolve_conflicts(
     )
     target_ref = target_ref_result.scalar_one_or_none()
     if target_ref is None:
-        raise HTTPException(status_code=404, detail=f"Target branch not found")
+        raise HTTPException(status_code=404, detail="Target branch not found")
 
     source_ref_result = await session.execute(
         select(Ref).where(Ref.repo_id == r.id, Ref.name == pr.source_ref)
     )
     source_ref = source_ref_result.scalar_one_or_none()
     if source_ref is None:
-        raise HTTPException(status_code=404, detail=f"Source branch not found")
+        raise HTTPException(status_code=404, detail="Source branch not found")
 
     target_commit = target_ref.target_hash
     source_commit = source_ref.target_hash

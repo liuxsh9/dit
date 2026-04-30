@@ -43,7 +43,7 @@ class TestTokenRoleField:
     async def test_token_has_role_field(self, session: AsyncSession):
         """Token model has a role field."""
         raw = "role-field-test"
-        token = await _make_token(session, raw, permissions="push", role="committer")
+        await _make_token(session, raw, permissions="push", role="committer")
         tok = await _verify(session, raw)
         assert hasattr(tok, "role")
         assert tok.role == "committer"

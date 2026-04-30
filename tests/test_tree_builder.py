@@ -1,10 +1,8 @@
 # tests/test_tree_builder.py
-import pytest
-from pathlib import Path
 
 from dit.core.store import ObjectStore
 from dit.core.tree_builder import build_nested_tree
-from dit.core.objects import deserialize_tree, deserialize_manifest
+from dit.core.objects import deserialize_tree
 
 
 class TestBuildNestedTree:

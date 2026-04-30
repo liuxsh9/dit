@@ -74,15 +74,12 @@ class TestResetSoft:
         # a.jsonl should appear as unstaged new file, not staged
         lines = result.output.split("\n")
         staged_section = False
-        unstaged_section = False
         a_in_staged = False
         for line in lines:
             if "Staged files" in line:
                 staged_section = True
-                unstaged_section = False
             elif "Unstaged changes" in line:
                 staged_section = False
-                unstaged_section = True
             elif staged_section and "a.jsonl" in line:
                 a_in_staged = True
         assert not a_in_staged

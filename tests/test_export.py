@@ -52,8 +52,7 @@ from pathlib import Path
 from dit.core.export import export_commit
 from dit.core.objects import (
     Commit, Manifest, ManifestEntry,
-    Sidecar, SidecarEntry,
-    serialize_commit, serialize_manifest, serialize_sidecar,
+    Sidecar, serialize_commit, serialize_manifest, serialize_sidecar,
 )
 from dit.core.store import ObjectStore
 from dit.core.tree_builder import build_nested_tree

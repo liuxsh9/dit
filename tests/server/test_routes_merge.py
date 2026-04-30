@@ -1,8 +1,6 @@
 """Tests for server merge-preview and merge API routes."""
-import json
 import time
 
-import pytest
 
 from dit.core.objects import (
     Commit,

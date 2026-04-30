@@ -1,4 +1,3 @@
-import pytest
 
 from dit.core.objects import Commit, Manifest, ManifestEntry, serialize_commit, serialize_manifest
 from dit.core.store import ObjectStore

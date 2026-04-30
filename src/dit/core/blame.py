@@ -1,7 +1,6 @@
 """Blame: trace each row in a file to the commit that introduced it."""
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from typing import Optional
 

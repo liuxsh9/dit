@@ -1,4 +1,3 @@
-import pytest
 
 
 async def _create_repo(client, name: str = "bp-test-repo") -> str:

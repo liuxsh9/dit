@@ -1,6 +1,5 @@
 """Tests for dit dedup CLI command."""
 import json
-import os
 import time
 from pathlib import Path
 

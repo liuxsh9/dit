@@ -4,7 +4,6 @@ import os
 import time
 from pathlib import Path
 
-import pytest
 from typer.testing import CliRunner
 
 from dit.cli.main import app
@@ -101,7 +100,7 @@ class TestSearchCommand:
         assert result.exit_code == 0
         assert "train.jsonl" in result.stdout
         # eval.jsonl should not appear in results when filtered to train.jsonl
-        lines = [l for l in result.stdout.splitlines() if "eval.jsonl" in l]
+        lines = [line for line in result.stdout.splitlines() if "eval.jsonl" in line]
         assert len(lines) == 0
 
     def test_search_ref_flag(self, tmp_path: Path):

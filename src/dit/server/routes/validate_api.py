@@ -6,7 +6,6 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import select

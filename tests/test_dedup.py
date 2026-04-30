@@ -5,7 +5,6 @@ import time
 from dit.core.objects import (
     Commit, Manifest, ManifestEntry, Tree, TreeEntry,
     serialize_manifest, serialize_tree, serialize_commit,
-    object_hash,
 )
 from dit.core.store import ObjectStore
 from dit.core.hash import row_hash as compute_row_hash, query_fingerprint as compute_qfp

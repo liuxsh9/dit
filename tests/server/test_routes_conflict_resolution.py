@@ -1,11 +1,8 @@
-import time
-import pytest
-from pathlib import Path
 
 from dit.core.store import ObjectStore
 from dit.core.objects import (
     Commit, Manifest, ManifestEntry,
-    serialize_commit, serialize_manifest, deserialize_commit,
+    serialize_commit, serialize_manifest,
 )
 from dit.core.tree_builder import build_nested_tree
 

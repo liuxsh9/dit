@@ -3,7 +3,7 @@
 import time
 
 from dit.core.merge_base import find_merge_base
-from dit.core.objects import Commit, Tree, serialize_commit, serialize_tree, object_hash
+from dit.core.objects import Commit, Tree, serialize_commit, serialize_tree
 from dit.core.store import ObjectStore
 
 

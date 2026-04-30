@@ -1,6 +1,4 @@
 import time
-import pytest
-from pathlib import Path
 import hashlib
 
 from httpx import ASGITransport, AsyncClient
@@ -11,7 +9,6 @@ from dit.core.objects import (
     serialize_commit, serialize_manifest,
 )
 from dit.core.tree_builder import build_nested_tree
-from dit.server.auth import get_session
 from dit.server.models import Token
 
 async def _setup_comment_pr(client, tmp_path):

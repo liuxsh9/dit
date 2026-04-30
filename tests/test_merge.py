@@ -3,8 +3,6 @@
 import time
 
 from dit.core.merge import (
-    MergeConflict,
-    MergeResult,
     three_way_merge,
     merge_manifests,
 )
@@ -14,7 +12,6 @@ from dit.core.objects import (
     ManifestEntry,
     Tree,
     TreeEntry,
-    object_hash,
     serialize_commit,
     serialize_manifest,
     serialize_tree,

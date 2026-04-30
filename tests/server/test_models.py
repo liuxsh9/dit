@@ -1,4 +1,3 @@
-import pytest
 from dit.server.models import Repo, Ref, Token
 
 

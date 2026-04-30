@@ -5,7 +5,6 @@ import json
 from pathlib import Path
 
 import pytest
-import httpx
 from typer.testing import CliRunner
 
 from dit.cli.main import app
@@ -20,7 +19,7 @@ def server_app(tmp_path):
     from dit.server.config import ServerSettings
     from dit.server.auth import get_session, verify_token
     from dit.server.database import create_db_engine, create_session_factory
-    from dit.server.models import Base, Token
+    from dit.server.models import Base
     import asyncio
 
     settings = ServerSettings(

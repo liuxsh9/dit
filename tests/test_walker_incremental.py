@@ -9,7 +9,6 @@ from typer.testing import CliRunner
 
 from dit.cli.main import app
 from dit.core.config import set_remote
-from dit.core.objects import deserialize_commit
 from dit.core.refs import RefStore
 from dit.core.store import ObjectStore
 from dit.core.walker import walk_commit_objects, walk_commit_objects_since

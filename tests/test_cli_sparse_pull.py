@@ -9,7 +9,7 @@ from typer.testing import CliRunner
 
 from dit.cli.main import app
 from dit.core.config import set_remote
-from dit.core.sparse import save_sparse_paths, load_sparse_paths
+from dit.core.sparse import save_sparse_paths
 
 runner = CliRunner()
 
@@ -141,7 +141,7 @@ class TestPullSparse:
         assert result.exit_code == 0, result.output
 
         # a.jsonl should be updated
-        rows = [json.loads(l) for l in (clone_dir / "a.jsonl").read_text().splitlines() if l.strip()]
+        rows = [json.loads(line) for line in (clone_dir / "a.jsonl").read_text().splitlines() if line.strip()]
         assert rows[0]["messages"][0]["content"] == "a-updated"
         # b.jsonl should still NOT be materialized
         assert not (clone_dir / "b.jsonl").exists()
@@ -184,7 +184,7 @@ class TestCheckoutSparse:
         # Checkout feature branch
         runner.invoke(app, ["checkout", "feature"], catch_exceptions=False)
         # a.jsonl should be updated (it's in sparse set)
-        rows = [json.loads(l) for l in (repo / "a.jsonl").read_text().splitlines() if l.strip()]
+        rows = [json.loads(line) for line in (repo / "a.jsonl").read_text().splitlines() if line.strip()]
         assert rows[0]["messages"][0]["content"] == "a-feature"
         # b.jsonl should NOT be materialized
         assert not (repo / "b.jsonl").exists()

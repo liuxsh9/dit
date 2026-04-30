@@ -62,12 +62,10 @@ class TestDetectLang:
         assert detect_lang({}) is None
 
 
-from pathlib import Path
 
 from dit.core.objects import (
     Manifest,
     ManifestEntry,
-    Sidecar,
     serialize_manifest,
 )
 from dit.core.store import ObjectStore

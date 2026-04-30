@@ -2,9 +2,8 @@
 import base64
 import hashlib
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
 
 from dit.core.remote import RemoteClient
 from dit.core.store import ObjectStore

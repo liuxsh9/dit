@@ -1,9 +1,7 @@
 """Verify that push includes sidecars in the correct upload order."""
-import os
 import json
-import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import patch, MagicMock
 from typer.testing import CliRunner
 
 from dit.cli.main import app

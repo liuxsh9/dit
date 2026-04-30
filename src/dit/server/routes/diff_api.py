@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json as _json
 from pathlib import Path
 from typing import Optional
@@ -11,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dit.server.auth import get_session, require_permission
-from dit.server.models import Ref, Repo
+from dit.server.models import Ref
 from dit.server.routes._helpers import _get_repo
 
 router = APIRouter(prefix="/api/v1/repos", tags=["diff"])

@@ -8,8 +8,6 @@ from dit.core.objects import (
     ManifestEntry,
     deserialize_commit,
     deserialize_manifest,
-    deserialize_tree,
-    object_hash,
     serialize_manifest,
 )
 from dit.core.store import ObjectStore

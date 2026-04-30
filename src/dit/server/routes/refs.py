@@ -1,6 +1,5 @@
 import asyncio
 import fnmatch
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel

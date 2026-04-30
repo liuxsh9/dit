@@ -9,7 +9,7 @@ from typer.testing import CliRunner
 
 from dit.cli.main import app
 from dit.core.config import set_remote
-from dit.core.sparse import is_sparse, load_sparse_paths, save_sparse_paths
+from dit.core.sparse import is_sparse, load_sparse_paths
 
 runner = CliRunner()
 
@@ -139,7 +139,7 @@ class TestSparseCheckoutAdd:
         result = runner.invoke(app, ["sparse-checkout", "add", "bug-fix/train.jsonl"], catch_exceptions=False)
         assert result.exit_code == 0, result.output
         assert (clone_dir / "bug-fix" / "train.jsonl").exists()
-        rows = [json.loads(l) for l in (clone_dir / "bug-fix" / "train.jsonl").read_text().splitlines() if l.strip()]
+        rows = [json.loads(line) for line in (clone_dir / "bug-fix" / "train.jsonl").read_text().splitlines() if line.strip()]
         assert len(rows) == 1
         assert rows[0]["messages"][0]["content"] == "bf-q"
 
@@ -158,7 +158,7 @@ class TestSparseCheckoutAdd:
         assert "bug-fix/" in paths
 
     def test_add_nonexistent_path_fails(self, server_app, tmp_path, monkeypatch) -> None:
-        clone_dir = _sparse_clone(server_app, tmp_path, monkeypatch)
+        _sparse_clone(server_app, tmp_path, monkeypatch)
         result = runner.invoke(app, ["sparse-checkout", "add", "nonexistent/file.jsonl"])
         assert result.exit_code != 0
 
@@ -174,7 +174,7 @@ class TestSparseCheckoutAdd:
 
 class TestSparseCheckoutList:
     def test_list_shows_all_files(self, server_app, tmp_path, monkeypatch) -> None:
-        clone_dir = _sparse_clone(server_app, tmp_path, monkeypatch)
+        _sparse_clone(server_app, tmp_path, monkeypatch)
         result = runner.invoke(app, ["sparse-checkout", "list"], catch_exceptions=False)
         assert result.exit_code == 0, result.output
         assert "bug-fix/train.jsonl" in result.output
@@ -182,13 +182,13 @@ class TestSparseCheckoutList:
         assert "top.jsonl" in result.output
 
     def test_list_marks_fetched(self, server_app, tmp_path, monkeypatch) -> None:
-        clone_dir = _sparse_clone(server_app, tmp_path, monkeypatch)
+        _sparse_clone(server_app, tmp_path, monkeypatch)
         runner.invoke(app, ["sparse-checkout", "add", "top.jsonl"], catch_exceptions=False)
         result = runner.invoke(app, ["sparse-checkout", "list"], catch_exceptions=False)
         # Fetched files should have a different marker than unfetched
         lines = result.output.strip().split("\n")
-        fetched = [l for l in lines if "top.jsonl" in l]
-        unfetched = [l for l in lines if "bug-fix/train.jsonl" in l]
+        fetched = [line for line in lines if "top.jsonl" in line]
+        unfetched = [line for line in lines if "bug-fix/train.jsonl" in line]
         assert len(fetched) == 1
         assert len(unfetched) == 1
         assert fetched[0].strip().startswith("[x]") or fetched[0].strip().startswith("[X]")

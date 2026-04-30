@@ -1,8 +1,6 @@
 """Verify clone and _fetch_objects_since download sidecar objects."""
 import json
 import time
-import pytest
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 from typer.testing import CliRunner
 
@@ -11,7 +9,7 @@ from dit.core.store import ObjectStore
 from dit.core.objects import (
     Commit, Manifest, ManifestEntry, Sidecar, SidecarEntry, Tree, TreeEntry,
     serialize_commit, serialize_manifest, serialize_sidecar, serialize_tree,
-    deserialize_commit, deserialize_sidecar, object_hash,
+    object_hash,
 )
 
 runner = CliRunner()

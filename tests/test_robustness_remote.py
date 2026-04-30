@@ -206,7 +206,7 @@ class TestPushCloneRoundtrip:
         monkeypatch.chdir(clone_dir)
         r = runner.invoke(app, ["log", "--oneline"], catch_exceptions=False)
         assert r.exit_code == 0, r.output
-        log_lines = [l for l in r.output.strip().splitlines() if l.strip()]
+        log_lines = [line for line in r.output.strip().splitlines() if line.strip()]
         assert len(log_lines) == 3, f"Expected 3 commits in log, got {len(log_lines)}: {r.output}"
         assert "third commit" in r.output
         assert "first commit" in r.output

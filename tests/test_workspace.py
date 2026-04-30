@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from dit.core.workspace import find_jsonl_files, build_manifest_for_file, build_manifest_for_file_streaming, materialize_file
-from dit.core.objects import deserialize_manifest, Manifest
+from dit.core.objects import Manifest
 from dit.core.store import ObjectStore
 from dit.utils.jsonl import write_rows
 
