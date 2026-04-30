@@ -680,6 +680,7 @@ def _materialize_tree(repo_root: Path, store: ObjectStore, tree_hash: str, old_t
 def checkout(
     target: str = typer.Argument(..., help="Branch name to checkout"),
     create: bool = typer.Option(False, "-b", help="Create a new branch and switch to it"),
+    force: bool = typer.Option(False, "--force", "-f", help="Discard uncommitted changes and switch"),
 ):
     """Switch branches or create a new branch."""
     repo_root = find_repo_root()
@@ -706,13 +707,17 @@ def checkout(
         typer.echo(f"error: branch '{target}' not found", err=True)
         raise typer.Exit(1)
 
-    if index.entries():
-        typer.echo("error: staging area is not empty — please commit or reset first", err=True)
-        raise typer.Exit(1)
+    if not force:
+        if index.entries():
+            typer.echo("error: staging area is not empty — please commit or reset first (use --force to discard)", err=True)
+            raise typer.Exit(1)
 
-    if _has_uncommitted_changes(repo_root, dot, store, refs):
-        typer.echo("error: working directory has uncommitted changes", err=True)
-        raise typer.Exit(1)
+        if _has_uncommitted_changes(repo_root, dot, store, refs):
+            typer.echo("error: working directory has uncommitted changes (use --force to discard)", err=True)
+            raise typer.Exit(1)
+    else:
+        if index.entries():
+            index.clear()
 
     current_hash = refs.resolve_head()
     current_commit = deserialize_commit(store.read("commits", current_hash)) if current_hash else None
@@ -773,6 +778,7 @@ def reset(
 @app.command()
 def switch(
     target: str = typer.Argument(..., help="Branch name to switch to"),
+    force: bool = typer.Option(False, "--force", "-f", help="Discard uncommitted changes and switch"),
 ):
     """Switch to an existing branch."""
     repo_root = find_repo_root()
@@ -786,13 +792,17 @@ def switch(
         typer.echo(f"error: branch '{target}' not found", err=True)
         raise typer.Exit(1)
 
-    if index.entries():
-        typer.echo("error: staging area is not empty — please commit or reset first", err=True)
-        raise typer.Exit(1)
+    if not force:
+        if index.entries():
+            typer.echo("error: staging area is not empty — please commit or reset first (use --force to discard)", err=True)
+            raise typer.Exit(1)
 
-    if _has_uncommitted_changes(repo_root, dot, store, refs):
-        typer.echo("error: working directory has uncommitted changes", err=True)
-        raise typer.Exit(1)
+        if _has_uncommitted_changes(repo_root, dot, store, refs):
+            typer.echo("error: working directory has uncommitted changes (use --force to discard)", err=True)
+            raise typer.Exit(1)
+    else:
+        if index.entries():
+            index.clear()
 
     current_hash = refs.resolve_head()
     current_commit = deserialize_commit(store.read("commits", current_hash)) if current_hash else None
