@@ -19,20 +19,22 @@ Dit solves these by decomposing JSONL files into row-level objects with content-
 
 ## Features
 
-- **Row-level versioning** — each JSON object is individually hashed (SHA-256 over RFC 8785 canonical JSON)
-- **Semantic diffs** — added, removed, and "refreshed" rows (same question, different answer) detected via query fingerprinting
-- **Three-way merge** — concurrent edits to the same dataset merge automatically at the row level
-- **Deduplication detection** — find exact duplicates and response refreshes across your entire dataset
-- **Blame** — trace every row back to the commit that introduced it
-- **Validation** — define rules (required fields, forbidden keywords, length limits) in `.ditvalidate.yaml`
-- **Sidecar metadata** — per-row char counts, token estimates, field counts, and language detection
-- **Search** — full-text search across all rows with field-path filtering
-- **Export** — export any commit to JSONL or CSV with optional metadata
-- **Sparse clone** — clone only the directory structure, then fetch individual files on demand — essential for large datasets (tens/hundreds of GB)
-- **Remote collaboration** — push/pull/clone with a self-hosted Dit server
-- **Pull requests** — server-side PRs with inline comments, approvals, and branch protection
-- **Zstd compression** — all objects stored compressed for efficient disk usage
-- **Garbage collection** — reclaim space from unreachable objects with configurable grace periods
+> Each feature has a detailed usage guide in the [Cookbook](docs/cookbook/README.md).
+
+- **[Row-level versioning](docs/cookbook/row-level-versioning.md)** — each JSON object is individually hashed (SHA-256 over RFC 8785 canonical JSON)
+- **[Semantic diffs](docs/cookbook/semantic-diffs.md)** — added, removed, and "refreshed" rows (same question, different answer) detected via query fingerprinting
+- **[Three-way merge](docs/cookbook/three-way-merge.md)** — concurrent edits to the same dataset merge automatically at the row level
+- **[Deduplication detection](docs/cookbook/dedup-detection.md)** — find exact duplicates and response refreshes across your entire dataset
+- **[Blame](docs/cookbook/blame.md)** — trace every row back to the commit that introduced it
+- **[Validation](docs/cookbook/validation.md)** — define rules (required fields, forbidden keywords, length limits) in `.ditvalidate.yaml`
+- **[Sidecar metadata](docs/cookbook/sidecar-metadata.md)** — per-row char counts, token estimates, field counts, and language detection
+- **[Search](docs/cookbook/search.md)** — full-text search across all rows with field-path filtering
+- **[Export](docs/cookbook/export.md)** — export any commit to JSONL or CSV with optional metadata
+- **[Sparse clone](docs/cookbook/sparse-clone.md)** — clone only the directory structure, then fetch individual files on demand — essential for large datasets (tens/hundreds of GB)
+- **[Remote collaboration](docs/cookbook/remote-collaboration.md)** — push/pull/clone with a self-hosted Dit server
+- **[Pull requests](docs/cookbook/pull-requests.md)** — server-side PRs with inline comments, approvals, and branch protection
+- **[Zstd compression](docs/cookbook/compression.md)** — all objects stored compressed for efficient disk usage
+- **[Garbage collection](docs/cookbook/garbage-collection.md)** — reclaim space from unreachable objects with configurable grace periods
 
 ## Quick Start
 
