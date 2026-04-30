@@ -477,6 +477,9 @@ def status():
                 if current_hash != head_manifests[rel]:
                     modified.append(rel)
 
+    modified = [r for r in modified if r not in staged]
+    new_files = [r for r in new_files if r not in staged]
+
     has_changes = modified or new_files or deleted
     if not staged and not has_changes:
         typer.echo("\nNothing to commit, working directory clean.")
@@ -2791,8 +2794,12 @@ def gc(
         if total_skipped > 0:
             typer.echo(f"{total_skipped} unreachable object(s) within grace period (skipped).")
     else:
+        total_skipped = sum(result.skipped_counts.values())
         if result.total_deleted == 0 and result.tmp_deleted == 0:
-            typer.echo("No unreachable objects found.")
+            if total_skipped > 0:
+                typer.echo(f"{total_skipped} unreachable object(s) within grace period (skipped).")
+            else:
+                typer.echo("No unreachable objects found.")
             return
 
         parts = []
@@ -2805,6 +2812,8 @@ def gc(
             typer.echo(f"Deleted {result.total_deleted} unreachable object(s) ({', '.join(parts)}).")
         if result.tmp_deleted > 0:
             typer.echo(f"Deleted {result.tmp_deleted} stale tmp file(s).")
+        if total_skipped > 0:
+            typer.echo(f"{total_skipped} unreachable object(s) within grace period (skipped).")
 
     if result.errors:
         for err in result.errors:
