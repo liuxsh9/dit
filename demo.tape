@@ -24,12 +24,10 @@ Type `dit add train.jsonl > /dev/null 2>&1 && dit commit -m "initial training da
 Sleep 1.5s
 Show
 
-# Stage and commit
-Type "dit status" Enter
-Sleep 1.5s
-
 # Branch
-Type "dit branch improve-answers && dit checkout improve-answers" Enter
+Type "dit branch improve-answers" Enter
+Sleep 1s
+Type "dit checkout improve-answers" Enter
 Sleep 1s
 
 # Hidden: refresh an answer
@@ -41,9 +39,15 @@ Type `EOF` Enter
 Sleep 0.5s
 Show
 
+Type "echo" Enter
+Type "dit status" Enter
+Sleep 1.5s
+
 # Semantic diff — the star feature
 Type "dit diff" Enter
 Sleep 2s
+
+Type "echo" Enter
 
 # Commit and merge
 Type "dit add train.jsonl" Enter
@@ -69,6 +73,8 @@ Type `dit remote add origin http://localhost:8000/demo-repo 2>/dev/null; dit aut
 Sleep 1s
 Show
 
+Type "echo" Enter
+
 # Push to remote server
 Type "dit push" Enter
 Sleep 2s
@@ -78,6 +84,8 @@ Hide
 Type `SERVICE_TOKEN=demo-secret DIT_DB_PASSWORD=demo-pass docker compose -f /Users/lxs/code/datahub/docker-compose.core.yml down -v 2>/dev/null` Enter
 Sleep 3s
 Show
+
+Type "echo" Enter
 
 # Search
 Type `dit search "LRU" --field messages.content` Enter
