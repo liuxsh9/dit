@@ -83,26 +83,23 @@ query_fp 相同，row_hash 不同 → 识别为 refresh
 
 ---
 
-## 比较指定提交
+## 跨提交比较
 
-比较两个提交之间的差异：
+`dit diff` 仅比较工作目录与 HEAD。要比较两个提交之间的元数据变化，使用 `dit meta diff`：
 
 ```bash
-# 比较当前 HEAD 与上一个提交
-dit diff HEAD~1
-
-# 比较两个具体的提交哈希
-dit diff abc1234 def5678
+# 比较两个提交的 sidecar 元数据差异
+dit meta diff abc1234 def5678
 ```
 
-比较分支之间的差异：
+如果需要查看某次提交引入了哪些行变化，可以结合 `dit log` 和 `dit blame`：
 
 ```bash
-# 比较当前分支与 main 分支
-dit diff main
+# 查看提交历史
+dit log --oneline
 
-# 比较两个分支
-dit diff main feature/new-data
+# 追溯某文件中每行的来源提交
+dit blame train.jsonl
 ```
 
 ---
