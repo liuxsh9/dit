@@ -15,6 +15,8 @@ Training data for LLMs is typically stored as large JSONL files. Standard git ha
 
 Dit solves these by decomposing JSONL files into row-level objects with content-addressable storage, then layering git-like semantics (commits, branches, merges, remotes) on top.
 
+![Architecture Overview](docs/images/architecture-overview.svg)
+
 ## Features
 
 - **Row-level versioning** — each JSON object is individually hashed (SHA-256 over RFC 8785 canonical JSON)
@@ -215,6 +217,10 @@ Each manifest entry includes a `query_fingerprint` — the SHA-256 of concatenat
 
 Dit includes a self-hosted collaboration server with a REST API, role-based access control, pull requests, and webhooks.
 
+Dit supports three deployment modes — from local-only to a full production stack:
+
+![Deployment Modes](docs/images/deployment-modes.svg)
+
 ### Deployment
 
 Dit is designed to run alongside [datahub-gateway](https://github.com/liuxsh9/datahub-gateway) (a Forgejo-based web UI). The recommended production stack uses Docker Compose:
@@ -230,17 +236,16 @@ docker compose up -d
 
 This starts 3 services: gateway (web UI on port 3000), dit-core, and PostgreSQL. For HTTPS with automatic TLS certificates, add `DOMAIN=your.domain.com` to `.env` and use `docker compose --profile tls up -d`.
 
-For standalone dit-core deployment:
+For standalone dit-core deployment (no gateway, CLI-only collaboration):
 
 ```bash
-docker build -t dit-core .
-docker run -p 8000:8000 \
-  -e DIT_SERVER_DATABASE_URL=postgresql+asyncpg://user:pass@db:5432/dit \
-  -e DIT_SERVER_DATA_DIR=/data/dit \
-  -e DIT_SERVER_SERVICE_TOKEN=your-secret \
-  -v dit-data:/data/dit \
-  dit-core
+git clone https://github.com/liuxsh9/dit.git
+cd dit
+cp .env.example .env   # set SERVICE_TOKEN and DIT_DB_PASSWORD
+docker compose -f docker-compose.core.yml up -d
 ```
+
+This starts dit-core on port 8000 + PostgreSQL. Users connect via `dit remote add origin http://<server>:8000/<repo>`.
 
 The container runs as non-root user `dit`, uses gunicorn with uvicorn workers, and auto-runs database migrations on startup.
 

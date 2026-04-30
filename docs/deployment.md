@@ -81,6 +81,104 @@ Caddy 通过 `DOMAIN` 环境变量确定公网域名，自动申请和续期 Let
 
 内网部署或无域名场景不需要启用此 profile，直接通过 `http://<server-ip>:3000` 访问即可。
 
+## 3.2 Core 单独部署（无 Gateway）
+
+如果不需要 Web UI，可以只部署 dit-core + PostgreSQL，用户通过 dit CLI 直连 core API 协作。
+
+### docker-compose.core.yml 示例
+
+```yaml
+services:
+  core:
+    image: ${CORE_IMAGE:-ghcr.io/liuxsh9/dit-core:latest}
+    ports:
+      - "${CORE_PORT:-8000}:8000"
+    environment:
+      DIT_SERVER_DATABASE_URL: "postgresql+asyncpg://dit:${DIT_DB_PASSWORD}@db:5432/dit"
+      DIT_SERVER_DATA_DIR: "/data/dit"
+      DIT_SERVER_SERVICE_TOKEN: "${SERVICE_TOKEN}"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - core-data:/data/dit
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: dit
+      POSTGRES_PASSWORD: "${DIT_DB_PASSWORD}"
+      POSTGRES_DB: dit
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dit"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  core-data:
+  pg-data:
+```
+
+> **注意：** Core-only 模式下 PostgreSQL 用户和数据库均直接使用 `dit`，无需 gateway compose 中的 `init-db.sh` 脚本（该脚本用于在 forgejo 用户之外额外创建 dit 用户）。
+
+### 启动步骤
+
+```bash
+# Clone datahub 仓库（包含 Dockerfile 和 compose 示例）
+git clone https://github.com/liuxsh9/dit.git
+cd dit
+
+# 创建 .env
+cat > .env << 'EOF'
+SERVICE_TOKEN=<generate-a-long-random-secret>
+DIT_DB_PASSWORD=<generate-a-db-password>
+# CORE_PORT=8000
+# CORE_IMAGE=ghcr.io/liuxsh9/dit-core:latest
+EOF
+
+# 启动
+docker compose -f docker-compose.core.yml up -d
+```
+
+### Smoke 验证
+
+```bash
+# 健康检查
+curl -f http://localhost:8000/health
+
+# 未认证请求应返回 401
+curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/api/v1/repos
+
+# 创建首个 admin token
+curl -X POST http://localhost:8000/api/v1/admin/tokens \
+  -H "Content-Type: application/json" \
+  -H "X-Service-Token: <your-service-token>" \
+  -d '{"label":"admin","permissions":"admin"}'
+```
+
+### 用户连接
+
+```bash
+# 用户端安装 dit CLI
+uv pip install git+https://github.com/liuxsh9/dit.git
+
+# 连接服务器
+dit remote add origin http://<server-ip>:8000/<repo-name>
+dit auth set-token <token> --remote origin
+dit push
+```
+
 ## 4. 推荐 Docker Compose 流程
 
 如果使用 datahub-gateway 仓库的一体化 Docker Compose 部署：
