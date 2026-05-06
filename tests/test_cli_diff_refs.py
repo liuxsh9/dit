@@ -317,7 +317,7 @@ class TestResolveRef:
     def test_resolve_branch_takes_priority_over_tag(self, tmp_path: Path):
         """If a name matches both a branch and a tag, branch wins."""
         _init_repo(tmp_path)
-        h1 = _commit_file(tmp_path, "data.jsonl", _row("v1"), "first")
+        _commit_file(tmp_path, "data.jsonl", _row("v1"), "first")
         # Create tag "ambiguous" pointing at h1
         runner.invoke(app, ["tag", "ambiguous"])
         # Advance main and create branch "ambiguous" pointing at h2
