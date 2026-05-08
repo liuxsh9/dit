@@ -145,15 +145,28 @@ class TestRepoStats:
         assert train["avg_fields"] == pytest.approx(2.0, rel=0.01)
         assert train["lang_distribution"] == {"en": 3}
 
-    def test_file_without_sidecar_has_none_fields(self, tmp_path: Path):
+    def test_file_without_sidecar_computes_runtime_metadata_in_full_mode(self, tmp_path: Path):
         store, commit_hash = _build_repo(tmp_path)
         result = repo_stats(store, commit_hash)
         files_by_path = {f["path"]: f for f in result["files"]}
         eval_f = files_by_path["eval.jsonl"]
         assert eval_f["has_sidecar"] is False
         assert eval_f["row_count"] == 1
-        assert eval_f["char_count"] is None
+        assert eval_f["char_count"] == 40
         assert eval_f["size_bytes"] == len(json.dumps({"instruction": "hi", "response": "hey"}).encode("utf-8"))
+        assert eval_f["token_estimate"] == 10
+        assert eval_f["avg_fields"] == pytest.approx(2.0, rel=0.01)
+        assert eval_f["lang_distribution"] == {"unknown": 1}
+
+    def test_file_without_sidecar_keeps_fast_mode_metadata_empty(self, tmp_path: Path):
+        store, commit_hash = _build_repo(tmp_path)
+        result = repo_stats(store, commit_hash, include_size=False)
+        files_by_path = {f["path"]: f for f in result["files"]}
+        eval_f = files_by_path["eval.jsonl"]
+        assert eval_f["has_sidecar"] is False
+        assert eval_f["row_count"] == 1
+        assert eval_f["char_count"] is None
+        assert eval_f["size_bytes"] is None
         assert eval_f["token_estimate"] is None
         assert eval_f["avg_fields"] is None
         assert eval_f["lang_distribution"] is None
@@ -173,10 +186,10 @@ class TestRepoStats:
         result = repo_stats(store, commit_hash)
         totals = result["totals"]
         assert totals["row_count"] == 4
-        assert totals["char_count"] == 120
+        assert totals["char_count"] == 160
         assert totals["size_bytes"] == sum(f["size_bytes"] for f in result["files"])
-        assert totals["token_estimate"] == 30
-        assert totals["lang_distribution"] == {"en": 3}
+        assert totals["token_estimate"] == 40
+        assert totals["lang_distribution"] == {"en": 3, "unknown": 1}
 
     def test_totals_row_count_includes_files_without_sidecars(self, tmp_path: Path):
         store, commit_hash = _build_repo(tmp_path)
