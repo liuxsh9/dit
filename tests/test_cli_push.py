@@ -143,3 +143,39 @@ def test_push_idempotent(server_app, local_repo: Path, monkeypatch) -> None:
     r2 = runner.invoke(app, ["push"], catch_exceptions=False)
     assert r2.exit_code == 0
     assert "0 new objects" in r2.output or "Pushed 0" in r2.output
+
+
+def test_push_defaults_to_current_branch_after_checkout(server_app, local_repo: Path, monkeypatch) -> None:
+    _patch_remote_client(monkeypatch, server_app)
+
+    from starlette.testclient import TestClient
+    sync_client = TestClient(server_app, headers={"Authorization": "Bearer dit_admin"})
+    sync_client.post("/api/v1/repos", json={"name": "train"})
+
+    dot = local_repo / ".dit"
+    set_remote(dot, "origin", "http://testserver/train", token="dit_admin")
+
+    r = runner.invoke(app, ["push"], catch_exceptions=False)
+    assert r.exit_code == 0, r.output
+    main_resp = sync_client.get("/api/v1/repos/train/refs/heads/main")
+    assert main_resp.status_code == 200
+    main_hash = main_resp.json()["target_hash"]
+
+    r = runner.invoke(app, ["checkout", "-b", "feature"], catch_exceptions=False)
+    assert r.exit_code == 0, r.output
+    (local_repo / "train.jsonl").write_text(
+        json.dumps({"messages": [{"role": "user", "content": "feature"}, {"role": "assistant", "content": "ok"}]}) + "\n"
+    )
+    r = runner.invoke(app, ["add", "train.jsonl"], catch_exceptions=False)
+    assert r.exit_code == 0, r.output
+    r = runner.invoke(app, ["commit", "-m", "feature work"], catch_exceptions=False)
+    assert r.exit_code == 0, r.output
+
+    result = runner.invoke(app, ["push"], catch_exceptions=False)
+    assert result.exit_code == 0, result.output
+    assert "origin/feature" in result.output
+
+    feature_resp = sync_client.get("/api/v1/repos/train/refs/heads/feature")
+    assert feature_resp.status_code == 200
+    assert len(feature_resp.json()["target_hash"]) == 64
+    assert sync_client.get("/api/v1/repos/train/refs/heads/main").json()["target_hash"] == main_hash

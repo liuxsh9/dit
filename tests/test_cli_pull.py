@@ -240,3 +240,125 @@ def test_pull_already_up_to_date(server_app, tmp_path: Path, monkeypatch) -> Non
     r = runner.invoke(app, ["pull"], catch_exceptions=False)
     assert r.exit_code == 0
     assert "up to date" in r.output.lower()
+
+
+def test_fetch_defaults_to_current_branch_after_checkout(server_app, tmp_path: Path, monkeypatch) -> None:
+    _patch_remote_client(monkeypatch, server_app)
+
+    from starlette.testclient import TestClient
+    sync_client = TestClient(server_app, headers={"Authorization": "Bearer dit_admin"})
+    sync_client.post("/api/v1/repos", json={"name": "fetch-branches"})
+
+    src = tmp_path / "src"
+    src.mkdir()
+    monkeypatch.chdir(src)
+    runner.invoke(app, ["init"], catch_exceptions=False)
+    _init_and_commit(
+        src,
+        "data.jsonl",
+        [{"messages": [{"role": "user", "content": "main"}, {"role": "assistant", "content": "main-v1"}]}],
+        "main v1",
+        monkeypatch,
+    )
+    set_remote(src / ".dit", "origin", "http://testserver/fetch-branches", token="dit_admin")
+    monkeypatch.chdir(src)
+    r = runner.invoke(app, ["push"], catch_exceptions=False)
+    assert r.exit_code == 0, r.output
+
+    r = runner.invoke(app, ["checkout", "-b", "feature"], catch_exceptions=False)
+    assert r.exit_code == 0, r.output
+    _init_and_commit(
+        src,
+        "data.jsonl",
+        [{"messages": [{"role": "user", "content": "feature"}, {"role": "assistant", "content": "feature-v1"}]}],
+        "feature v1",
+        monkeypatch,
+    )
+    r = runner.invoke(app, ["push", "--branch", "feature"], catch_exceptions=False)
+    assert r.exit_code == 0, r.output
+
+    clone_dir = tmp_path / "clone_feature"
+    r = runner.invoke(
+        app,
+        ["clone", "http://testserver/fetch-branches", str(clone_dir), "--token", "dit_admin", "--branch", "feature"],
+        catch_exceptions=False,
+    )
+    assert r.exit_code == 0, r.output
+
+    _init_and_commit(
+        src,
+        "data.jsonl",
+        [{"messages": [{"role": "user", "content": "feature"}, {"role": "assistant", "content": "feature-v2"}]}],
+        "feature v2",
+        monkeypatch,
+    )
+    r = runner.invoke(app, ["push", "--branch", "feature"], catch_exceptions=False)
+    assert r.exit_code == 0, r.output
+
+    monkeypatch.chdir(clone_dir)
+    result = runner.invoke(app, ["fetch"], catch_exceptions=False)
+    assert result.exit_code == 0, result.output
+    assert "origin/feature" in result.output
+    assert "origin/main" not in result.output
+
+
+def test_pull_defaults_to_current_branch_after_checkout(server_app, tmp_path: Path, monkeypatch) -> None:
+    _patch_remote_client(monkeypatch, server_app)
+
+    from starlette.testclient import TestClient
+    sync_client = TestClient(server_app, headers={"Authorization": "Bearer dit_admin"})
+    sync_client.post("/api/v1/repos", json={"name": "branches"})
+
+    src = tmp_path / "src"
+    src.mkdir()
+    monkeypatch.chdir(src)
+    runner.invoke(app, ["init"], catch_exceptions=False)
+    _init_and_commit(
+        src,
+        "data.jsonl",
+        [{"messages": [{"role": "user", "content": "main"}, {"role": "assistant", "content": "main-v1"}]}],
+        "main v1",
+        monkeypatch,
+    )
+    set_remote(src / ".dit", "origin", "http://testserver/branches", token="dit_admin")
+    monkeypatch.chdir(src)
+    r = runner.invoke(app, ["push"], catch_exceptions=False)
+    assert r.exit_code == 0, r.output
+
+    r = runner.invoke(app, ["checkout", "-b", "feature"], catch_exceptions=False)
+    assert r.exit_code == 0, r.output
+    _init_and_commit(
+        src,
+        "data.jsonl",
+        [{"messages": [{"role": "user", "content": "feature"}, {"role": "assistant", "content": "feature-v1"}]}],
+        "feature v1",
+        monkeypatch,
+    )
+    r = runner.invoke(app, ["push", "--branch", "feature"], catch_exceptions=False)
+    assert r.exit_code == 0, r.output
+
+    clone_dir = tmp_path / "clone_feature"
+    r = runner.invoke(
+        app,
+        ["clone", "http://testserver/branches", str(clone_dir), "--token", "dit_admin", "--branch", "feature"],
+        catch_exceptions=False,
+    )
+    assert r.exit_code == 0, r.output
+    assert "feature-v1" in (clone_dir / "data.jsonl").read_text()
+
+    _init_and_commit(
+        src,
+        "data.jsonl",
+        [{"messages": [{"role": "user", "content": "feature"}, {"role": "assistant", "content": "feature-v2"}]}],
+        "feature v2",
+        monkeypatch,
+    )
+    r = runner.invoke(app, ["push", "--branch", "feature"], catch_exceptions=False)
+    assert r.exit_code == 0, r.output
+
+    monkeypatch.chdir(clone_dir)
+    result = runner.invoke(app, ["pull"], catch_exceptions=False)
+    assert result.exit_code == 0, result.output
+    assert (clone_dir / ".dit" / "HEAD").read_text().strip() == "ref:feature"
+    assert "feature-v2" in (clone_dir / "data.jsonl").read_text()
+    assert "main-v1" not in (clone_dir / "data.jsonl").read_text()

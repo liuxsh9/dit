@@ -1882,10 +1882,20 @@ def _remote_parts_from_url(url: str) -> tuple[str, str]:
     return clean_url.rsplit("/", 1)[0], clean_url.rsplit("/", 1)[-1]
 
 
+def _branch_or_current(refs: RefStore, branch: Optional[str], action: str) -> str:
+    if branch is not None:
+        return branch
+    current = refs.current_branch()
+    if current is None:
+        typer.echo(f"fatal: cannot {action} from detached HEAD; specify --branch", err=True)
+        raise typer.Exit(1)
+    return current
+
+
 @app.command()
 def push(
     remote: str = typer.Option("origin", help="Remote name"),
-    branch: str = typer.Option("main", help="Branch name to push"),
+    branch: Optional[str] = typer.Option(None, help="Branch name to push (defaults to current branch)"),
 ):
     """Push local commits to the remote server."""
     from dit.core.walker import walk_commit_objects, walk_commit_objects_since, is_ancestor
@@ -1894,6 +1904,8 @@ def push(
     dot = get_dot(repo_root)
     store = ObjectStore(dot / "objects")
     refs = RefStore(dot)
+
+    branch = _branch_or_current(refs, branch, "push")
 
     local_hash = refs.get_branch(branch)
     if local_hash is None:
@@ -2257,13 +2269,15 @@ def _fetch_objects_since(
 @app.command()
 def fetch(
     remote: str = typer.Option("origin", help="Remote name"),
-    branch: str = typer.Option("main", help="Branch to fetch"),
+    branch: Optional[str] = typer.Option(None, help="Branch to fetch (defaults to current branch)"),
 ):
     """Download new objects from the remote (does not update local branch)."""
     repo_root = find_repo_root()
     dot = get_dot(repo_root)
     store = ObjectStore(dot / "objects")
     refs = RefStore(dot)
+
+    branch = _branch_or_current(refs, branch, "fetch")
 
     rc = _build_remote_client(dot, remote)
     with remote_error_boundary("fetch"):
@@ -2285,7 +2299,7 @@ def fetch(
 @app.command()
 def pull(
     remote: str = typer.Option("origin", help="Remote name"),
-    branch: str = typer.Option("main", help="Branch to pull"),
+    branch: Optional[str] = typer.Option(None, help="Branch to pull (defaults to current branch)"),
 ):
     """Fetch from remote + fast-forward local branch + materialize changed files."""
     from dit.core.objects import deserialize_commit
@@ -2295,6 +2309,8 @@ def pull(
     dot = get_dot(repo_root)
     store = ObjectStore(dot / "objects")
     refs = RefStore(dot)
+
+    branch = _branch_or_current(refs, branch, "pull")
 
     if _has_uncommitted_changes(repo_root, dot, store, refs):
         typer.echo("error: You have uncommitted changes. Commit or reset them before pulling.", err=True)
