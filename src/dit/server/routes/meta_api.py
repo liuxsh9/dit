@@ -1,7 +1,7 @@
 """Sidecar metadata API endpoints."""
 from __future__ import annotations
 
-import time
+import asyncio
 from pathlib import Path
 from typing import Optional
 
@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from dit.server.auth import get_session, require_permission
 from dit.server.models import Ref
+from dit.core.runtime_metadata import get_runtime_metadata_summary
 from dit.server.routes._helpers import _get_repo
 from dit.core.sidecar import sidecar_summary as _sidecar_summary
 
@@ -26,6 +27,7 @@ def _store_for_repo(request: Request, repo_name: str):
 
 class MetaComputeRequest(BaseModel):
     file: Optional[str] = None
+    refresh: bool = False
 
 
 @router.post("/{repo}/meta/compute")
@@ -36,12 +38,8 @@ async def meta_compute(
     session: AsyncSession = Depends(get_session),
     _token=Depends(require_permission("push")),
 ):
-    from dit.core.objects import (
-        deserialize_commit, serialize_commit, serialize_sidecar, Commit,
-    )
+    from dit.core.objects import deserialize_commit
     from dit.core.tree_walker import flatten_tree
-    from dit.core.tree_builder import build_nested_tree
-    from dit.core.sidecar import compute_sidecar
 
     r = await _get_repo(repo, session)
     store = _store_for_repo(request, repo)
@@ -62,52 +60,24 @@ async def meta_compute(
     flat = flatten_tree(store, head_commit.tree_hash)
 
     computed: list[dict] = []
-    updated: dict[str, tuple] = {}
 
     for path, (obj_type, obj_hash, sidecar_hash) in flat.items():
         if obj_type != "manifest":
-            updated[path] = (obj_type, obj_hash, sidecar_hash)
             continue
         if body.file is not None and path != body.file.lstrip("/"):
-            updated[path] = (obj_type, obj_hash, sidecar_hash)
             continue
-        if sidecar_hash is not None:
-            updated[path] = (obj_type, obj_hash, sidecar_hash)
+        if sidecar_hash is not None and not body.refresh:
             continue
 
-        sidecar = compute_sidecar(store, obj_hash)
-        sidecar_bytes = serialize_sidecar(sidecar)
-        new_sc_hash = store.write("sidecars", sidecar_bytes)
-        updated[path] = (obj_type, obj_hash, new_sc_hash)
-        computed.append({"file": path, "sidecar_hash": new_sc_hash})
+        summary = await asyncio.to_thread(
+            get_runtime_metadata_summary,
+            store,
+            obj_hash,
+            refresh=body.refresh,
+        )
+        computed.append({"file": path, "summary": summary})
 
-    if not computed:
-        return {"commit_hash": head_hash, "sidecars": []}
-
-    new_tree_hash = build_nested_tree(store, updated)
-    new_commit = Commit(
-        tree_hash=new_tree_hash,
-        parent_hashes=[head_hash],
-        author="server",
-        message="meta: compute sidecar metadata",
-        timestamp=int(time.time()),
-    )
-    commit_bytes = serialize_commit(new_commit)
-    new_commit_hash = store.write("commits", commit_bytes)
-
-    from sqlalchemy import update as sa_update
-    stmt = (
-        sa_update(Ref)
-        .where(Ref.repo_id == r.id, Ref.name == "heads/main", Ref.target_hash == head_hash)
-        .values(target_hash=new_commit_hash)
-        .execution_options(synchronize_session=False)
-    )
-    update_result = await session.execute(stmt)
-    if update_result.rowcount == 0:
-        raise HTTPException(status_code=409, detail="HEAD was updated concurrently — retry")
-    await session.commit()
-
-    return {"commit_hash": new_commit_hash, "sidecars": computed}
+    return {"commit_hash": head_hash, "sidecars": computed}
 
 
 # IMPORTANT: diff route MUST be registered BEFORE the {commit_hash}/{file_path:path} routes
@@ -218,11 +188,11 @@ async def meta_summary(
     if obj_type != "manifest":
         raise HTTPException(status_code=404, detail=f"'{clean}' is not a manifest")
     if sidecar_hash is None:
-        raise HTTPException(status_code=404, detail=f"No sidecar for '{clean}'")
+        return await asyncio.to_thread(get_runtime_metadata_summary, store, obj_hash)
 
     sc_data = store.read("sidecars", sidecar_hash)
     if sc_data is None:
-        raise HTTPException(status_code=404, detail="Sidecar object missing from store")
+        return await asyncio.to_thread(get_runtime_metadata_summary, store, obj_hash)
 
     sidecar = deserialize_sidecar(sc_data)
     return _sidecar_summary(sidecar)

@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Event, Lock
 
 from dit.core.objects import deserialize_commit, deserialize_manifest, deserialize_sidecar
+from dit.core.runtime_metadata import get_runtime_metadata_summary
 from dit.core.sidecar import sidecar_summary
 from dit.core.store import ObjectStore
 from dit.core.tree_walker import flatten_tree
@@ -154,6 +155,19 @@ def repo_stats(
         manifest_row_count, size_bytes = _manifest_shape(manifest)
 
         if sidecar_hash is None:
+            if include_size:
+                summary = get_runtime_metadata_summary(store, _obj_hash)
+                files.append({
+                    "path": path,
+                    "row_count": summary["row_count"],
+                    "char_count": summary["char_count"],
+                    "size_bytes": size_bytes,
+                    "token_estimate": summary["token_estimate"],
+                    "avg_fields": summary["avg_fields"],
+                    "lang_distribution": summary["lang_distribution"],
+                    "has_sidecar": False,
+                })
+                continue
             files.append({
                 "path": path,
                 "row_count": manifest_row_count,
@@ -168,6 +182,19 @@ def repo_stats(
 
         sc_data = store.read("sidecars", sidecar_hash)
         if sc_data is None:
+            if include_size:
+                summary = get_runtime_metadata_summary(store, _obj_hash)
+                files.append({
+                    "path": path,
+                    "row_count": summary["row_count"],
+                    "char_count": summary["char_count"],
+                    "size_bytes": size_bytes,
+                    "token_estimate": summary["token_estimate"],
+                    "avg_fields": summary["avg_fields"],
+                    "lang_distribution": summary["lang_distribution"],
+                    "has_sidecar": False,
+                })
+                continue
             files.append({
                 "path": path,
                 "row_count": manifest_row_count,
@@ -196,8 +223,9 @@ def repo_stats(
     # Row counts come from manifests and are available before exact byte sizes or
     # sidecar summaries. Heavier char/token/language totals still require sidecars.
     with_sidecar = [f for f in files if f["has_sidecar"]]
+    with_metadata = [f for f in files if f["char_count"] is not None]
     total_lang: dict[str, int] = {}
-    for f in with_sidecar:
+    for f in with_metadata:
         for lang, count in (f["lang_distribution"] or {}).items():
             total_lang[lang] = total_lang.get(lang, 0) + count
     total_rows = sum(f["row_count"] for f in files if f["row_count"] is not None)
@@ -206,10 +234,10 @@ def repo_stats(
         "file_count": len(files),
         "files_with_sidecar": len(with_sidecar),
         "row_count": total_rows,
-        "char_count": sum(f["char_count"] for f in with_sidecar) if with_sidecar else None,
+        "char_count": sum(f["char_count"] for f in with_metadata) if with_metadata else None,
         "size_bytes": sum(f["size_bytes"] for f in files if f["size_bytes"] is not None) if include_size else None,
-        "token_estimate": sum(f["token_estimate"] for f in with_sidecar) if with_sidecar else None,
-        "lang_distribution": total_lang if with_sidecar else {},
+        "token_estimate": sum(f["token_estimate"] for f in with_metadata) if with_metadata else None,
+        "lang_distribution": total_lang if with_metadata else {},
     }
 
     return {"commit_hash": commit_hash, "files": files, "totals": totals}

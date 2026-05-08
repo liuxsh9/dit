@@ -89,11 +89,15 @@ class TestMetaCompute:
         resp = await client.post("/api/v1/repos/meta-repo/meta/compute", json={})
         assert resp.status_code == 200
         data = resp.json()
-        assert "commit_hash" in data
+        assert data["commit_hash"] == commit_hash
         assert "sidecars" in data
         assert len(data["sidecars"]) >= 1
         assert data["sidecars"][0]["file"] == "train.jsonl"
-        assert data["sidecars"][0]["sidecar_hash"] is not None
+        assert data["sidecars"][0]["summary"]["row_count"] == 1
+
+        head_resp = await client.get("/api/v1/repos/meta-repo/refs/heads/main")
+        assert head_resp.status_code == 200
+        assert head_resp.json()["target_hash"] == commit_hash
 
     async def test_compute_idempotent(self, client: AsyncClient, tmp_path: Path):
         store, commit_hash, sc_hash = await _build_repo_with_sidecar(client, tmp_path)
@@ -193,6 +197,30 @@ class TestMetaSummary:
         assert data["row_count"] == 0
         assert data["char_count"] == 0
         assert data["avg_fields"] == 0.0
+
+    async def test_summary_computes_for_file_without_committed_sidecar(self, client: AsyncClient, tmp_path: Path):
+        await _create_repo(client, "nosidecar-summary-repo")
+        data_dir = tmp_path / "data"
+        store = ObjectStore(data_dir / "repos" / "nosidecar-summary-repo" / "objects")
+
+        row_json = json.dumps({"messages": [{"role": "user", "content": "hello"}]})
+        row_hash = store.write("rows", row_json.encode("utf-8"))
+        manifest = Manifest(entries=[ManifestEntry(row_hash=row_hash, query_fingerprint=None)])
+        manifest_hash = store.write("manifests", serialize_manifest(manifest))
+        tree_hash = build_nested_tree(store, {"train.jsonl": ("manifest", manifest_hash, None)})
+        commit = Commit(tree_hash=tree_hash, parent_hashes=[], author="t", message="v1", timestamp=int(time.time()))
+        commit_hash = store.write("commits", serialize_commit(commit))
+        await client.post(
+            "/api/v1/repos/nosidecar-summary-repo/refs/heads/main",
+            json={"old": None, "new": commit_hash},
+        )
+
+        resp = await client.get(f"/api/v1/repos/nosidecar-summary-repo/meta/{commit_hash}/train.jsonl/summary")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["row_count"] == 1
+        assert data["char_count"] > 0
+        assert data["token_estimate"] > 0
 
 
 class TestMetaDiff:

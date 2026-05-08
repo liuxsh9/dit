@@ -91,7 +91,21 @@ class TestStatsEndpoint:
         assert train["row_count"] == 1
         assert train["token_estimate"] == 10
 
-    async def test_stats_file_without_sidecar_has_null_fields(self, client: AsyncClient, tmp_path: Path):
+    async def test_stats_file_without_sidecar_keeps_fast_row_count_mode(self, client: AsyncClient, tmp_path: Path):
+        store, commit_hash = await _create_repo_with_sidecars(client, tmp_path)
+        resp = await client.get(
+            f"/api/v1/repos/stats-repo/stats/{commit_hash}",
+            params={"include_size": "false"},
+        )
+        data = resp.json()
+        files_by_path = {f["path"]: f for f in data["files"]}
+        eval_f = files_by_path["eval.jsonl"]
+        assert eval_f["has_sidecar"] is False
+        assert eval_f["row_count"] == 1
+        assert eval_f["char_count"] is None
+        assert eval_f["token_estimate"] is None
+
+    async def test_stats_file_without_sidecar_computes_metadata_in_full_mode(self, client: AsyncClient, tmp_path: Path):
         store, commit_hash = await _create_repo_with_sidecars(client, tmp_path)
         resp = await client.get(f"/api/v1/repos/stats-repo/stats/{commit_hash}")
         data = resp.json()
@@ -99,6 +113,9 @@ class TestStatsEndpoint:
         eval_f = files_by_path["eval.jsonl"]
         assert eval_f["has_sidecar"] is False
         assert eval_f["row_count"] == 1
+        assert eval_f["char_count"] > 0
+        assert eval_f["token_estimate"] > 0
+        assert eval_f["lang_distribution"] == {"unknown": 1}
 
     async def test_stats_totals_files_with_sidecar(self, client: AsyncClient, tmp_path: Path):
         store, commit_hash = await _create_repo_with_sidecars(client, tmp_path)
