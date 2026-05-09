@@ -121,6 +121,43 @@ class TestMerge:
         ref_resp = await client.get("/api/v1/repos/test-repo/refs/heads/main")
         assert ref_resp.json()["target_hash"] == data["commit_hash"]
 
+    async def test_merge_defaults_author_to_token_label(self, client, tmp_path):
+        repo_name = "token-merge-repo"
+        store, base_hash, main_hash, feat_hash = await _setup_diverged_repo_named(client, tmp_path, repo_name)
+
+        resp = await client.post(
+            f"/api/v1/repos/{repo_name}/merge",
+            json={
+                "source_branch": "feature",
+                "target_branch": "main",
+                "message": "Merge feature into main",
+            },
+        )
+
+        assert resp.status_code == 200, resp.text
+        from dit.core.objects import deserialize_commit
+        commit = deserialize_commit(store.read("commits", resp.json()["commit_hash"]))
+        assert commit.author == "test-admin"
+
+    async def test_merge_replaces_unknown_author_with_token_label(self, client, tmp_path):
+        repo_name = "unknown-merge-repo"
+        store, base_hash, main_hash, feat_hash = await _setup_diverged_repo_named(client, tmp_path, repo_name)
+
+        resp = await client.post(
+            f"/api/v1/repos/{repo_name}/merge",
+            json={
+                "source_branch": "feature",
+                "target_branch": "main",
+                "message": "Merge feature into main",
+                "author": "unknown",
+            },
+        )
+
+        assert resp.status_code == 200, resp.text
+        from dit.core.objects import deserialize_commit
+        commit = deserialize_commit(store.read("commits", resp.json()["commit_hash"]))
+        assert commit.author == "test-admin"
+
     async def test_merge_branch_not_found(self, client):
         resp = await client.post("/api/v1/repos", json={"name": "test-repo"})
         resp = await client.post(

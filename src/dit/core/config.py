@@ -36,6 +36,29 @@ def set_remote(dot_dit: Path, name: str, url: str, token: str = "") -> None:
     save_config(dot_dit, config)
 
 
+def get_user_identity(dot_dit: Path) -> dict[str, str]:
+    """Get configured local user identity fields."""
+    config = load_config(dot_dit)
+    user = config.get("user", {})
+    if not isinstance(user, dict):
+        return {}
+    return {k: v for k, v in user.items() if k in {"name", "email"} and isinstance(v, str)}
+
+
+def set_user_identity(dot_dit: Path, *, name: str | None = None, email: str | None = None) -> None:
+    """Set local user identity fields in .dit/config."""
+    config = load_config(dot_dit)
+    user = config.get("user", {})
+    if not isinstance(user, dict):
+        user = {}
+    if name is not None:
+        user["name"] = name
+    if email is not None:
+        user["email"] = email
+    config["user"] = user
+    save_config(dot_dit, config)
+
+
 def remove_remote(dot_dit: Path, name: str) -> bool:
     """Remove remote, return True if existed."""
     config = load_config(dot_dit)

@@ -87,12 +87,42 @@ class TestCommit:
 
     def test_commit_creates_commit(self, tmp_path: Path):
         self._setup_staged(tmp_path)
+        runner.invoke(app, ["config", "user.name", "Alice"])
         result = runner.invoke(app, ["commit", "-m", "initial"])
         assert result.exit_code == 0
         assert "initial" in result.stdout
 
         head_ref = (tmp_path / ".dit" / "refs" / "heads" / "main").read_text().strip()
         assert len(head_ref) == 64
+
+    def test_commit_uses_configured_identity(self, tmp_path: Path, monkeypatch):
+        monkeypatch.delenv("DIT_AUTHOR", raising=False)
+        monkeypatch.delenv("USER", raising=False)
+        self._setup_staged(tmp_path)
+
+        runner.invoke(app, ["config", "user.name", "Alice"])
+        runner.invoke(app, ["config", "user.email", "alice@example.com"])
+        result = runner.invoke(app, ["commit", "-m", "initial"])
+
+        assert result.exit_code == 0, result.output
+        head_ref = (tmp_path / ".dit" / "refs" / "heads" / "main").read_text().strip()
+        from dit.core.store import ObjectStore
+        from dit.core.objects import deserialize_commit
+        store = ObjectStore(tmp_path / ".dit" / "objects")
+        commit_obj = deserialize_commit(store.read("commits", head_ref))
+        assert commit_obj.author == "Alice <alice@example.com>"
+
+    def test_commit_requires_identity_instead_of_unknown(self, tmp_path: Path, monkeypatch):
+        monkeypatch.delenv("DIT_AUTHOR", raising=False)
+        monkeypatch.delenv("USER", raising=False)
+        self._setup_staged(tmp_path)
+
+        result = runner.invoke(app, ["commit", "-m", "initial"])
+
+        assert result.exit_code != 0
+        assert "Author identity unknown" in result.output
+        assert "dit config user.name" in result.output
+        assert not (tmp_path / ".dit" / "refs" / "heads" / "main").exists()
 
     def test_commit_clears_index(self, tmp_path: Path):
         self._setup_staged(tmp_path)

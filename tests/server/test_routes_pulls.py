@@ -87,6 +87,35 @@ class TestCreatePR:
         assert "stats_removed" in data
         assert "is_mergeable" in data
 
+    async def test_create_pr_defaults_author_to_token_label(self, client, tmp_path):
+        await _setup_pr_repo(client, tmp_path)
+        resp = await client.post(
+            "/api/v1/repos/pr-repo/pulls",
+            json={
+                "title": "Token-authored PR",
+                "source_branch": "feature",
+                "target_branch": "main",
+            },
+        )
+
+        assert resp.status_code == 201, resp.text
+        assert resp.json()["author"] == "test-admin"
+
+    async def test_create_pr_replaces_unknown_author_with_token_label(self, client, tmp_path):
+        await _setup_pr_repo(client, tmp_path)
+        resp = await client.post(
+            "/api/v1/repos/pr-repo/pulls",
+            json={
+                "title": "Token-authored PR",
+                "source_branch": "feature",
+                "target_branch": "main",
+                "author": "unknown",
+            },
+        )
+
+        assert resp.status_code == 201, resp.text
+        assert resp.json()["author"] == "test-admin"
+
     async def test_create_pr_branch_not_found(self, client, tmp_path):
         await _setup_pr_repo(client, tmp_path)
         resp = await client.post(

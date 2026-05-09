@@ -200,6 +200,36 @@ def version():
     typer.echo(f"dit {__version__}")
 
 
+@app.command("config")
+def config_set(
+    key: str = typer.Argument(..., help="Config key to set, e.g. user.name"),
+    value: str | None = typer.Argument(None, help="Config value"),
+):
+    """Set local repository configuration."""
+    from dit.core.config import get_user_identity, set_user_identity
+
+    repo_root = find_repo_root()
+    dot = get_dot(repo_root)
+
+    if value is None:
+        if key in {"user.name", "user.email"}:
+            field = key.removeprefix("user.")
+            configured = get_user_identity(dot).get(field)
+            if configured is not None:
+                typer.echo(configured)
+            return
+        typer.echo(f"fatal: unsupported config key '{key}'", err=True)
+        raise typer.Exit(1)
+
+    if key == "user.name":
+        set_user_identity(dot, name=value)
+    elif key == "user.email":
+        set_user_identity(dot, email=value)
+    else:
+        typer.echo(f"fatal: unsupported config key '{key}'", err=True)
+        raise typer.Exit(1)
+
+
 @app.command()
 def init():
     """Initialize a new dit repository in the current directory."""
@@ -389,7 +419,7 @@ def commit(message: str = typer.Option(..., "-m", help="Commit message")):
     c = Commit(
         tree_hash=tree_hash,
         parent_hashes=parent_hashes,
-        author=_get_author(),
+        author=_get_author(dot),
         message=message,
         timestamp=int(time.time()),
     )
@@ -925,7 +955,7 @@ def merge(
         c = Commit(
             tree_hash=tree_hash,
             parent_hashes=[ours_hash, theirs_hash],
-            author=_get_author(),
+            author=_get_author(dot),
             message=merge_msg,
             timestamp=int(time.time()),
         )
@@ -1049,7 +1079,7 @@ def merge(
     c = Commit(
         tree_hash=tree_hash,
         parent_hashes=[ours_hash, theirs_hash],
-        author=_get_author(),
+        author=_get_author(dot),
         message=merge_msg,
         timestamp=int(time.time()),
     )
@@ -1125,7 +1155,7 @@ def cherry_pick(
         c = Commit(
             tree_hash=tree_hash,
             parent_hashes=[head_commit_hash],
-            author=_get_author(),
+            author=_get_author(dot),
             message=pick_msg,
             timestamp=int(time.time()),
         )
@@ -1224,7 +1254,7 @@ def cherry_pick(
     c = Commit(
         tree_hash=tree_hash,
         parent_hashes=[ours_hash],
-        author=_get_author(),
+        author=_get_author(dot),
         message=pick_msg,
         timestamp=int(time.time()),
     )
@@ -1664,7 +1694,7 @@ def meta_compute(
     new_commit = Commit(
         tree_hash=new_tree_hash,
         parent_hashes=parent_hashes,
-        author=_get_author(),
+        author=_get_author(dot),
         message="meta: compute sidecar metadata",
         timestamp=int(time.time()),
     )
@@ -3055,8 +3085,39 @@ def _fmt_lang(dist: dict | None) -> str:
     return f"{top_lang} {pct}%"
 
 
-def _get_author() -> str:
-    return os.environ.get("DIT_AUTHOR", os.environ.get("USER", "unknown"))
+def _format_identity(name: str, email: str | None = None) -> str:
+    name = name.strip()
+    if email and email.strip():
+        return f"{name} <{email.strip()}>"
+    return name
+
+
+def _get_author(dot: Path | None = None) -> str:
+    if dot is not None:
+        from dit.core.config import get_user_identity
+
+        identity = get_user_identity(dot)
+        name = identity.get("name", "").strip()
+        if name:
+            return _format_identity(name, identity.get("email"))
+
+    env_author = os.environ.get("DIT_AUTHOR", "").strip()
+    if env_author:
+        return env_author
+
+    user = os.environ.get("USER", "").strip()
+    if user and user != "unknown":
+        return user
+
+    typer.echo(
+        "Author identity unknown.\n\n"
+        "Configure it for this repository:\n"
+        "  dit config user.name \"Your Name\"\n"
+        "  dit config user.email \"you@example.com\"\n\n"
+        "Or set DIT_AUTHOR for this command.",
+        err=True,
+    )
+    raise typer.Exit(1)
 
 
 @app.command()

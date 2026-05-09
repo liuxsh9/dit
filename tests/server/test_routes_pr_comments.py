@@ -45,6 +45,26 @@ class TestCreateComment:
         assert data["file_path"] is None
         assert data["row_hash"] is None
 
+    async def test_create_comment_defaults_author_to_token_label(self, client, tmp_path):
+        pr_id = await _setup_comment_pr(client, tmp_path)
+        resp = await client.post(
+            f"/api/v1/repos/comment-repo/pulls/{pr_id}/comments",
+            json={"body": "Looks good!"},
+        )
+
+        assert resp.status_code == 201
+        assert resp.json()["author"] == "test-admin"
+
+    async def test_create_comment_replaces_unknown_author_with_token_label(self, client, tmp_path):
+        pr_id = await _setup_comment_pr(client, tmp_path)
+        resp = await client.post(
+            f"/api/v1/repos/comment-repo/pulls/{pr_id}/comments",
+            json={"author": "unknown", "body": "Looks good!"},
+        )
+
+        assert resp.status_code == 201
+        assert resp.json()["author"] == "test-admin"
+
     async def test_create_row_level_comment(self, client, tmp_path):
         pr_id = await _setup_comment_pr(client, tmp_path)
         resp = await client.post(

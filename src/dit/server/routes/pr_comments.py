@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from dit.server.auth import get_session, require_permission
+from dit.server.auth import get_session, require_permission, resolve_actor
 from dit.server.models import PrComment, PullRequestMeta
 from dit.server.routes._helpers import _get_repo
 
@@ -37,7 +37,7 @@ def _serialize_comment(c: PrComment) -> dict:
     }
 
 class CreateCommentRequest(BaseModel):
-    author: str
+    author: Optional[str] = None
     body: str
     file_path: Optional[str] = None
     row_hash: Optional[str] = None
@@ -51,12 +51,12 @@ class UpdateCommentRequest(BaseModel):
 async def create_comment(
     repo: str, pr_id: int, body: CreateCommentRequest,
     session: AsyncSession = Depends(get_session),
-    _token=Depends(require_permission("reviewer")),
+    token=Depends(require_permission("reviewer")),
 ):
     r = await _get_repo(repo, session)
     pr_meta = await _get_pr_meta(session, r.id, pr_id)
     comment = PrComment(
-        pull_request_meta_id=pr_meta.id, author=body.author, body=body.body,
+        pull_request_meta_id=pr_meta.id, author=resolve_actor(token, body.author), body=body.body,
         file_path=body.file_path, row_hash=body.row_hash,
         field_path=body.field_path, change_type=body.change_type,
     )

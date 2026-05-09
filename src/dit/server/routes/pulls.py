@@ -13,7 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from dit.server.auth import get_session, require_permission
+from dit.server.auth import get_session, require_permission, resolve_actor
 from dit.server.models import BranchProtection, PrApproval, PullRequestMeta, Ref
 from dit.server.routes._helpers import _get_repo
 
@@ -28,7 +28,7 @@ class CreatePRRequest(BaseModel):
     title: str
     source_branch: str
     target_branch: str
-    author: str
+    author: Optional[str] = None
     description: Optional[str] = None
 
 
@@ -40,7 +40,7 @@ class UpdatePRRequest(BaseModel):
 
 class MergePRRequest(BaseModel):
     message: str
-    author: str
+    author: Optional[str] = None
 
 
 class ConflictResolution(BaseModel):
@@ -52,7 +52,7 @@ class ConflictResolution(BaseModel):
 class ConflictResolutionRequest(BaseModel):
     resolutions: list[ConflictResolution]
     message: str
-    author: str
+    author: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -239,7 +239,7 @@ async def create_pull_request(
     body: CreatePRRequest,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    _token=Depends(require_permission("push")),
+    token=Depends(require_permission("push")),
 ):
     r = await _get_repo(repo, session)
 
@@ -265,7 +265,7 @@ async def create_pull_request(
         repo_id=r.id,
         pull_request_id=pr_id,
         title=body.title,
-        author=body.author,
+        author=resolve_actor(token, body.author),
         status="open",
         source_ref=source_ref_name,
         target_ref=target_ref_name,
@@ -368,7 +368,7 @@ async def merge_pull_request(
     body: MergePRRequest,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    _token=Depends(require_permission("push")),
+    token=Depends(require_permission("push")),
 ):
     from dit.core.merge_base import find_merge_base
     from dit.core.merge import three_way_merge
@@ -465,7 +465,7 @@ async def merge_pull_request(
         commit = Commit(
             tree_hash=t_hash,
             parent_hashes=[target_commit, source_commit],
-            author=body.author,
+            author=resolve_actor(token, body.author),
             message=body.message,
             timestamp=int(time.time()),
         )
@@ -520,7 +520,7 @@ async def resolve_conflicts(
     body: ConflictResolutionRequest,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    _token=Depends(require_permission("push")),
+    token=Depends(require_permission("push")),
 ):
     from dit.core.merge_base import find_merge_base
     from dit.core.merge import three_way_merge
@@ -649,7 +649,7 @@ async def resolve_conflicts(
         commit = Commit(
             tree_hash=t_hash,
             parent_hashes=[target_commit, source_commit],
-            author=body.author,
+            author=resolve_actor(token, body.author),
             message=body.message,
             timestamp=int(time.time()),
         )
@@ -680,4 +680,3 @@ async def resolve_conflicts(
     await session.refresh(pr)
 
     return _serialize_pr(pr)
-

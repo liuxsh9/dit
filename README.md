@@ -74,6 +74,10 @@ uv run dit --help
 # Initialize a repository
 dit init
 
+# Configure the local commit identity once per repo
+dit config user.name "Your Name"
+dit config user.email "you@example.com"
+
 # Create some training data
 cat > train.jsonl << 'EOF'
 {"messages":[{"role":"user","content":"What is an LRU cache?"},{"role":"assistant","content":"An LRU cache evicts the least recently used item when full..."}]}
@@ -141,6 +145,8 @@ dit remote add origin http://your-server:3000/<owner>/<repo-name>.dit
 # Tokens are created by the server admin via the gateway web UI
 # or the bootstrap API. Ask your admin for a token.
 dit auth set-token <your-token> --remote origin
+
+# Remote API operations default to the token label as the actor when no author is sent.
 
 # Push and pull
 dit push

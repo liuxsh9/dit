@@ -105,6 +105,18 @@ def verify_repo_scope(token: "Token", repo_id: int) -> None:
         )
 
 
+def resolve_actor(token: "Token", requested_author: str | None = None) -> str:
+    """Resolve the audit actor for server-created objects."""
+    author = (requested_author or "").strip()
+    if author and author.lower() != "unknown":
+        return author
+    label = getattr(token, "label", "") or ""
+    label = label.strip()
+    if label:
+        return label
+    return "unknown-token"
+
+
 def require_permission(required: str):
     required_level = ROLE_LEVELS.get(required)
     if required_level is None:

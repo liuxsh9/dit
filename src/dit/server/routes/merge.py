@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import func as sa_func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from dit.server.auth import get_session, require_permission
+from dit.server.auth import get_session, require_permission, resolve_actor
 from dit.server.models import BranchProtection, PrApproval, PullRequestMeta, Ref, Repo
 
 router = APIRouter(prefix="/api/v1/repos/{repo}", tags=["merge"])
@@ -25,7 +25,7 @@ class MergeRequest(BaseModel):
     source_branch: str
     target_branch: str
     message: str
-    author: str
+    author: str | None = None
     pull_request_id: int | None = None
 
 
@@ -150,7 +150,7 @@ async def merge(
     body: MergeRequest,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    _token=Depends(require_permission("push")),
+    token=Depends(require_permission("push")),
 ):
     from dit.core.merge_base import find_merge_base
     from dit.core.merge import three_way_merge
@@ -224,7 +224,7 @@ async def merge(
         commit = Commit(
             tree_hash=t_hash,
             parent_hashes=[target_hash, source_hash],
-            author=body.author,
+            author=resolve_actor(token, body.author),
             message=body.message,
             timestamp=int(time.time()),
         )
